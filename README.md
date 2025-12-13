@@ -5,7 +5,7 @@
 
 BloodConnect is a platform designed to bridge the critical gap between blood donors and patients in need. It enables fast, reliable, and location-aware blood donation requests—helping save lives when time matters most.
 ---
-#📌 Problem Statement
+📌 Problem Statement
 
 In emergency situations such as surgeries, accidents, or critical illnesses, finding a compatible blood donor quickly is often a challenge. Currently, many people rely on social media posts, personal contacts, or hospital phone calls to find donors. This approach is:
 
