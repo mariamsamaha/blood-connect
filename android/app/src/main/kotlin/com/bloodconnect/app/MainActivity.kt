@@ -1,4 +1,4 @@
-package eg.edu.zewailcity.bloodconnect
+package com.bloodconnect.app
 
 import io.flutter.embedding.android.FlutterActivity
 
