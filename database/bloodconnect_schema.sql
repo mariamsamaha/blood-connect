@@ -12,8 +12,7 @@ CREATE TABLE users (
     blood_type VARCHAR(3) CHECK (blood_type IN ('A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-')),
 
     -- PostGIS geography type for accurate distance calculations, SRID 4326 = WGS84 coordinate system (standard for GPS
-    location GEOGRAPHY(POINT, 4326),    
-)
+    location GEOGRAPHY(POINT, 4326),
     
     -- ACCOUNT TYPE (Who they are - permanent)
    
@@ -88,7 +87,7 @@ CREATE TABLE blood_requests (
     hospital_name TEXT NOT NULL,
     hospital_id UUID REFERENCES users(id), 
     hospital_location GEOGRAPHY(POINT, 4326) NOT NULL,
-    
+    requester_location GEOGRAPHY(POINT, 4326),
     -- Request metadata
     description TEXT,
     patient_name TEXT,
@@ -119,6 +118,7 @@ CREATE INDEX idx_requests_blood_type ON blood_requests(blood_type);
 CREATE INDEX idx_requests_status ON blood_requests(status);
 CREATE INDEX idx_requests_urgency ON blood_requests(urgency_level);
 CREATE INDEX idx_requests_location ON blood_requests USING GIST(hospital_location);
+CREATE INDEX idx_requests_requester_location ON blood_requests USING GIST(requester_location);
 CREATE INDEX idx_requests_created_at ON blood_requests(created_at DESC);
 CREATE INDEX idx_requests_active ON blood_requests(status) WHERE status = 'active'; -- Partial index for active requests
 
@@ -272,21 +272,29 @@ CREATE INDEX idx_notifications_sent_at ON notifications(sent_at DESC);
 -- HOSPITAL_DOMAINS TABLE : Whitelist of verified hospital email domains
 CREATE TABLE hospital_domains (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    domain TEXT UNIQUE NOT NULL,  
-    hospital_name TEXT NOT NULL,
+    domain TEXT UNIQUE NOT NULL,
+    hospital_name TEXT,
     contact_email TEXT,
-    verified_at TIMESTAMP DEFAULT NOW(),
+    verified_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
     verified_by UUID REFERENCES users(id),
-    active BOOLEAN DEFAULT TRUE
+    active BOOLEAN DEFAULT TRUE,
+    -- Active status field for hospital verification workflow
+    active_status BOOLEAN DEFAULT TRUE,
+    active_reason TEXT
 );
 
--- Insert verified hospital domains
-INSERT INTO hospital_domains (domain, hospital_name) VALUES
-    ('cairo.general.eg', 'Cairo General Hospital'),
-    ('ain.shams.hospital.eg', 'Ain Shams University Hospital'),
-    ('dar.alfouad.eg', 'Dar Al Fouad Hospital'),
-    ('cleopatra.hospitals.com', 'Cleopatra Hospitals Group'),
-    ('qasr.elainy.eg', 'Qasr El Ainy Hospital');
+-- ============================================================
+-- SEED DATA - Hospital Domains
+-- ============================================================
+
+INSERT INTO hospital_domains (domain, hospital_name, contact_email, verified_at, active) VALUES
+    ('cairo.general.eg', 'Cairo General Hospital', 'admin@cairo.general.eg', NOW(), TRUE),
+    ('ain.shams.hospital.eg', 'Ain Shams University Hospital', 'info@ain.shams.edu.eg', NOW(), TRUE),
+    ('dar.alfouad.eg', 'Dar Al Fouad Hospital', 'support@dar.alfouad.eg', NOW(), TRUE),
+    ('cleopatra.hospitals.com', 'Cleopatra Hospitals', 'admin@cleopatra.hospitals.com', NOW(), TRUE),
+    ('zewailcity.edu.eg', 'Zewail City University Hospital', 'admin@zewailcity.edu.eg', NOW(), TRUE),  
+    ('qasr.elainy.eg', 'Qasr El Ainy Hospital', 'support@qasr.edu.eg', NOW(), TRUE)
+ON CONFLICT (domain) DO NOTHING;
 
 -- BADGES TABLE : Defines achievement badges for gamification
 CREATE TABLE badges (
@@ -367,27 +375,25 @@ CREATE TRIGGER auto_update_donor_status
 CREATE OR REPLACE FUNCTION generate_short_request_id(hospital_code TEXT)
 RETURNS TEXT AS $$
 DECLARE
-    date_part TEXT;
-    random_part TEXT;
-    short_id TEXT;
-    collision_check INTEGER;
+    v_date_part TEXT;
+    v_random_part TEXT;
+    v_short_id TEXT;  
+    v_collision_check INTEGER;
 BEGIN
-    date_part := TO_CHAR(CURRENT_DATE, 'YYYYMMDD');
+    v_date_part := TO_CHAR(CURRENT_DATE, 'YYYYMMDD');
     
-    -- Loop until we find a unique ID
     LOOP
-        random_part := LPAD(FLOOR(RANDOM() * 10000)::TEXT, 4, '0');
-        short_id := hospital_code || '-' || date_part || '-' || random_part;
+        v_random_part := LPAD(FLOOR(RANDOM() * 10000)::TEXT, 4, '0');
+        v_short_id := hospital_code || '-' || v_date_part || '-' || v_random_part;
         
-        -- Check for collision
-        SELECT COUNT(*) INTO collision_check
+        SELECT COUNT(*) INTO v_collision_check
         FROM blood_requests
-        WHERE blood_requests.short_id = short_id;
+        WHERE short_id = v_short_id;
         
-        EXIT WHEN collision_check = 0;
+        EXIT WHEN v_collision_check = 0;
     END LOOP;
     
-    RETURN short_id;
+    RETURN v_short_id;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -453,31 +459,28 @@ BEGIN
         u.name,
         u.blood_type,
         u.phone,
-        ROUND(ST_Distance(u.location, p_location) / 1000, 2) AS distance_km,
+        ROUND((ST_Distance(u.location, p_location) / 1000)::numeric, 2) AS distance_km,
         COALESCE(CURRENT_DATE - u.last_donation_date, 999) AS days_since_last_donation,
         u.total_donations,
         u.reward_points,
         u.is_recipient AS currently_requesting,
         u.active_mode
     FROM users u
-    WHERE u.account_type = 'regular'  -- Not a hospital account
-        AND u.is_donor = TRUE  --  Can donate (regardless of current mode)
-        AND u.donor_status = 'available'  -- Not on cooldown or unavailable
+    WHERE u.account_type = 'regular'
+        AND u.is_donor = TRUE
+        AND u.donor_status = 'available'
         AND u.blood_type = p_blood_type
         AND u.is_active = TRUE
         AND u.notification_enabled = TRUE
         AND u.location IS NOT NULL
-        AND ST_DWithin(u.location, p_location, p_max_distance_km * 1000) -- Convert km to meters
-        AND (u.last_donation_date IS NULL OR CURRENT_DATE - u.last_donation_date >= 90) -- 90-day eligibility
+        AND ST_DWithin(u.location, p_location, p_max_distance_km * 1000)
+        AND (u.last_donation_date IS NULL OR CURRENT_DATE - u.last_donation_date >= 90)
     ORDER BY 
-        -- Prioritize donors who aren't currently requesting blood
         u.is_recipient ASC,
-        -- Then by proximity
         ST_Distance(u.location, p_location) ASC
     LIMIT p_limit;
 END;
 $$ LANGUAGE plpgsql;
-
 
 -- SAMPLE DATA 
 
@@ -497,13 +500,17 @@ INSERT INTO users (firebase_uid, email, name, account_type, hospital_name, hospi
      ST_GeogFromText('POINT(31.2357 30.0444)'));
 
 -- Insert sample badges
-INSERT INTO badges (badge_code, badge_name, description, requirement_type, requirement_value, points_value) VALUES
+INSERT INTO badges 
+(badge_code, badge_name, description, requirement_type, requirement_value, points_value)
+VALUES
     ('first_donation', 'First Drop', 'Completed your first blood donation', 'donation_count', 1, 10),
     ('lifesaver_5', 'Lifesaver', 'Saved 5 lives through donation', 'donation_count', 5, 50),
     ('lifesaver_10', 'Super Lifesaver', 'Saved 10 lives through donation', 'donation_count', 10, 100),
     ('critical_responder', 'Critical Responder', 'Responded to a critical request within 30 minutes', 'critical_response', 1, 25),
     ('rare_hero', 'Rare Hero', 'Donated rare blood type (AB-, O-)', 'rare_blood', 1, 30),
-    ('consistent_donor', 'Consistent Donor', 'Donated for 3 consecutive months', 'consecutive_months', 3, 75);
+    ('consistent_donor', 'Consistent Donor', 'Donated for 3 consecutive months', 'consecutive_months', 3, 75)
+ON CONFLICT (badge_code) DO NOTHING;
+
 
 
 -- VIEWS FOR COMMON QUERIES
