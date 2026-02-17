@@ -4,10 +4,10 @@ import 'package:bloodconnect/services/user_service.dart';
 import 'package:bloodconnect/models/user_profile.dart';
 import 'package:bloodconnect/screens/login_screen.dart';
 import 'package:bloodconnect/screens/signup_screen.dart';
-import 'package:bloodconnect/screens/onboarding_screen.dart';
 import 'package:bloodconnect/screens/donor_home_screen.dart';
 import 'package:bloodconnect/screens/recipient_home_screen.dart';
 import 'package:bloodconnect/screens/hospital_dashboard_screen.dart';
+import 'package:bloodconnect/screens/create_request_screen.dart';  // ← ADDED
 
 GoRouter buildRouter({
   required AuthService authService,
@@ -19,10 +19,6 @@ GoRouter buildRouter({
       GoRoute(path: '/login', builder: (ctx, state) => const LoginScreen()),
       GoRoute(path: '/signup', builder: (ctx, state) => const SignUpScreen()),
       GoRoute(
-        path: '/onboarding',
-        builder: (ctx, state) => const OnboardingScreen(),
-      ),
-      GoRoute(
         path: '/donor/home',
         builder: (ctx, state) => const DonorHomeScreen(),
       ),
@@ -33,6 +29,10 @@ GoRouter buildRouter({
       GoRoute(
         path: '/hospital/dashboard',
         builder: (ctx, state) => const HospitalDashboardScreen(),
+      ),
+      GoRoute(  
+        path: '/create-request',
+        builder: (ctx, state) => const CreateRequestScreen(),
       ),
     ],
     redirect: (context, state) async {
@@ -47,12 +47,12 @@ GoRouter buildRouter({
         firebaseUser.uid,
       );
 
-      if (profile == null) return '/onboarding';
+      if (profile == null) return '/signup';
 
-      // Redirect from root, login, and onboarding - FORCE to home based on capabilities
+      // Redirect from root, login, and signup - FORCE to home based on capabilities
       if (state.matchedLocation == '/' ||
           state.matchedLocation == '/login' ||
-          state.matchedLocation == '/onboarding') {
+          state.matchedLocation == '/signup') {
         // Always go to home, let home screen decide what to show
         return _getHomeForUser(profile);
       }
@@ -60,15 +60,6 @@ GoRouter buildRouter({
       return null;
     },
   );
-}
-
-String _homeRouteForMode(ActiveMode mode, AccountType accountType) {
-  if (accountType == AccountType.hospital) return '/hospital/dashboard';
-  return switch (mode) {
-    ActiveMode.recipient_view => '/recipient/home',
-    ActiveMode.donor_view => '/donor/home',
-    ActiveMode.hospital_view => '/hospital/dashboard',
-  };
 }
 
 String _getHomeForUser(UserProfile profile) {
