@@ -1,4 +1,4 @@
-enum ResponseType { accepted, declined, enRoute, arrived }
+enum ResponseType { accepted, declined, interested, en_route, arrived }  // ✅ FIXED: Was { accepted, declined, enRoute, arrived }
 
 class DonorAssignment {
   final String id;             

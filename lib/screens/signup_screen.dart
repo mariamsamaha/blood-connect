@@ -1,24 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:bloodconnect/models/user_profile.dart';
-import 'package:bloodconnect/services/auth_service.dart';
 import 'package:bloodconnect/services/user_service.dart';
-import 'package:bloodconnect/services/database_service.dart';
+import 'package:bloodconnect/main.dart';
 import 'package:go_router/go_router.dart';
 
-class SignUpScreen extends StatefulWidget {
+class SignUpScreen extends ConsumerStatefulWidget {
   const SignUpScreen({super.key});
 
   @override
-  State<SignUpScreen> createState() => _SignUpScreenState();
+  ConsumerState<SignUpScreen> createState() => _SignUpScreenState();
 }
 
-class _SignUpScreenState extends State<SignUpScreen> {
+class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
-  final _locationController = TextEditingController();
 
   // Hospital specific fields
   final _hospitalNameController = TextEditingController();
@@ -27,7 +26,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
   String _selectedBloodType = 'A+';
   bool _canDonate = true;
   bool _isLoading = false;
-  bool _useCurrentLocation = true;
   bool _isHospital = false;
   bool _isCheckingHospital = false;
 
@@ -79,31 +77,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
-    _locationController.dispose();
     _hospitalNameController.dispose();
     _hospitalCodeController.dispose();
     super.dispose();
   }
 
-  Future<void> _getCurrentLocation() async {
-    setState(() {
-      _locationController.text = 'Current Location';
-    });
-  }
-
   Future<bool> _isHospitalEmail(String email) async {
     try {
-      final databaseService = DatabaseService(
-        host: 'localhost',
-        port: 5432,
-        database: 'bloodconnect_dev',
-        username: 'bloodconnect_user',
-        password: 'bloodconnect123',
-      );
-
+      final db = ref.read(databaseServiceProvider);
       final emailDomain = email.split('@').last.toLowerCase();
 
-      final result = await databaseService.query(
+      final result = await db.query(
         'SELECT COUNT(*) as count FROM hospital_domains WHERE domain = @domain AND active = TRUE',
         params: {'domain': emailDomain},
       );
@@ -121,21 +105,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final databaseService = DatabaseService(
-        host: 'localhost',
-        port: 5432,
-        database: 'bloodconnect_dev',
-        username: 'bloodconnect_user',
-        password: 'bloodconnect123',
-      );
-      final userService = UserService(databaseService);
-
+      final userService = ref.read(userServiceProvider);
       final firebaseUser = FirebaseAuth.instance.currentUser;
+      
       if (firebaseUser == null) {
         throw Exception('No authenticated user found');
       }
 
-      // Create user profile based on account type
       final profile = _isHospital
           ? await _createHospitalProfile(userService, firebaseUser)
           : await _createRegularProfile(userService, firebaseUser);
@@ -146,9 +122,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Sign up failed: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Sign up failed: $e')),
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -164,11 +140,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
       name: _hospitalNameController.text.trim(),
       email: firebaseUser.email!,
       phone: _phoneController.text.trim(),
-      location: _locationController.text.trim(),
-      bloodType: '', // Hospitals don't have blood type
-      canDonate: false, // Hospitals don't donate
-      needsBlood: false, // Hospitals don't need blood
+      bloodType: '',  // Hospitals don't have blood type
+      canDonate: false,
       accountType: 'hospital',
+      hospitalName: _hospitalNameController.text.trim(),
+      hospitalCode: _hospitalCodeController.text.trim(),
     );
   }
 
@@ -181,10 +157,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
       name: _nameController.text.trim(),
       email: firebaseUser.email!,
       phone: _phoneController.text.trim(),
-      location: _locationController.text.trim(),
       bloodType: _selectedBloodType,
       canDonate: _canDonate,
-      needsBlood: false, // Regular users start as donors, not recipients
       accountType: 'regular',
     );
   }
@@ -351,75 +325,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
             }
             return null;
           },
-        ),
-        const SizedBox(height: 15),
-
-        // Location Field
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
-                blurRadius: 5,
-                offset: const Offset(0, 1),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(15),
-                child: Row(
-                  children: [
-                    Icon(Icons.location_on, color: Colors.red[600]!, size: 20),
-                    const SizedBox(width: 10),
-                    Text(
-                      'Location',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.grey[800]!,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 15),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: _locationController,
-                        decoration: InputDecoration(
-                          hintText: _useCurrentLocation
-                              ? 'Getting current location...'
-                              : 'Enter your city/area',
-                          border: InputBorder.none,
-                          hintStyle: TextStyle(color: Colors.grey[500]!),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Please enter your location';
-                          }
-                          return null;
-                        },
-                      ),
-                    ),
-                    if (_useCurrentLocation)
-                      IconButton(
-                        onPressed: _getCurrentLocation,
-                        icon: Icon(Icons.my_location, color: Colors.red[600]!),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
-            ],
-          ),
         ),
         const SizedBox(height: 15),
 
@@ -678,62 +583,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
             }
             return null;
           },
-        ),
-        const SizedBox(height: 15),
-
-        // Location Field
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
-                blurRadius: 5,
-                offset: const Offset(0, 1),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(15),
-                child: Row(
-                  children: [
-                    Icon(Icons.location_on, color: Colors.red[600]!, size: 20),
-                    const SizedBox(width: 10),
-                    Text(
-                      'Hospital Address',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.grey[800]!,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 15),
-                child: TextFormField(
-                  controller: _locationController,
-                  decoration: InputDecoration(
-                    hintText: 'Enter hospital address',
-                    border: InputBorder.none,
-                    hintStyle: TextStyle(color: Colors.grey[500]!),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Please enter hospital address';
-                    }
-                    return null;
-                  },
-                ),
-              ),
-              const SizedBox(height: 10),
-            ],
-          ),
         ),
         const SizedBox(height: 30),
 

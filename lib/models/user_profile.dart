@@ -1,6 +1,6 @@
 enum AccountType { regular, hospital }
 
-enum DonorStatus { available, onCooldown, unavailable }
+enum DonorStatus { available, on_cooldown, unavailable }  
 
 enum ActiveMode { donor_view, recipient_view, hospital_view }
 
@@ -13,8 +13,8 @@ class UserProfile {
 
   final String bloodType;
   final AccountType accountType;
-  final bool isDonor; // can this user donate?
-  final bool isRecipient; // does this user have an active request?
+  final bool isDonor;
+  final bool isRecipient;
   final DonorStatus donorStatus;
 
   final ActiveMode activeMode;
@@ -50,26 +50,26 @@ class UserProfile {
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) => UserProfile(
-    id: json['id'],
-    firebaseUid: json['firebase_uid'],
-    email: json['email'],
-    name: json['name'],
-    phone: json['phone'],
-    bloodType: json['blood_type'],
-    accountType: AccountType.values.byName(json['account_type']),
-    isDonor: json['is_donor'],
-    isRecipient: json['is_recipient'],
-    donorStatus: DonorStatus.values.byName(json['donor_status']),
+    id: json['id'] as String,
+    firebaseUid: json['firebase_uid'] as String,
+    email: json['email'] as String,
+    name: json['name'] as String,
+    phone: (json['phone'] ?? '') as String,
+    bloodType: (json['blood_type'] ?? '') as String,
+    accountType: AccountType.values.byName(json['account_type'] as String),
+    isDonor: json['is_donor'] as bool,
+    isRecipient: json['is_recipient'] as bool,
+    donorStatus: DonorStatus.values.byName(json['donor_status'] as String),
     activeMode: json['active_mode'] == null
         ? ActiveMode.donor_view
-        : ActiveMode.values.byName(json['active_mode']),
-    latitude: json['latitude'],
-    longitude: json['longitude'],
-    hospitalName: json['hospital_name'],
-    hospitalCode: json['hospital_code'],
-    hospitalVerified: json['hospital_verified'],
-    totalDonations: json['total_donations'] ?? 0,
-    rewardPoints: json['reward_points'] ?? 0,
+        : ActiveMode.values.byName(json['active_mode'] as String),
+    latitude: json['latitude'] as double?,
+    longitude: json['longitude'] as double?,
+    hospitalName: json['hospital_name'] as String?,
+    hospitalCode: json['hospital_code'] as String?,
+    hospitalVerified: json['hospital_verified'] as bool?,
+    totalDonations: (json['total_donations'] ?? 0) as int,
+    rewardPoints: (json['reward_points'] ?? 0) as int,
   );
 
   Map<String, dynamic> toJson() => {
