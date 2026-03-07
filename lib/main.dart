@@ -9,16 +9,25 @@ import 'package:bloodconnect/services/database_service.dart';
 import 'package:bloodconnect/services/auth_service.dart';
 import 'package:bloodconnect/services/request_service.dart';
 import 'package:bloodconnect/services/location_service.dart';
+import 'package:bloodconnect/services/donor_service.dart';
 final authServiceProvider = Provider<AuthService>((ref) => AuthService());
 
 final databaseServiceProvider = Provider<DatabaseService>((ref) {
-  final host = Platform.isIOS ? '127.0.0.1' : '127.0.0.1';
+  String host;
+
+  if (Platform.isAndroid) {
+    host = '10.0.2.2'; // Android emulator
+  } else if (Platform.isIOS) {
+    host = '127.0.0.1'; // iOS simulator
+  } else {
+    host = 'localhost';
+  }
   
   return DatabaseService(
     host: host,
-    port: 5432,
-    database: 'bloodconnect_dev',
-    username: 'bloodconnect_user',
+    port: 5431,
+    database: 'blood-connect',
+    username: 'postgres',
     password: 'bloodconnect123',
   );
 });
@@ -30,6 +39,11 @@ final userServiceProvider = Provider<UserService>((ref) {
 final requestServiceProvider = Provider<RequestService>((ref) {
   final db = ref.watch(databaseServiceProvider);
   return RequestService(db);
+});
+
+final donorServiceProvider = Provider<DonorService>((ref) {
+  final db = ref.watch(databaseServiceProvider);
+  return DonorService(db);
 });
 
 final locationServiceProvider = Provider<LocationService>((ref) {

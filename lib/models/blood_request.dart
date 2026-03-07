@@ -24,7 +24,10 @@ class BloodRequest {
   final int totalEligibleCount;
 
   final DateTime createdAt;
-  final DateTime expiresAt;     
+  final DateTime expiresAt;
+
+  /// Distance from donor to hospital (km). Set when request is loaded for a donor.
+  final double? distanceKm;
 
   const BloodRequest({
     required this.id,
@@ -44,6 +47,7 @@ class BloodRequest {
     required this.totalEligibleCount,
     required this.createdAt,
     required this.expiresAt,
+    this.distanceKm,
   });
 
   factory BloodRequest.fromJson(Map<String, dynamic> json) => BloodRequest(
@@ -68,5 +72,6 @@ class BloodRequest {
     expiresAt: json['expires_at'] is DateTime 
         ? json['expires_at'] as DateTime 
         : DateTime.parse(json['expires_at'] as String),
+    distanceKm: (json['distance_km'] as num?)?.toDouble(),
   );
 }

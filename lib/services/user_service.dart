@@ -170,4 +170,17 @@ class UserService {
     // Update the active_mode in PostgreSQL
     throw UnimplementedError('Implement updateActiveMode');
   }
+
+  /// Save FCM token for push notifications (e.g. donor request alerts).
+  Future<void> updateFcmToken(String firebaseUid, String? token) async {
+    if (token == null || token.isEmpty) return;
+    try {
+      await _db.query('''
+        UPDATE users SET fcm_token = @token, updated_at = NOW()
+        WHERE firebase_uid = @uid
+      ''', params: {'uid': firebaseUid, 'token': token});
+    } catch (_) {
+      // Column may not exist if migration not run; ignore
+    }
+  }
 }

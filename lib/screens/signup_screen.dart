@@ -349,7 +349,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: _selectedBloodType,
+                    initialValue: _selectedBloodType,
                     decoration: const InputDecoration(border: InputBorder.none),
                     items: bloodTypes.map((type) {
                       return DropdownMenuItem(value: type, child: Text(type));
@@ -544,7 +544,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
             if (value == null || value.trim().isEmpty) {
               return 'Please enter hospital code';
             }
-            if (value!.length > 10) {
+            if (value.length > 10) {
               return 'Hospital code too long (max 10 characters)';
             }
             return null;
