@@ -63,12 +63,12 @@ GoRouter buildRouter({
 }
 
 String _getHomeForUser(UserProfile profile) {
-  // Force ALL users to home - let home screen decide what to show based on their capabilities
-  // This matches the professor's MVP: users can freely switch between donor/recipient views
   if (profile.accountType == AccountType.hospital) {
     return '/hospital/dashboard';
   }
-
-  // For regular users, show the screen that makes most sense for their current state
+  // Recipient with active request lands on recipient home; otherwise donor home
+  if (profile.isRecipient) {
+    return '/recipient/home';
+  }
   return '/donor/home';
 }
