@@ -7,7 +7,8 @@ import 'package:bloodconnect/screens/signup_screen.dart';
 import 'package:bloodconnect/screens/donor_home_screen.dart';
 import 'package:bloodconnect/screens/recipient_home_screen.dart';
 import 'package:bloodconnect/screens/hospital_dashboard_screen.dart';
-import 'package:bloodconnect/screens/create_request_screen.dart';  // ← ADDED
+import 'package:bloodconnect/screens/create_request_screen.dart';
+import 'package:bloodconnect/screens/profile_screen.dart';
 
 GoRouter buildRouter({
   required AuthService authService,
@@ -30,9 +31,13 @@ GoRouter buildRouter({
         path: '/hospital/dashboard',
         builder: (ctx, state) => const HospitalDashboardScreen(),
       ),
-      GoRoute(  
+      GoRoute(
         path: '/create-request',
         builder: (ctx, state) => const CreateRequestScreen(),
+      ),
+      GoRoute(
+        path: '/profile',
+        builder: (ctx, state) => const ProfileScreen(),
       ),
     ],
     redirect: (context, state) async {
@@ -63,12 +68,12 @@ GoRouter buildRouter({
 }
 
 String _getHomeForUser(UserProfile profile) {
-  // Force ALL users to home - let home screen decide what to show based on their capabilities
-  // This matches the professor's MVP: users can freely switch between donor/recipient views
   if (profile.accountType == AccountType.hospital) {
     return '/hospital/dashboard';
   }
-
-  // For regular users, show the screen that makes most sense for their current state
+  // Route by role chosen at signup (active_mode)
+  if (profile.activeMode == ActiveMode.recipient_view) {
+    return '/recipient/home';
+  }
   return '/donor/home';
 }

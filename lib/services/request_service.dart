@@ -225,87 +225,58 @@ Future<BloodRequest> createRequest({
   }
 }
 
-/// Get active request for a user
-Future<BloodRequest?> getActiveRequest(String userId) async {
-  try {
-    // DEBUG: Check database connection
-    print(' DEBUG: Checking active request for user: $userId');
-    
-    final dbCheck = await _db.query('SELECT current_database() as db');
-    print('DEBUG: Connected to database: ${dbCheck.first['db']}');
-    
-    // DEBUG: Check if column exists
-    final columnCheck = await _db.query('''
-      SELECT column_name 
-      FROM information_schema.columns 
-      WHERE table_name = 'blood_requests' 
-        AND column_name = 'requester_location'
-    ''');
-    print(' DEBUG: requester_location column exists: ${columnCheck.isNotEmpty}');
-    
-    // DEBUG: Count requests
-    final countCheck = await _db.query('SELECT COUNT(*) as count FROM blood_requests');
-    print(' DEBUG: Total requests in database: ${countCheck.first['count']}');
-    
-    // Try with requester_location first
-    final result = await _db.query('''
-      SELECT 
-        id,
-        short_id,
-        requester_id,
-        blood_type,
-        units_needed,
-        urgency_level,
-        hospital_name,
-        status,
-        nearby_donors_count,
-        total_eligible_count,
-        created_at,
-        expires_at,
-        ST_Y(hospital_location::geometry) as hospital_lat,
-        ST_X(hospital_location::geometry) as hospital_lng,
-        ST_Y(requester_location::geometry) as requester_lat,
-        ST_X(requester_location::geometry) as requester_lng
-      FROM blood_requests
-      WHERE requester_id = @userId
-        AND status IN ('active', 'in_progress')
-      ORDER BY created_at DESC
-      LIMIT 1
-    ''', params: {'userId': userId});
-
-    print(' DEBUG: Query executed successfully, results: ${result.length}');
-    
-    if (result.isEmpty) return null;
-    return BloodRequest.fromJson(result.first);
-  } catch (e) {
-    print(' DEBUG: Error in first query: $e');
-    
-    // If column doesn't exist, try without requester_location
+  /// Get the current active or in-progress request for a recipient.
+  Future<BloodRequest?> getActiveRequest(String userId) async {
     try {
-      print(' DEBUG: Trying fallback query without requester_location');
-      
       final result = await _db.query('''
         SELECT 
-          *,
+          id,
+          short_id,
+          requester_id,
+          blood_type,
+          units_needed,
+          urgency_level,
+          hospital_name,
+          status,
+          nearby_donors_count,
+          total_eligible_count,
+          created_at,
+          expires_at,
           ST_Y(hospital_location::geometry) as hospital_lat,
-          ST_X(hospital_location::geometry) as hospital_lng
+          ST_X(hospital_location::geometry) as hospital_lng,
+          ST_Y(requester_location::geometry) as requester_lat,
+          ST_X(requester_location::geometry) as requester_lng
         FROM blood_requests
         WHERE requester_id = @userId
           AND status IN ('active', 'in_progress')
         ORDER BY created_at DESC
         LIMIT 1
-      ''', params: {'userId': userId});
+      ''', params: {'userId': userId.toString()});
 
-      print(' DEBUG: Fallback query succeeded, results: ${result.length}');
-      
       if (result.isEmpty) return null;
       return BloodRequest.fromJson(result.first);
-    } catch (e2) {
-      print(' DEBUG: Fallback query also failed: $e2');
-      throw Exception('Failed to fetch active request: $e2');
+    } catch (e) {
+      try {
+        final result = await _db.query('''
+          SELECT 
+            id, short_id, requester_id, blood_type, units_needed, urgency_level,
+            hospital_name, status, nearby_donors_count, total_eligible_count,
+            created_at, expires_at,
+            ST_Y(hospital_location::geometry) as hospital_lat,
+            ST_X(hospital_location::geometry) as hospital_lng
+          FROM blood_requests
+          WHERE requester_id = @userId
+            AND status IN ('active', 'in_progress')
+          ORDER BY created_at DESC
+          LIMIT 1
+        ''', params: {'userId': userId.toString()});
+        if (result.isEmpty) return null;
+        return BloodRequest.fromJson(result.first);
+      } catch (_) {
+        rethrow;
+      }
     }
   }
-}
 
 Future<List<BloodRequest>> getMyRequests(String userId) async {
   try {
@@ -318,7 +289,7 @@ Future<List<BloodRequest>> getMyRequests(String userId) async {
       FROM blood_requests
       WHERE requester_id = @userId
       ORDER BY created_at DESC
-    ''', params: {'userId': userId});
+    ''', params: {'userId': userId.toString()});
 
     return result.map((row) => BloodRequest.fromJson(row)).toList();
   } catch (e) {
