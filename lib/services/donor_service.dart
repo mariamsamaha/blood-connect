@@ -1,4 +1,5 @@
 import 'package:bloodconnect/models/blood_request.dart';
+import 'package:bloodconnect/models/donor_response_entry.dart';
 import 'package:bloodconnect/services/database_service.dart';
 
 /// Blood type compatibility: which request types a donor can fulfill.
@@ -19,11 +20,6 @@ class DonorService {
 
   DonorService(this._db);
 
-  /// Returns list of request blood types that this donor's blood type can fulfill.
-  List<String> getCompatibleRequestBloodTypes(String donorBloodType) {
-    return _donorCanFulfill[donorBloodType] ?? [];
-  }
-
   /// Find active requests matching donor's blood type and within radius (km).
   /// Excludes requests this donor has already declined.
   Future<List<BloodRequest>> findMatchingRequests({
@@ -33,21 +29,14 @@ class DonorService {
     required double donorLng,
     int radiusKm = 50,
   }) async {
-    final compatible = getCompatibleRequestBloodTypes(donorBloodType);
-    if (compatible.isEmpty) return [];
-
     try {
-      // Build IN clause for compatible types
-      final placeholders = compatible.asMap().entries.map((e) => '@t${e.key}').join(', ');
       final params = <String, dynamic>{
         'donorId': donorId,
         'donorLng': donorLng,
         'donorLat': donorLat,
         'radiusM': radiusKm * 1000,
+        'bloodType': donorBloodType,
       };
-      for (var i = 0; i < compatible.length; i++) {
-        params['t$i'] = compatible[i];
-      }
 
       final result = await _db.query('''
         SELECT 
@@ -67,26 +56,31 @@ class DonorService {
           br.total_eligible_count,
           br.created_at,
           br.expires_at,
-          ROUND(
-            (ST_Distance(
-              br.hospital_location,
-              ST_SetSRID(ST_MakePoint(@donorLng, @donorLat), 4326)
-            ) / 1000)::numeric, 2
-          ) AS distance_km
+          CASE 
+            WHEN @donorLat IS NOT NULL AND @donorLng IS NOT NULL THEN
+              ROUND(
+                (ST_Distance(
+                  br.hospital_location,
+                  ST_SetSRID(ST_MakePoint(@donorLng, @donorLat), 4326)
+                ) / 1000)::numeric, 2
+              )
+            ELSE NULL
+          END AS distance_km
         FROM blood_requests br
         WHERE br.status = 'active'
-          AND br.blood_type IN ($placeholders)
+          AND br.blood_type = @bloodType
           AND br.expires_at > NOW()
-          AND ST_DWithin(
-            br.hospital_location,
-            ST_SetSRID(ST_MakePoint(@donorLng, @donorLat), 4326),
-            @radiusM
-          )
           AND NOT EXISTS (
             SELECT 1 FROM donor_responses dr
             WHERE dr.request_id = br.id AND dr.donor_id = @donorId
           )
-        ORDER BY CASE br.urgency_level WHEN 'critical' THEN 1 WHEN 'urgent' THEN 2 ELSE 3 END, distance_km ASC
+        ORDER BY 
+          CASE br.urgency_level 
+            WHEN 'critical' THEN 1 
+            WHEN 'urgent' THEN 2 
+            ELSE 3 
+          END,
+          br.created_at DESC
       ''', params: params);
 
       return result.map((row) {
@@ -212,6 +206,23 @@ class DonorService {
       return BloodRequest.fromJson(result.first);
     } catch (e) {
       throw Exception('Failed to get active mission: $e');
+    }
+  }
+
+  /// History of requests this donor has responded to (for profile screen).
+  Future<List<DonorResponseEntry>> getDonorResponseHistory(String donorId) async {
+    try {
+      final result = await _db.query('''
+        SELECT br.id AS request_id, br.short_id, br.hospital_name, br.blood_type,
+               dr.response_type, dr.responded_at
+        FROM donor_responses dr
+        JOIN blood_requests br ON br.id = dr.request_id
+        WHERE dr.donor_id = @donorId
+        ORDER BY dr.responded_at DESC
+      ''', params: {'donorId': donorId});
+      return result.map((row) => DonorResponseEntry.fromJson(row)).toList();
+    } catch (e) {
+      return [];
     }
   }
 
