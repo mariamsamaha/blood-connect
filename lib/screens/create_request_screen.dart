@@ -4,7 +4,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:bloodconnect/models/blood_request.dart';
 import 'package:bloodconnect/models/hospital.dart';
-import 'package:bloodconnect/services/request_service.dart';
 import 'package:bloodconnect/main.dart';
 
 class CreateRequestScreen extends ConsumerStatefulWidget {
@@ -214,8 +213,8 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
         }
         
         // Use fallback location (null-safe)
-        requesterLat = profile?.latitude;
-        requesterLng = profile?.longitude;
+        requesterLat = profile.latitude;
+        requesterLng = profile.longitude;
       }
 
       // Create the request
@@ -757,7 +756,7 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
               ),
             ),
           DropdownButtonFormField<Hospital>(
-            value: _selectedHospital,
+            initialValue: _selectedHospital,
             decoration: InputDecoration(
               prefixIcon: Icon(Icons.local_hospital, color: Colors.red[600]),
               border: InputBorder.none,

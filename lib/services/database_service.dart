@@ -20,8 +20,7 @@ class DatabaseService {
   });
 
   Future<Connection> _getConnection() async {
-    if (_connection == null) {
-      _connection = await Connection.open(
+    _connection ??= await Connection.open(
         Endpoint(
           host: host,
           port: port,
@@ -31,7 +30,6 @@ class DatabaseService {
         ),
         settings: ConnectionSettings(sslMode: SslMode.disable),
       );
-    }
     return _connection!;
   }
 
