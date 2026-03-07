@@ -50,28 +50,32 @@ class BloodRequest {
     this.distanceKm,
   });
 
-  factory BloodRequest.fromJson(Map<String, dynamic> json) => BloodRequest(
-    id: json['id'] as String,
-    shortId: json['short_id'] as String,
-    displayCode: (json['short_id'] as String).split('-').last,
-    requesterId: json['requester_id'] as String,
-    bloodType: json['blood_type'] as String,
-    unitsNeeded: json['units_needed'] as int,
-    urgencyLevel: UrgencyLevel.values.byName(json['urgency_level'] as String),
-    hospitalName: json['hospital_name'] as String,
-    hospitalLat: json['hospital_lat'] as double,
-    hospitalLng: json['hospital_lng'] as double,
-    requesterLat: json['requester_lat'] as double?,    // ✅ NEW
-    requesterLng: json['requester_lng'] as double?,    // ✅ NEW
-    status: RequestStatus.values.byName(json['status'] as String),
-    nearbyDonorsCount: json['nearby_donors_count'] as int? ?? 0,
-    totalEligibleCount: json['total_eligible_count'] as int? ?? 0,
-    createdAt: json['created_at'] is DateTime 
-        ? json['created_at'] as DateTime 
-        : DateTime.parse(json['created_at'] as String),
-    expiresAt: json['expires_at'] is DateTime 
-        ? json['expires_at'] as DateTime 
-        : DateTime.parse(json['expires_at'] as String),
-    distanceKm: (json['distance_km'] as num?)?.toDouble(),
-  );
+  factory BloodRequest.fromJson(Map<String, dynamic> json) {
+    String safeString(dynamic v) => v == null ? '' : v.toString();
+    String shortIdStr = safeString(json['short_id']);
+    return BloodRequest(
+      id: safeString(json['id']),
+      shortId: shortIdStr,
+      displayCode: shortIdStr.contains('-') ? shortIdStr.split('-').last : shortIdStr,
+      requesterId: safeString(json['requester_id']),
+      bloodType: safeString(json['blood_type']),
+      unitsNeeded: (json['units_needed'] is int) ? json['units_needed'] as int : int.tryParse(json['units_needed']?.toString() ?? '1') ?? 1,
+      urgencyLevel: UrgencyLevel.values.byName((json['urgency_level'] ?? 'urgent').toString()),
+      hospitalName: safeString(json['hospital_name']),
+      hospitalLat: (json['hospital_lat'] as num?)?.toDouble() ?? 0.0,
+      hospitalLng: (json['hospital_lng'] as num?)?.toDouble() ?? 0.0,
+      requesterLat: (json['requester_lat'] as num?)?.toDouble(),
+      requesterLng: (json['requester_lng'] as num?)?.toDouble(),
+      status: RequestStatus.values.byName((json['status'] ?? 'active').toString()),
+      nearbyDonorsCount: (json['nearby_donors_count'] as int?) ?? 0,
+      totalEligibleCount: (json['total_eligible_count'] as int?) ?? 0,
+      createdAt: json['created_at'] is DateTime
+          ? json['created_at'] as DateTime
+          : DateTime.tryParse(json['created_at']?.toString() ?? '') ?? DateTime.now(),
+      expiresAt: json['expires_at'] is DateTime
+          ? json['expires_at'] as DateTime
+          : DateTime.tryParse(json['expires_at']?.toString() ?? '') ?? DateTime.now().add(const Duration(hours: 24)),
+      distanceKm: (json['distance_km'] as num?)?.toDouble(),
+    );
+  }
 }

@@ -68,18 +68,27 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
         lat = pos?.latitude;
         lng = pos?.longitude;
       }
+      // Fallback: when no location, use default center and large radius so donors still see requests
+      const defaultLat = 30.0444;
+      const defaultLng = 31.2357;
+      const defaultRadiusKm = 300;
+      final useFallbackLocation = lat == null || lng == null;
+      final searchLat = lat ?? defaultLat;
+      final searchLng = lng ?? defaultLng;
+      final radiusKm = useFallbackLocation ? defaultRadiusKm : 50;
 
-      List<BloodRequest> requests = [];
-      if (lat != null && lng != null) {
-        requests = await donorService.findMatchingRequests(
-          donorId: profile.id,
-          donorBloodType: profile.bloodType,
-          donorLat: lat,
-          donorLng: lng,
-          radiusKm: 50,
-        );
+      List<BloodRequest> requests = await donorService.findMatchingRequests(
+        donorId: profile.id,
+        donorBloodType: profile.bloodType,
+        donorLat: searchLat,
+        donorLng: searchLng,
+        radiusKm: radiusKm,
+      );
+
+      if (useFallbackLocation) {
+        _locationError = 'Location unavailable – showing requests within ${defaultRadiusKm} km of default area. Enable location for accurate matching.';
       } else {
-        _locationError = 'Enable location to see nearby requests';
+        _locationError = null;
       }
 
       if (mounted) {
@@ -204,14 +213,14 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
         elevation: 0,
         actions: [
           IconButton(
-            onPressed: () => context.push('/create-request'),
-            icon: const Icon(Icons.add),
-            tooltip: 'Create Blood Request',
-          ),
-          IconButton(
             onPressed: _isLoading ? null : _load,
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
+          ),
+          IconButton(
+            onPressed: () => context.push('/profile'),
+            icon: const Icon(Icons.person),
+            tooltip: 'Profile',
           ),
         ],
       ),

@@ -7,7 +7,8 @@ import 'package:bloodconnect/screens/signup_screen.dart';
 import 'package:bloodconnect/screens/donor_home_screen.dart';
 import 'package:bloodconnect/screens/recipient_home_screen.dart';
 import 'package:bloodconnect/screens/hospital_dashboard_screen.dart';
-import 'package:bloodconnect/screens/create_request_screen.dart';  // ← ADDED
+import 'package:bloodconnect/screens/create_request_screen.dart';
+import 'package:bloodconnect/screens/profile_screen.dart';
 
 GoRouter buildRouter({
   required AuthService authService,
@@ -30,9 +31,13 @@ GoRouter buildRouter({
         path: '/hospital/dashboard',
         builder: (ctx, state) => const HospitalDashboardScreen(),
       ),
-      GoRoute(  
+      GoRoute(
         path: '/create-request',
         builder: (ctx, state) => const CreateRequestScreen(),
+      ),
+      GoRoute(
+        path: '/profile',
+        builder: (ctx, state) => const ProfileScreen(),
       ),
     ],
     redirect: (context, state) async {
@@ -66,8 +71,8 @@ String _getHomeForUser(UserProfile profile) {
   if (profile.accountType == AccountType.hospital) {
     return '/hospital/dashboard';
   }
-  // Recipient with active request lands on recipient home; otherwise donor home
-  if (profile.isRecipient) {
+  // Route by role chosen at signup (active_mode)
+  if (profile.activeMode == ActiveMode.recipient_view) {
     return '/recipient/home';
   }
   return '/donor/home';

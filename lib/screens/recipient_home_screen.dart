@@ -96,7 +96,7 @@ class _RecipientHomeScreenState extends ConsumerState<RecipientHomeScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Request cancelled successfully')),
         );
-        context.go('/donor/home');
+        context.go('/recipient/home');
       }
     } catch (e) {
       if (mounted) {
@@ -142,23 +142,42 @@ class _RecipientHomeScreenState extends ConsumerState<RecipientHomeScreen> {
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: const Text('My Request'),
+        title: const Text('Recipient Home'),
         backgroundColor: Colors.red[600],
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
           IconButton(
-            onPressed: () => context.go('/donor/home'),
-            icon: const Icon(Icons.swap_horiz),
-            tooltip: 'Switch to Donor View',
+            onPressed: _isLoading ? null : _loadActiveRequest,
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh',
+          ),
+          IconButton(
+            onPressed: () => context.push('/create-request'),
+            icon: const Icon(Icons.add),
+            tooltip: 'Create request',
+          ),
+          IconButton(
+            onPressed: () => context.push('/profile'),
+            icon: const Icon(Icons.person),
+            tooltip: 'Profile',
           ),
         ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _activeRequest == null
-              ? _buildNoRequestView()
-              : _buildRequestView(_activeRequest!),
+          : RefreshIndicator(
+              onRefresh: _loadActiveRequest,
+              child: _activeRequest == null
+                  ? SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      child: SizedBox(
+                        height: MediaQuery.of(context).size.height * 0.7,
+                        child: _buildNoRequestView(),
+                      ),
+                    )
+                  : _buildRequestView(_activeRequest!),
+            ),
     );
   }
 

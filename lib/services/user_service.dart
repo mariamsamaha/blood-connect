@@ -96,6 +96,8 @@ class UserService {
     required String accountType,
     String? hospitalName,
     String? hospitalCode,
+    /// For regular users: 'donor_view' or 'recipient_view' (role chosen at signup).
+    String activeMode = 'donor_view',
   }) async {
     try {
       // Check if profile already exists
@@ -135,13 +137,14 @@ class UserService {
           'hospitalCode': hospitalCode,
         };
       } else {
+        final mode = activeMode == 'recipient_view' ? 'recipient_view' : 'donor_view';
         sql = '''
           INSERT INTO users (
             firebase_uid, email, name, phone, blood_type,
             account_type, is_donor, is_recipient, donor_status, active_mode
           ) VALUES (
             @uid, @email, @name, @phone, @bloodType,
-            'regular', @canDonate, FALSE, @donorStatus, 'donor_view'
+            'regular', @canDonate, FALSE, @donorStatus, @activeMode
           ) RETURNING *, 
             ST_Y(location::geometry) as latitude,
             ST_X(location::geometry) as longitude;
@@ -153,7 +156,8 @@ class UserService {
           'phone': phone,
           'bloodType': bloodType,
           'canDonate': canDonate,
-          'donorStatus': canDonate ? 'available' : 'unavailable',  // ✅ FIXED
+          'donorStatus': canDonate ? 'available' : 'unavailable',
+          'activeMode': mode,
         };
       }
 

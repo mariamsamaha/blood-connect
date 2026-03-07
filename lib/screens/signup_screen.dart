@@ -28,6 +28,8 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   bool _isLoading = false;
   bool _isHospital = false;
   bool _isCheckingHospital = false;
+  /// Role chosen at signup: 'donor' or 'recipient' (determines home screen after login).
+  String _chosenRole = 'donor';
 
   final List<String> bloodTypes = [
     'A+',
@@ -160,6 +162,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       bloodType: _selectedBloodType,
       canDonate: _canDonate,
       accountType: 'regular',
+      activeMode: _chosenRole == 'recipient' ? 'recipient_view' : 'donor_view',
     );
   }
 
@@ -167,7 +170,10 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     if (profile.accountType == AccountType.hospital) {
       return '/hospital/dashboard';
     }
-    return '/donor/home'; // All regular users start on donor home
+    if (profile.activeMode == ActiveMode.recipient_view) {
+      return '/recipient/home';
+    }
+    return '/donor/home';
   }
 
   @override
@@ -349,7 +355,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    initialValue: _selectedBloodType,
+                    value: _selectedBloodType,
                     decoration: const InputDecoration(border: InputBorder.none),
                     items: bloodTypes.map((type) {
                       return DropdownMenuItem(value: type, child: Text(type));
@@ -364,6 +370,69 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
           ),
         ),
         const SizedBox(height: 20),
+
+        // Role: Donor or Recipient
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.1),
+                blurRadius: 5,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(15),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.person_pin, color: Colors.red[600]!, size: 20),
+                    const SizedBox(width: 10),
+                    Text(
+                      'I am signing up as',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey[800]!,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment(
+                            value: 'donor',
+                            label: Text('Donor'),
+                            icon: Icon(Icons.volunteer_activism, size: 20),
+                          ),
+                          ButtonSegment(
+                            value: 'recipient',
+                            label: Text('Recipient'),
+                            icon: Icon(Icons.bloodtype, size: 20),
+                          ),
+                        ],
+                        selected: {_chosenRole},
+                        onSelectionChanged: (Set<String> selected) {
+                          setState(() => _chosenRole = selected.first);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 15),
 
         // Can Donate Checkbox
         Container(
