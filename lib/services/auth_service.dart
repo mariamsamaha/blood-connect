@@ -6,18 +6,19 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
 
-  //  emits UserCredential changes (login/logout)
   Stream<User?> get onAuthStateChanged => _auth.authStateChanges();
 
   Future<UserCredential?> signInWithGoogle() async {
     try {
+      // Disconnect any previous sessions to prevent DUPLICATE_RAW_ID
+      await _googleSignIn.disconnect();
+
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) return null; // user cancelled
+      if (googleUser == null) return null;
 
       final GoogleSignInAuthentication googleAuth =
           await googleUser.authentication;
 
-      // Validate tokens before proceeding
       if (googleAuth.accessToken == null && googleAuth.idToken == null) {
         throw Exception('Failed to obtain authentication tokens from Google');
       }
@@ -29,7 +30,6 @@ class AuthService {
 
       return await _auth.signInWithCredential(credential);
     } on PlatformException catch (e) {
-      // Handle specific platform errors
       String errorMessage = 'Google Sign-In platform error';
       switch (e.code) {
         case 'network_error':
@@ -40,7 +40,7 @@ class AuthService {
           errorMessage = 'Google Sign-In failed. Please try again.';
           break;
         case 'sign_in_canceled':
-          return null; // User cancelled, not an error
+          return null;
         default:
           errorMessage =
               'Google Sign-In error: ${e.message ?? 'Unknown error'}';
@@ -52,10 +52,10 @@ class AuthService {
   }
 
   Future<void> signOut() async {
-    // Sign Out
     await _googleSignIn.signOut();
+    await _googleSignIn.disconnect();
     await _auth.signOut();
   }
 
-  User? get currentUser => _auth.currentUser; //current user
+  User? get currentUser => _auth.currentUser;
 }

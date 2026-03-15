@@ -5,6 +5,7 @@ import 'package:bloodconnect/models/user_profile.dart';
 import 'package:bloodconnect/services/user_service.dart';
 import 'package:bloodconnect/main.dart';
 import 'package:go_router/go_router.dart';
+import 'package:bloodconnect/services/location_service.dart';
 
 class SignUpScreen extends ConsumerStatefulWidget {
   const SignUpScreen({super.key});
@@ -28,8 +29,13 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   bool _isLoading = false;
   bool _isHospital = false;
   bool _isCheckingHospital = false;
-  /// Role chosen at signup: 'donor' or 'recipient' (determines home screen after login).
   String _chosenRole = 'donor';
+
+  // Location fields
+  double? _latitude;
+  double? _longitude;
+  bool _isLoadingLocation = false;
+  String? _locationError;
 
   final List<String> bloodTypes = [
     'A+',
@@ -96,8 +102,33 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
 
       return (result.first['count'] as int) > 0;
     } catch (e) {
-      // Fallback to basic check if database fails
       return basicHospitalDomains.any((hDomain) => email.contains(hDomain));
+    }
+  }
+
+  Future<void> _getLocation() async {
+    setState(() {
+      _isLoadingLocation = true;
+      _locationError = null;
+    });
+
+    try {
+      final locationService = LocationService();
+      final position = await locationService.getCurrentPosition();
+      if (position != null) {
+        setState(() {
+          _latitude = position.latitude;
+          _longitude = position.longitude;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _locationError = e.toString();
+      });
+    } finally {
+      setState(() {
+        _isLoadingLocation = false;
+      });
     }
   }
 
@@ -109,7 +140,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     try {
       final userService = ref.read(userServiceProvider);
       final firebaseUser = FirebaseAuth.instance.currentUser;
-      
+
       if (firebaseUser == null) {
         throw Exception('No authenticated user found');
       }
@@ -124,30 +155,13 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Sign up failed: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Sign up failed: $e')));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  Future<UserProfile> _createHospitalProfile(
-    UserService userService,
-    User firebaseUser,
-  ) async {
-    return await userService.createCompleteProfile(
-      firebaseUser,
-      name: _hospitalNameController.text.trim(),
-      email: firebaseUser.email!,
-      phone: _phoneController.text.trim(),
-      bloodType: '',  // Hospitals don't have blood type
-      canDonate: false,
-      accountType: 'hospital',
-      hospitalName: _hospitalNameController.text.trim(),
-      hospitalCode: _hospitalCodeController.text.trim(),
-    );
   }
 
   Future<UserProfile> _createRegularProfile(
@@ -163,6 +177,27 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       canDonate: _canDonate,
       accountType: 'regular',
       activeMode: _chosenRole == 'recipient' ? 'recipient_view' : 'donor_view',
+      latitude: _latitude,
+      longitude: _longitude,
+    );
+  }
+
+  Future<UserProfile> _createHospitalProfile(
+    UserService userService,
+    User firebaseUser,
+  ) async {
+    return await userService.createCompleteProfile(
+      firebaseUser,
+      name: _hospitalNameController.text.trim(),
+      email: firebaseUser.email!,
+      phone: _phoneController.text.trim(),
+      bloodType: '',
+      canDonate: false,
+      accountType: 'hospital',
+      hospitalName: _hospitalNameController.text.trim(),
+      hospitalCode: _hospitalCodeController.text.trim(),
+      latitude: _latitude,
+      longitude: _longitude,
     );
   }
 
@@ -222,7 +257,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   }
 
   Widget _buildLoadingIndicator() {
-    return  Center(
+    return Center(
       child: Padding(
         padding: EdgeInsets.all(40),
         child: Column(
@@ -490,6 +525,83 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
             ),
           ),
         ),
+        const SizedBox(height: 15),
+
+        // Location Button
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.1),
+                blurRadius: 5,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(15),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.location_on,
+                  color: _latitude != null ? Colors.green : Colors.red[600]!,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _latitude != null
+                            ? 'Location captured'
+                            : 'Add your location',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey[800]!,
+                        ),
+                      ),
+                      Text(
+                        _latitude != null
+                            ? '${_latitude!.toStringAsFixed(4)}, ${_longitude!.toStringAsFixed(4)}'
+                            : 'Required for donor matching',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600]!,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (_isLoadingLocation)
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else
+                  TextButton(
+                    onPressed: _getLocation,
+                    child: Text(
+                      _latitude != null ? 'Update' : 'Get Location',
+                      style: TextStyle(color: Colors.red[600]!),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        if (_locationError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              _locationError!,
+              style: const TextStyle(color: Colors.red, fontSize: 12),
+            ),
+          ),
         const SizedBox(height: 30),
 
         // Sign Up Button
