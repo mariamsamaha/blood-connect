@@ -9,13 +9,16 @@ class UserService {
 
   Future<UserProfile?> getProfileByFirebaseUid(String firebaseUid) async {
     try {
-      final result = await _db.query('''
+      final result = await _db.query(
+        '''
         SELECT *, 
           ST_Y(location::geometry) as latitude,
           ST_X(location::geometry) as longitude
         FROM users 
         WHERE firebase_uid = @uid
-      ''', params: {'uid': firebaseUid});
+      ''',
+        params: {'uid': firebaseUid},
+      );
 
       if (result.isEmpty) return null;
       return UserProfile.fromJson(result.first);
@@ -28,14 +31,17 @@ class UserService {
 
   Future<UserProfile> createOrFetchProfile(User firebaseUser) async {
     try {
-      final existing = await _db.query('''
+      final existing = await _db.query(
+        '''
         SELECT *, 
           ST_Y(location::geometry) as latitude,
           ST_X(location::geometry) as longitude
         FROM users 
         WHERE firebase_uid = @uid
-      ''', params: {'uid': firebaseUser.uid});
-      
+      ''',
+        params: {'uid': firebaseUser.uid},
+      );
+
       if (existing.isNotEmpty) return UserProfile.fromJson(existing.first);
 
       // New user — check if email is a hospital domain
@@ -96,34 +102,81 @@ class UserService {
     required String accountType,
     String? hospitalName,
     String? hospitalCode,
+
     /// For regular users: 'donor_view' or 'recipient_view' (role chosen at signup).
     String activeMode = 'donor_view',
+    double? latitude,
+    double? longitude,
   }) async {
     try {
-      // Check if profile already exists
-      final existing = await _db.query('''
+      // Check if profile already exists by firebase_uid
+      final existing = await _db.query(
+        '''
         SELECT *, 
           ST_Y(location::geometry) as latitude,
           ST_X(location::geometry) as longitude
         FROM users 
         WHERE firebase_uid = @uid
-      ''', params: {'uid': firebaseUser.uid});
-      
+      ''',
+        params: {'uid': firebaseUser.uid},
+      );
+
       if (existing.isNotEmpty) return UserProfile.fromJson(existing.first);
+
+      // Check if email already exists (from previous incomplete signup)
+      final existingByEmail = await _db.query(
+        '''
+        SELECT *, 
+          ST_Y(location::geometry) as latitude,
+          ST_X(location::geometry) as longitude
+        FROM users 
+        WHERE email = @email
+      ''',
+        params: {'email': email},
+      );
+
+      if (existingByEmail.isNotEmpty) {
+        // Update existing record with new firebase_uid
+        final updated = await _db.query(
+          '''
+          UPDATE users 
+          SET firebase_uid = @uid, 
+              name = @name, 
+              phone = @phone,
+              updated_at = NOW()
+          WHERE email = @email
+          RETURNING *, 
+            ST_Y(location::geometry) as latitude,
+            ST_X(location::geometry) as longitude;
+        ''',
+          params: {
+            'uid': firebaseUser.uid,
+            'email': email,
+            'name': name,
+            'phone': phone,
+          },
+        );
+        return UserProfile.fromJson(updated.first);
+      }
 
       final Map<String, dynamic> params;
       final String sql;
 
       if (accountType == 'hospital') {
-        sql = '''
+        String locationSql = latitude != null && longitude != null
+            ? "ST_SetSRID(ST_MakePoint(@longitude, @latitude), 4326)"
+            : 'NULL';
+
+        sql =
+            '''
           INSERT INTO users (
             firebase_uid, email, name, phone,
             account_type, hospital_name, hospital_code, 
-            is_donor, is_recipient, donor_status, active_mode
+            is_donor, is_recipient, donor_status, active_mode, location
           ) VALUES (
             @uid, @email, @name, @phone,
             'hospital', @hospitalName, @hospitalCode,
-            FALSE, FALSE, 'unavailable', 'hospital_view'
+            FALSE, FALSE, 'unavailable', 'hospital_view', $locationSql
           ) RETURNING *, 
             ST_Y(location::geometry) as latitude,
             ST_X(location::geometry) as longitude;
@@ -135,16 +188,25 @@ class UserService {
           'phone': phone,
           'hospitalName': hospitalName,
           'hospitalCode': hospitalCode,
+          if (latitude != null) 'latitude': latitude,
+          if (longitude != null) 'longitude': longitude,
         };
       } else {
-        final mode = activeMode == 'recipient_view' ? 'recipient_view' : 'donor_view';
-        sql = '''
+        final mode = activeMode == 'recipient_view'
+            ? 'recipient_view'
+            : 'donor_view';
+        String locationSql = latitude != null && longitude != null
+            ? "ST_SetSRID(ST_MakePoint(@longitude, @latitude), 4326)"
+            : 'NULL';
+
+        sql =
+            '''
           INSERT INTO users (
             firebase_uid, email, name, phone, blood_type,
-            account_type, is_donor, is_recipient, donor_status, active_mode
+            account_type, is_donor, is_recipient, donor_status, active_mode, location
           ) VALUES (
             @uid, @email, @name, @phone, @bloodType,
-            'regular', @canDonate, FALSE, @donorStatus, @activeMode
+            'regular', @canDonate, FALSE, @donorStatus, @activeMode, $locationSql
           ) RETURNING *, 
             ST_Y(location::geometry) as latitude,
             ST_X(location::geometry) as longitude;
@@ -158,6 +220,8 @@ class UserService {
           'canDonate': canDonate,
           'donorStatus': canDonate ? 'available' : 'unavailable',
           'activeMode': mode,
+          if (latitude != null) 'latitude': latitude,
+          if (longitude != null) 'longitude': longitude,
         };
       }
 
@@ -179,10 +243,13 @@ class UserService {
   Future<void> updateFcmToken(String firebaseUid, String? token) async {
     if (token == null || token.isEmpty) return;
     try {
-      await _db.query('''
+      await _db.query(
+        '''
         UPDATE users SET fcm_token = @token, updated_at = NOW()
         WHERE firebase_uid = @uid
-      ''', params: {'uid': firebaseUid, 'token': token});
+      ''',
+        params: {'uid': firebaseUid, 'token': token},
+      );
     } catch (_) {
       // Column may not exist if migration not run; ignore
     }

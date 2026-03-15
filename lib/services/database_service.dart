@@ -1,5 +1,3 @@
-// lib/services/database_service.dart
-
 import 'package:postgres/postgres.dart';
 
 class DatabaseService {
@@ -8,7 +6,8 @@ class DatabaseService {
   final String database;
   final String username;
   final String password;
-  
+  final bool requireSsl;
+
   Connection? _connection;
 
   DatabaseService({
@@ -17,19 +16,22 @@ class DatabaseService {
     required this.database,
     required this.username,
     required this.password,
+    this.requireSsl = false,
   });
 
   Future<Connection> _getConnection() async {
     _connection ??= await Connection.open(
-        Endpoint(
-          host: host,
-          port: port,
-          database: database,
-          username: username,
-          password: password,
-        ),
-        settings: ConnectionSettings(sslMode: SslMode.disable),
-      );
+      Endpoint(
+        host: host,
+        port: port,
+        database: database,
+        username: username,
+        password: password,
+      ),
+      settings: ConnectionSettings(
+        sslMode: requireSsl ? SslMode.require : SslMode.disable,
+      ),
+    );
     return _connection!;
   }
 
@@ -47,5 +49,6 @@ class DatabaseService {
 
   Future<void> close() async {
     await _connection?.close();
+    _connection = null;
   }
 }

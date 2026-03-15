@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'dart:io' show Platform;
 import 'package:bloodconnect/routing/app_router.dart';
 import 'package:bloodconnect/services/user_service.dart';
 import 'package:bloodconnect/services/database_service.dart';
@@ -10,32 +9,29 @@ import 'package:bloodconnect/services/auth_service.dart';
 import 'package:bloodconnect/services/request_service.dart';
 import 'package:bloodconnect/services/location_service.dart';
 import 'package:bloodconnect/services/donor_service.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
+
 final authServiceProvider = Provider<AuthService>((ref) => AuthService());
 
-final databaseServiceProvider = Provider<DatabaseService>((ref) {
-  String host;
 
-  if (Platform.isAndroid) {
-    host = '10.0.2.2'; // Android emulator
-  } else if (Platform.isIOS) {
-    host = '127.0.0.1'; // iOS simulator
-  } else {
-    host = 'localhost';
-  }
-  
+final databaseServiceProvider = Provider<DatabaseService>((ref) {
   return DatabaseService(
-    host: host,
-    port: 5431,
-    database: 'blood-connect',
-    username: 'postgres',
-    password: 'bloodconnect123',
+    host: dotenv.env['SUPABASE_HOST']!,
+    port: int.parse(dotenv.env['SUPABASE_PORT']!),
+    database: dotenv.env['SUPABASE_DATABASE']!,
+    username: dotenv.env['SUPABASE_USERNAME']!,
+    password: dotenv.env['SUPABASE_PASSWORD']!,
+    requireSsl: true,
   );
 });
+
 
 final userServiceProvider = Provider<UserService>((ref) {
   final db = ref.watch(databaseServiceProvider);
   return UserService(db);
 });
+
 final requestServiceProvider = Provider<RequestService>((ref) {
   final db = ref.watch(databaseServiceProvider);
   return RequestService(db);
@@ -49,6 +45,7 @@ final donorServiceProvider = Provider<DonorService>((ref) {
 final locationServiceProvider = Provider<LocationService>((ref) {
   return LocationService();
 });
+
 final routerProvider = Provider<GoRouter>((ref) {
   final authService = ref.watch(authServiceProvider);
   final userService = ref.watch(userServiceProvider);
@@ -57,6 +54,7 @@ final routerProvider = Provider<GoRouter>((ref) {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: '.env');   
   await Firebase.initializeApp();
   runApp(const ProviderScope(child: BloodConnectApp()));
 }
@@ -67,7 +65,7 @@ class BloodConnectApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
-    
+
     return MaterialApp.router(
       title: 'BloodConnect',
       theme: ThemeData(

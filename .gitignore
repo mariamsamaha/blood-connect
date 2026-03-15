@@ -29,7 +29,6 @@ build/
 .packages/
 .pub-cache/
 .mutation_history/
-test/
 
 # IDE and editors
 .vscode/
@@ -100,3 +99,7 @@ config/staging.json
 test_data/
 sample_requests.sql
 test_users.sql
+
+.env
+.env.*
+!.env.example
