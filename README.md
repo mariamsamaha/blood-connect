@@ -1,7 +1,7 @@
 # 🩸 BloodConnect
 
 **Connect Donors. Save Lives.**
-*Graduation Project - Zewail City of Science and Technology*
+*Graduation Project*
 
 BloodConnect is a platform designed to bridge the critical gap between blood donors and patients in need. It enables fast, reliable, and location-aware blood donation requests—helping save lives when time matters most.
 ---

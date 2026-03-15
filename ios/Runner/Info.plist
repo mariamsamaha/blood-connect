@@ -7,6 +7,9 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>BloodConnect needs your location to find nearby donation requests and match you with recipients in your area.</string>
 
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>BloodConnect needs your location to notify you of urgent blood requests nearby, even when the app is in the background.</string>
+
 	<key>NSLocationAlwaysUsageDescription</key>
 	<string>BloodConnect needs your location to notify you of urgent blood requests nearby, even when the app is in the background.</string>
 

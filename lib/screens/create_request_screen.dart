@@ -10,7 +10,8 @@ class CreateRequestScreen extends ConsumerStatefulWidget {
   const CreateRequestScreen({super.key});
 
   @override
-  ConsumerState<CreateRequestScreen> createState() => _CreateRequestScreenState();
+  ConsumerState<CreateRequestScreen> createState() =>
+      _CreateRequestScreenState();
 }
 
 class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
@@ -24,12 +25,19 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
   UrgencyLevel _urgencyLevel = UrgencyLevel.urgent;
   Hospital? _selectedHospital;
   List<Hospital> _hospitals = [];
-  
+
   bool _isLoadingHospitals = true;
   bool _isSubmitting = false;
 
   final List<String> bloodTypes = [
-    'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-',
+    'A+',
+    'A-',
+    'B+',
+    'B-',
+    'AB+',
+    'AB-',
+    'O+',
+    'O-',
   ];
 
   @override
@@ -44,24 +52,28 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
       final requestService = ref.read(requestServiceProvider);
       final authService = ref.read(authServiceProvider);
       final userService = ref.read(userServiceProvider);
-      
+
       // Get user's saved location
       final firebaseUser = authService.currentUser;
       double? userLat;
       double? userLng;
-      
+
       if (firebaseUser != null) {
-        final profile = await userService.getProfileByFirebaseUid(firebaseUser.uid);
-        userLat = profile?.latitude;
-        userLng = profile?.longitude;
+        final profile = await userService.getProfileByFirebaseUid(
+          firebaseUser.uid,
+        );
+        if (profile != null) {
+          userLat = profile.latitude;
+          userLng = profile.longitude;
+        }
       }
-      
+
       // Fetch hospitals sorted by distance from user
       final hospitals = await requestService.getHospitals(
         userLatitude: userLat,
         userLongitude: userLng,
       );
-      
+
       if (mounted) {
         setState(() {
           _hospitals = hospitals;
@@ -74,9 +86,9 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoadingHospitals = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load hospitals: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to load hospitals: $e')));
       }
     }
   }
@@ -84,10 +96,12 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
   Future<void> _prefillContactPhone() async {
     final authService = ref.read(authServiceProvider);
     final userService = ref.read(userServiceProvider);
-    
+
     final firebaseUser = authService.currentUser;
     if (firebaseUser != null) {
-      final profile = await userService.getProfileByFirebaseUid(firebaseUser.uid);
+      final profile = await userService.getProfileByFirebaseUid(
+        firebaseUser.uid,
+      );
       if (profile != null && mounted) {
         _contactPhoneController.text = profile.phone;
       }
@@ -105,9 +119,9 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
   Future<void> _handleSubmit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedHospital == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a hospital')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please select a hospital')));
       return;
     }
 
@@ -124,7 +138,9 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
         throw Exception('Not authenticated');
       }
 
-      final profile = await userService.getProfileByFirebaseUid(firebaseUser.uid);
+      final profile = await userService.getProfileByFirebaseUid(
+        firebaseUser.uid,
+      );
       if (profile == null) {
         throw Exception('Profile not found');
       }
@@ -142,7 +158,7 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
       Position? currentPosition;
       double? requesterLat;
       double? requesterLng;
-      
+
       if (mounted) {
         showDialog(
           context: context,
@@ -166,14 +182,17 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
       }
 
       try {
+        print('DEBUG: Attempting to get current GPS position...');
         currentPosition = await locationService.getCurrentPosition();
         requesterLat = currentPosition!.latitude;
         requesterLng = currentPosition.longitude;
-        
+        print('DEBUG: Got GPS position: $requesterLat, $requesterLng');
+
         if (mounted) Navigator.pop(context);
       } catch (e) {
+        print('DEBUG: GPS Error: $e');
         if (mounted) Navigator.pop(context);
-        
+
         // Location failed - ask user
         if (mounted) {
           final useHomeLocation = await showDialog<bool>(
@@ -186,8 +205,8 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
                   const Text('Location Unavailable'),
                 ],
               ),
-              content: const Text(
-                'Could not get your current location.\n\n'
+              content: Text(
+                'Could not get your current location: $e\n\n'
                 'We will use your saved location or the hospital location '
                 'for matching donors.\n\n'
                 'This may result in less accurate donor matches.',
@@ -205,13 +224,13 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
               ],
             ),
           );
-          
+
           if (useHomeLocation != true) {
             setState(() => _isSubmitting = false);
             return;
           }
         }
-        
+
         // Use fallback location (null-safe)
         requesterLat = profile.latitude;
         requesterLng = profile.longitude;
@@ -287,10 +306,7 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
                       const SizedBox(height: 8),
                       Text(
                         'Show this code to the hospital staff',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[600],
-                        ),
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                       ),
                     ],
                   ),
@@ -302,9 +318,9 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        requesterLat != null 
-                          ? 'Matched ${request.nearbyDonorsCount} donors near your current location'
-                          : 'Matched ${request.nearbyDonorsCount} donors near the hospital',
+                        requesterLat != null
+                            ? 'Matched ${request.nearbyDonorsCount} donors near your current location'
+                            : 'Matched ${request.nearbyDonorsCount} donors near the hospital',
                         style: TextStyle(fontSize: 13, color: Colors.grey[700]),
                       ),
                     ),
@@ -383,7 +399,11 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
                             CircleAvatar(
                               radius: 30,
                               backgroundColor: Colors.red[100],
-                              child: Icon(Icons.bloodtype, size: 32, color: Colors.red[600]),
+                              child: Icon(
+                                Icons.bloodtype,
+                                size: 32,
+                                color: Colors.red[600],
+                              ),
                             ),
                             const SizedBox(width: 15),
                             Expanded(
@@ -400,7 +420,10 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
                                   ),
                                   Text(
                                     'Fill in the details below',
-                                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.grey[600],
+                                    ),
                                   ),
                                 ],
                               ),
@@ -486,7 +509,9 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
                                   height: 24,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
                                   ),
                                 )
                               : const Text(
@@ -685,8 +710,7 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
                 ],
               ),
             ),
-            if (isSelected)
-              Icon(Icons.check_circle, color: color),
+            if (isSelected) Icon(Icons.check_circle, color: color),
           ],
         ),
       ),
@@ -710,7 +734,11 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
         ),
         child: Column(
           children: [
-            Icon(Icons.local_hospital_outlined, size: 48, color: Colors.grey[400]),
+            Icon(
+              Icons.local_hospital_outlined,
+              size: 48,
+              color: Colors.grey[400],
+            ),
             const SizedBox(height: 12),
             Text(
               'No hospitals available',
@@ -756,6 +784,7 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
               ),
             ),
           DropdownButtonFormField<Hospital>(
+            isExpanded: true,
             initialValue: _selectedHospital,
             decoration: InputDecoration(
               prefixIcon: Icon(Icons.local_hospital, color: Colors.red[600]),
