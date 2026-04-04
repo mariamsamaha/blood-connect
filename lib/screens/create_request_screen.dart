@@ -52,13 +52,19 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
       final requestService = ref.read(requestServiceProvider);
       final authService = ref.read(authServiceProvider);
       final userService = ref.read(userServiceProvider);
+      final locationService = ref.read(locationServiceProvider);
 
-      // Get user's saved location
-      final firebaseUser = authService.currentUser;
       double? userLat;
       double? userLng;
 
-      if (firebaseUser != null) {
+      final pos = await locationService.getCurrentPosition();
+      if (pos != null) {
+        userLat = pos.latitude;
+        userLng = pos.longitude;
+      }
+
+      final firebaseUser = authService.currentUser;
+      if ((userLat == null || userLng == null) && firebaseUser != null) {
         final profile = await userService.getProfileByFirebaseUid(
           firebaseUser.uid,
         );
@@ -68,7 +74,7 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
         }
       }
 
-      // Fetch hospitals sorted by distance from user
+      // Fetch hospitals sorted by distance from user (GPS first, then profile)
       final hospitals = await requestService.getHospitals(
         userLatitude: userLat,
         userLongitude: userLng,

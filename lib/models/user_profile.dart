@@ -28,6 +28,12 @@ class UserProfile {
   final int totalDonations;
   final int rewardPoints;
 
+  /// City / area (MVP profile; optional text).
+  final String cityArea;
+
+  /// Donor notification radius from DB (km).
+  final int notificationRadiusKm;
+
   const UserProfile({
     required this.id,
     required this.firebaseUid,
@@ -47,9 +53,12 @@ class UserProfile {
     this.hospitalVerified,
     this.totalDonations = 0,
     this.rewardPoints = 0,
+    this.cityArea = '',
+    this.notificationRadiusKm = 50,
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
+    final n = _parseInt(json['notification_radius_km']);
     return UserProfile(
       id: json['id'] as String,
       firebaseUid: json['firebase_uid'] as String? ?? '',
@@ -75,6 +84,8 @@ class UserProfile {
       hospitalVerified: json['hospital_verified'] as bool?,
       totalDonations: _parseInt(json['total_donations']),
       rewardPoints: _parseInt(json['reward_points']),
+      cityArea: (json['city_area'] ?? '') as String,
+      notificationRadiusKm: n <= 0 ? 50 : n.clamp(10, 400),
     );
   }
 
@@ -113,5 +124,7 @@ class UserProfile {
     'hospital_verified': hospitalVerified,
     'total_donations': totalDonations,
     'reward_points': rewardPoints,
+    'city_area': cityArea,
+    'notification_radius_km': notificationRadiusKm,
   };
 }

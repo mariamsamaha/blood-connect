@@ -78,4 +78,30 @@ class BloodRequest {
       distanceKm: (json['distance_km'] as num?)?.toDouble(),
     );
   }
+
+  /// MVP lifecycle: Open → Matching → Donor accepted → Verified/closed (maps DB statuses).
+  String get mvpPrimaryStatusLabel {
+    switch (status) {
+      case RequestStatus.active:
+        return 'Open';
+      case RequestStatus.in_progress:
+        return 'Donor accepted';
+      case RequestStatus.fulfilled:
+        return 'Verified / closed';
+      case RequestStatus.cancelled:
+        return 'Cancelled';
+      case RequestStatus.expired:
+        return 'Expired';
+    }
+  }
+
+  /// Subtitle for the Open phase (matching donors).
+  String? get mvpSecondaryStatusLabel {
+    switch (status) {
+      case RequestStatus.active:
+        return 'Matching nearby donors';
+      default:
+        return null;
+    }
+  }
 }
