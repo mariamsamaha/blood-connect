@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -48,12 +50,6 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
         setState(() => _isLoading = false);
         return;
       }
-
-      if (!profile.isDonor) {
-        setState(() => _isLoading = false);
-        return;
-      }
-
       // Register FCM token for push notifications (donor request alerts)
       _registerFcmTokenIfNeeded(firebaseUser.uid);
 
@@ -75,7 +71,9 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
       final useFallbackLocation = lat == null || lng == null;
       final searchLat = lat ?? defaultLat;
       final searchLng = lng ?? defaultLng;
-      final radiusKm = useFallbackLocation ? defaultRadiusKm : 50;
+      final radiusKm = useFallbackLocation
+          ? defaultRadiusKm
+          : math.max(100, profile.notificationRadiusKm);
 
       List<BloodRequest> requests = await donorService.findMatchingRequests(
         donorId: profile.id,

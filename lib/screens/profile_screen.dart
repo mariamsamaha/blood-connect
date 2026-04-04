@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:bloodconnect/models/user_profile.dart';
 import 'package:bloodconnect/models/blood_request.dart';
 import 'package:bloodconnect/models/donor_response_entry.dart';
 import 'package:bloodconnect/main.dart';
+import 'package:bloodconnect/routing/app_router.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -90,6 +92,33 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (mounted) context.go('/login');
   }
 
+  Future<void> _switchActiveMode(ActiveMode mode) async {
+    if (_profile == null || _profile!.accountType != AccountType.regular) return;
+    if (_profile!.activeMode == mode) return;
+
+    final fb = FirebaseAuth.instance.currentUser;
+    if (fb == null) return;
+
+    final userService = ref.read(userServiceProvider);
+    final ok = await userService.updateActiveMode(fb.uid, mode);
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Could not switch view. If you have an active blood request, cancel it first.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final updated = await userService.getProfileByFirebaseUid(fb.uid);
+    if (!mounted || updated == null) return;
+    setState(() => _profile = updated);
+    context.go(homeRouteForProfile(updated));
+  }
+
   String _roleTitle() {
     if (_profile == null) return '';
     if (_profile!.accountType == AccountType.hospital) return 'Hospital';
@@ -123,6 +152,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildProfileCard(),
+                        if (_profile!.accountType == AccountType.regular) ...[
+                          const SizedBox(height: 16),
+                          _buildRoleSwitcher(),
+                        ],
                         const SizedBox(height: 24),
                         _buildRequestHistorySection(),
                         const SizedBox(height: 24),
@@ -216,6 +249,84 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
             ),
           ],
+          if (_profile!.cityArea.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'City / area: ${_profile!.cityArea}',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[700],
+              ),
+            ),
+          ],
+          if (_profile!.accountType == AccountType.hospital) ...[
+            const SizedBox(height: 12),
+            Text(
+              _profile!.hospitalVerified == true
+                  ? 'Hospital account (verified for MVP matching).'
+                  : 'Hospital account. Complete verification in the hospital dashboard.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRoleSwitcher() {
+    final current = _profile!.activeMode == ActiveMode.recipient_view
+        ? 'recipient'
+        : 'donor';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Active view',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[800],
+            ),
+          ),
+          const SizedBox(height: 10),
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(
+                value: 'donor',
+                label: Text('Donor'),
+                icon: Icon(Icons.volunteer_activism, size: 18),
+              ),
+              ButtonSegment(
+                value: 'recipient',
+                label: Text('Recipient'),
+                icon: Icon(Icons.bloodtype, size: 18),
+              ),
+            ],
+            selected: {current},
+            onSelectionChanged: (Set<String> sel) {
+              final v = sel.first;
+              _switchActiveMode(
+                v == 'recipient'
+                    ? ActiveMode.recipient_view
+                    : ActiveMode.donor_view,
+              );
+            },
+          ),
         ],
       ),
     );
@@ -223,7 +334,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Widget _buildRequestHistorySection() {
     final isRecipient = _profile!.activeMode == ActiveMode.recipient_view;
-    final list = isRecipient ? _myRequests : _donorHistory;
     final title = isRecipient ? 'My requests' : 'Requests I responded to';
 
     return Container(
@@ -283,8 +393,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         final r = _myRequests[index];
         return _requestHistoryTile(
           title: r.hospitalName,
-          subtitle: '${r.bloodType} • ${r.unitsNeeded} unit(s) • ${r.displayCode}',
-          status: r.status.name,
+          subtitle:
+              '${r.bloodType} • ${r.unitsNeeded} unit(s) • ${r.shortId}',
+          status: r.mvpPrimaryStatusLabel,
           date: r.createdAt,
         );
       },
@@ -378,19 +489,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Color _statusColor(String status) {
-    switch (status.toLowerCase()) {
+    final s = status.toLowerCase();
+    if (s.contains('open') || s.contains('matching')) return Colors.blue;
+    if (s.contains('accepted')) return Colors.orange;
+    if (s.contains('verified') || s.contains('closed') || s == 'fulfilled') {
+      return Colors.green;
+    }
+    if (s.contains('cancel') || s.contains('declin')) return Colors.grey;
+    if (s.contains('expired')) return Colors.red;
+    switch (s) {
       case 'active':
-        return Colors.blue;
       case 'in_progress':
-      case 'accepted':
         return Colors.orange;
       case 'fulfilled':
         return Colors.green;
-      case 'cancelled':
-      case 'declined':
-        return Colors.grey;
-      case 'expired':
-        return Colors.red;
       default:
         return Colors.grey;
     }

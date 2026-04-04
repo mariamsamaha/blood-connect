@@ -1,0 +1,14 @@
+{
+  "name": "bloodconnect-notification-backend",
+  "version": "1.0.0",
+  "description": "Small backend service that sends FCM v1 notifications for new blood requests.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "firebase-admin": "^12.5.0"
+  }
+}
+
