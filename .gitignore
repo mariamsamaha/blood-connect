@@ -45,7 +45,7 @@ firebase.json
 google-services.json
 GoogleService-Info.plist
 .env
-.env.*
+.env
 secrets/
 keys/
 *.key
@@ -101,5 +101,5 @@ sample_requests.sql
 test_users.sql
 
 .env
-.env.*
-!.env.example
+.env
+!.env

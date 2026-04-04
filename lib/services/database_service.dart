@@ -30,6 +30,7 @@ class DatabaseService {
       ),
       settings: ConnectionSettings(
         sslMode: requireSsl ? SslMode.require : SslMode.disable,
+        queryMode: QueryMode.extended,
       ),
     );
     return _connection!;

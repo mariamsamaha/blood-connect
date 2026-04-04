@@ -41,6 +41,8 @@ void main() {
       expect(profile.hospitalVerified, isNull);
       expect(profile.totalDonations, 3);
       expect(profile.rewardPoints, 50);
+      expect(profile.cityArea, '');
+      expect(profile.notificationRadiusKm, 50);
     });
 
     test('parses hospital user with null optional fields', () {
@@ -74,6 +76,8 @@ void main() {
       expect(profile.bloodType, '');
       expect(profile.totalDonations, 0);
       expect(profile.rewardPoints, 0);
+      expect(profile.cityArea, '');
+      expect(profile.notificationRadiusKm, 50);
     });
 
     test('toJson and fromJson are consistent for regular user', () {
@@ -91,6 +95,8 @@ void main() {
         activeMode: ActiveMode.donor_view,
         totalDonations: 1,
         rewardPoints: 10,
+        cityArea: 'Cairo',
+        notificationRadiusKm: 120,
       );
 
       final json = original.toJson();
@@ -109,6 +115,8 @@ void main() {
       expect(roundTripped.activeMode, original.activeMode);
       expect(roundTripped.totalDonations, original.totalDonations);
       expect(roundTripped.rewardPoints, original.rewardPoints);
+      expect(roundTripped.cityArea, original.cityArea);
+      expect(roundTripped.notificationRadiusKm, original.notificationRadiusKm);
     });
   });
 }
