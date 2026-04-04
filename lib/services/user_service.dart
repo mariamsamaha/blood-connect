@@ -259,7 +259,6 @@ class UserService {
       '''
       UPDATE users SET active_mode = @mode, updated_at = NOW()
       WHERE firebase_uid = @uid
-        AND (@mode = 'recipient_view' OR is_recipient = FALSE)
       RETURNING id
     ''',
       params: {'uid': firebaseUid, 'mode': mode.name},
