@@ -7,6 +7,19 @@ class UserService {
 
   UserService(this._db);
 
+  /// Firebase custom claims for hospital admin (MVP).
+  static Future<bool> hasHospitalAdminClaim(User firebaseUser) async {
+    try {
+      final token = await firebaseUser.getIdTokenResult(true);
+      final c = token.claims;
+      if (c == null) return false;
+      if (c['hospital_admin'] == true) return true;
+      return c['role'] == 'hospital';
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<UserProfile?> getProfileByFirebaseUid(String firebaseUid) async {
     try {
       final result = await _db.query(
@@ -107,6 +120,7 @@ class UserService {
     String activeMode = 'donor_view',
     double? latitude,
     double? longitude,
+    String? cityArea,
   }) async {
     try {
       // Check if profile already exists by firebase_uid
@@ -163,20 +177,22 @@ class UserService {
       final String sql;
 
       if (accountType == 'hospital') {
-        String locationSql = latitude != null && longitude != null
-            ? "ST_SetSRID(ST_MakePoint(@longitude, @latitude), 4326)"
-            : 'NULL';
+        final locationSql = latitude != null && longitude != null
+            ? 'ST_SetSRID(ST_MakePoint(@longitude, @latitude), 4326)::geography'
+            : 'ST_SetSRID(ST_MakePoint(31.2357, 30.0444), 4326)::geography';
 
         sql =
             '''
           INSERT INTO users (
             firebase_uid, email, name, phone,
             account_type, hospital_name, hospital_code, 
-            is_donor, is_recipient, donor_status, active_mode, location
+            is_donor, is_recipient, donor_status, active_mode, location,
+            hospital_verified, city_area
           ) VALUES (
             @uid, @email, @name, @phone,
             'hospital', @hospitalName, @hospitalCode,
-            FALSE, FALSE, 'unavailable', 'hospital_view', $locationSql
+            FALSE, FALSE, 'unavailable', 'hospital_view', $locationSql,
+            TRUE, @cityArea
           ) RETURNING *, 
             ST_Y(location::geometry) as latitude,
             ST_X(location::geometry) as longitude;
@@ -188,6 +204,7 @@ class UserService {
           'phone': phone,
           'hospitalName': hospitalName,
           'hospitalCode': hospitalCode,
+          'cityArea': cityArea ?? '',
           if (latitude != null) 'latitude': latitude,
           if (longitude != null) 'longitude': longitude,
         };
@@ -196,17 +213,19 @@ class UserService {
             ? 'recipient_view'
             : 'donor_view';
         String locationSql = latitude != null && longitude != null
-            ? "ST_SetSRID(ST_MakePoint(@longitude, @latitude), 4326)"
+            ? "ST_SetSRID(ST_MakePoint(@longitude, @latitude), 4326)::geography"
             : 'NULL';
 
         sql =
             '''
           INSERT INTO users (
             firebase_uid, email, name, phone, blood_type,
-            account_type, is_donor, is_recipient, donor_status, active_mode, location
+            account_type, is_donor, is_recipient, donor_status, active_mode, location,
+            city_area
           ) VALUES (
             @uid, @email, @name, @phone, @bloodType,
-            'regular', @canDonate, FALSE, @donorStatus, @activeMode, $locationSql
+            'regular', @canDonate, FALSE, @donorStatus, @activeMode, $locationSql,
+            @cityArea
           ) RETURNING *, 
             ST_Y(location::geometry) as latitude,
             ST_X(location::geometry) as longitude;
@@ -220,6 +239,7 @@ class UserService {
           'canDonate': canDonate,
           'donorStatus': canDonate ? 'available' : 'unavailable',
           'activeMode': mode,
+          'cityArea': cityArea ?? '',
           if (latitude != null) 'latitude': latitude,
           if (longitude != null) 'longitude': longitude,
         };
@@ -234,9 +254,17 @@ class UserService {
     }
   }
 
-  Future<void> updateActiveMode(ActiveMode mode) async {
-    // Update the active_mode in PostgreSQL
-    throw UnimplementedError('Implement updateActiveMode');
+  Future<bool> updateActiveMode(String firebaseUid, ActiveMode mode) async {
+    final result = await _db.query(
+      '''
+      UPDATE users SET active_mode = @mode, updated_at = NOW()
+      WHERE firebase_uid = @uid
+        AND (@mode = 'recipient_view' OR is_recipient = FALSE)
+      RETURNING id
+    ''',
+      params: {'uid': firebaseUid, 'mode': mode.name},
+    );
+    return result.isNotEmpty;
   }
 
   /// Save FCM token for push notifications (e.g. donor request alerts).

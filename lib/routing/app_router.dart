@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import 'package:bloodconnect/services/auth_service.dart';
 import 'package:bloodconnect/services/user_service.dart';
@@ -10,70 +11,134 @@ import 'package:bloodconnect/screens/hospital_dashboard_screen.dart';
 import 'package:bloodconnect/screens/create_request_screen.dart';
 import 'package:bloodconnect/screens/profile_screen.dart';
 
+UserProfile? _cachedProfile;
+String? _cachedUid;
+bool _isFetchingProfile = false;
+
+void clearProfileCache() {
+  _cachedProfile = null;
+  _cachedUid = null;
+  _isFetchingProfile = false;
+}
+
+/// Post-login home route for this profile (MVP role routing).
+String homeRouteForProfile(UserProfile profile) {
+  if (profile.accountType == AccountType.hospital) {
+    return '/hospital/dashboard';
+  }
+  if (profile.activeMode == ActiveMode.recipient_view) {
+    return '/recipient/home';
+  }
+  return '/donor/home';
+}
+
 GoRouter buildRouter({
   required AuthService authService,
   required UserService userService,
+  required Listenable refreshListenable,
 }) {
+
   return GoRouter(
     initialLocation: '/login',
+    refreshListenable: refreshListenable,
     routes: [
-      GoRoute(path: '/login', builder: (ctx, state) => const LoginScreen()),
-      GoRoute(path: '/signup', builder: (ctx, state) => const SignUpScreen()),
+      GoRoute(path: '/', redirect: (ctx, s) => '/login'),
+      GoRoute(path: '/login', builder: (ctx, s) => const LoginScreen()),
+      GoRoute(path: '/signup', builder: (ctx, s) => const SignUpScreen()),
       GoRoute(
         path: '/donor/home',
-        builder: (ctx, state) => const DonorHomeScreen(),
+        builder: (ctx, s) => const DonorHomeScreen(),
       ),
       GoRoute(
         path: '/recipient/home',
-        builder: (ctx, state) => const RecipientHomeScreen(),
+        builder: (ctx, s) => const RecipientHomeScreen(),
       ),
       GoRoute(
         path: '/hospital/dashboard',
-        builder: (ctx, state) => const HospitalDashboardScreen(),
+        builder: (ctx, s) => const HospitalDashboardScreen(),
       ),
       GoRoute(
         path: '/create-request',
-        builder: (ctx, state) => const CreateRequestScreen(),
+        builder: (ctx, s) => const CreateRequestScreen(),
       ),
       GoRoute(
         path: '/profile',
-        builder: (ctx, state) => const ProfileScreen(),
+        builder: (ctx, s) => const ProfileScreen(),
       ),
     ],
     redirect: (context, state) async {
+      if (state.matchedLocation == '/signup') {
+        if (authService.currentUser == null) return '/login';
+        return null;
+      }
+
       final firebaseUser = authService.currentUser;
+      if (firebaseUser == null) {
+        if (state.matchedLocation == '/login' || state.matchedLocation == '/') {
+          return null;
+        }
+        return '/login';
+      }
 
-      // Allow access to signup regardless of auth state
-      if (state.matchedLocation == '/signup') return null;
+      UserProfile? profile;
 
-      if (firebaseUser == null) return '/login';
+      if (_cachedProfile != null && _cachedUid == firebaseUser.uid) {
+        profile = _cachedProfile;
+      } else {
+        if (_isFetchingProfile) return null;
 
-      final profile = await userService.getProfileByFirebaseUid(
-        firebaseUser.uid,
-      );
+        _isFetchingProfile = true;
 
+        try {
+          profile = await userService.getProfileByFirebaseUid(
+            firebaseUser.uid,
+          );
+
+          _cachedProfile = profile;
+          _cachedUid = firebaseUser.uid;
+        } catch (e) {
+          debugPrint('Profile fetch error: $e');
+          _isFetchingProfile = false;
+          return '/login'; // fallback
+        }
+
+        _isFetchingProfile = false;
+      }
       if (profile == null) return '/signup';
 
-      // Redirect from root, login, and signup - FORCE to home based on capabilities
-      if (state.matchedLocation == '/' ||
-          state.matchedLocation == '/login' ||
-          state.matchedLocation == '/signup') {
-        // Always go to home, let home screen decide what to show
-        return _getHomeForUser(profile);
+      final loc = state.matchedLocation;
+
+      // Hospital admin: dashboard + profile only (MVP RBAC).
+      if (profile.accountType == AccountType.hospital) {
+        if (loc == '/profile' || loc.startsWith('/hospital/')) return null;
+        return '/hospital/dashboard';
+      }
+
+      if (loc.startsWith('/hospital/')) {
+        return homeRouteForProfile(profile);
+      }
+
+      if (loc == '/donor/home') {
+        if (profile.activeMode != ActiveMode.donor_view) {
+          return '/recipient/home';
+        }
+        return null;
+      }
+
+      if (loc == '/recipient/home' || loc == '/create-request') {
+        if (profile.activeMode != ActiveMode.recipient_view) {
+          return '/donor/home';
+        }
+        return null;
+      }
+
+      if (loc == '/profile') return null;
+
+      if (loc == '/' || loc == '/login') {
+        return homeRouteForProfile(profile);
       }
 
       return null;
     },
   );
-}
-
-String _getHomeForUser(UserProfile profile) {
-  if (profile.accountType == AccountType.hospital) {
-    return '/hospital/dashboard';
-  }
-  // Route by role chosen at signup (active_mode)
-  if (profile.activeMode == ActiveMode.recipient_view) {
-    return '/recipient/home';
-  }
-  return '/donor/home';
 }

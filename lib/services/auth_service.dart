@@ -2,6 +2,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/services.dart';
 
+import '../routing/app_router.dart';
+
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
@@ -11,7 +13,11 @@ class AuthService {
   Future<UserCredential?> signInWithGoogle() async {
     try {
       // Disconnect any previous sessions to prevent DUPLICATE_RAW_ID
-      await _googleSignIn.disconnect();
+      try {
+        await _googleSignIn.disconnect();
+      } on PlatformException {
+        // Ignore if there is no active session to disconnect.
+      }
 
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) return null;
@@ -52,8 +58,13 @@ class AuthService {
   }
 
   Future<void> signOut() async {
-    await _googleSignIn.signOut();
-    await _googleSignIn.disconnect();
+    clearProfileCache();
+    try {
+      await _googleSignIn.signOut();
+      await _googleSignIn.disconnect();
+    } on PlatformException {
+      // Ignore status errors when GoogleSignIn has no active session.
+    }
     await _auth.signOut();
   }
 

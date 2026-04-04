@@ -90,13 +90,25 @@ class _RecipientHomeScreenState extends ConsumerState<RecipientHomeScreen> {
       final profile = await userService.getProfileByFirebaseUid(firebaseUser.uid);
       if (profile == null) return;
 
-      await requestService.cancelRequest(_activeRequest!.id, profile.id);
+      final cancelled = await requestService.cancelRequest(
+        _activeRequest!.id,
+        profile.id,
+      );
 
-      if (mounted) {
+      if (!mounted) return;
+      if (cancelled) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Request cancelled successfully')),
         );
-        context.go('/recipient/home');
+        await _loadActiveRequest();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not cancel (request may already be completed or expired).',
+            ),
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -122,18 +134,104 @@ class _RecipientHomeScreenState extends ConsumerState<RecipientHomeScreen> {
     }
   }
 
-  String _getStatusText(RequestStatus status) {
-    switch (status) {
-      case RequestStatus.active:
-        return 'MATCHING';
-      case RequestStatus.in_progress:
-        return 'ACCEPTED';
-      case RequestStatus.fulfilled:
-        return 'VERIFIED';
-      case RequestStatus.cancelled:
-        return 'CANCELLED';
-      case RequestStatus.expired:
-        return 'EXPIRED';
+  Future<void> _editOpenRequest() async {
+    final r = _activeRequest;
+    if (r == null || r.status != RequestStatus.active) return;
+
+    final authService = ref.read(authServiceProvider);
+    final userService = ref.read(userServiceProvider);
+    final requestService = ref.read(requestServiceProvider);
+    final fb = authService.currentUser;
+    if (fb == null) return;
+    final profile = await userService.getProfileByFirebaseUid(fb.uid);
+    if (profile == null || !mounted) return;
+
+    var units = r.unitsNeeded;
+    var urgency = r.urgencyLevel;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit open request'),
+        content: StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Units needed', style: TextStyle(color: Colors.grey[700])),
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: units > 1
+                          ? () => setDialogState(() => units--)
+                          : null,
+                      icon: const Icon(Icons.remove_circle_outline),
+                    ),
+                    Text('$units', style: const TextStyle(fontSize: 18)),
+                    IconButton(
+                      onPressed: units < 10
+                          ? () => setDialogState(() => units++)
+                          : null,
+                      icon: const Icon(Icons.add_circle_outline),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text('Urgency', style: TextStyle(color: Colors.grey[700])),
+                DropdownButton<UrgencyLevel>(
+                  value: urgency,
+                  isExpanded: true,
+                  items: UrgencyLevel.values
+                      .map(
+                        (u) => DropdownMenuItem(
+                          value: u,
+                          child: Text(u.name),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (v) {
+                    if (v != null) setDialogState(() => urgency = v);
+                  },
+                ),
+              ],
+            );
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (saved != true || !mounted) return;
+
+    try {
+      await requestService.updateActiveRequest(
+        requestId: r.id,
+        requesterId: profile.id,
+        unitsNeeded: units,
+        urgencyLevel: urgency,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Request updated')),
+        );
+        await _loadActiveRequest();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Update failed: $e')),
+        );
+      }
     }
   }
 
@@ -272,6 +370,16 @@ class _RecipientHomeScreenState extends ConsumerState<RecipientHomeScreen> {
                     letterSpacing: 12,
                   ),
                 ),
+                if (request.shortId != request.displayCode) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Full ID: ${request.shortId}',
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 const Text(
                   'Show this code at the hospital',
@@ -314,7 +422,7 @@ class _RecipientHomeScreenState extends ConsumerState<RecipientHomeScreen> {
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
-                        _getStatusText(request.status),
+                        request.mvpPrimaryStatusLabel.toUpperCase(),
                         style: TextStyle(
                           color: _getStatusColor(request.status),
                           fontWeight: FontWeight.bold,
@@ -335,6 +443,16 @@ class _RecipientHomeScreenState extends ConsumerState<RecipientHomeScreen> {
                     ),
                   ],
                 ),
+                if (request.mvpSecondaryStatusLabel != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    request.mvpSecondaryStatusLabel!,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[700],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 _buildDetailRow(
                   Icons.opacity,
@@ -362,7 +480,27 @@ class _RecipientHomeScreenState extends ConsumerState<RecipientHomeScreen> {
           const SizedBox(height: 20),
 
           // Actions
-          if (request.status == RequestStatus.active || request.status == RequestStatus.in_progress)
+          if (request.status == RequestStatus.active) ...[
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _editOpenRequest,
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('Edit request'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red[700],
+                  side: BorderSide(color: Colors.red[300]!),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (request.status == RequestStatus.active ||
+              request.status == RequestStatus.in_progress)
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(

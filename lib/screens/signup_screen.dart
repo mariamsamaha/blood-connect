@@ -19,6 +19,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _cityAreaController = TextEditingController();
 
   // Hospital specific fields
   final _hospitalNameController = TextEditingController();
@@ -67,16 +68,23 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       _nameController.text = firebaseUser.displayName ?? '';
       _emailController.text = firebaseUser.email ?? '';
 
-      // Detect if hospital email BEFORE showing form
-      setState(() {
-        _isCheckingHospital = true;
-      });
-      _isHospitalEmail(firebaseUser.email!).then((isHospital) {
-        setState(() {
-          _isHospital = isHospital;
-          _isCheckingHospital = false;
-        });
-      });
+      setState(() => _isCheckingHospital = true);
+      try {
+        final domainHospital = await _isHospitalEmail(firebaseUser.email!);
+        final claimHospital = await UserService.hasHospitalAdminClaim(
+          firebaseUser,
+        );
+        if (mounted) {
+          setState(() {
+            _isHospital = domainHospital || claimHospital;
+            _isCheckingHospital = false;
+          });
+        }
+      } catch (_) {
+        if (mounted) {
+          setState(() => _isCheckingHospital = false);
+        }
+      }
     }
   }
 
@@ -85,6 +93,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _cityAreaController.dispose();
     _hospitalNameController.dispose();
     _hospitalCodeController.dispose();
     super.dispose();
@@ -179,6 +188,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       activeMode: _chosenRole == 'recipient' ? 'recipient_view' : 'donor_view',
       latitude: _latitude,
       longitude: _longitude,
+      cityArea: _cityAreaController.text.trim(),
     );
   }
 
@@ -198,6 +208,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       hospitalCode: _hospitalCodeController.text.trim(),
       latitude: _latitude,
       longitude: _longitude,
+      cityArea: _cityAreaController.text.trim(),
     );
   }
 
@@ -366,6 +377,14 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
             }
             return null;
           },
+        ),
+        const SizedBox(height: 15),
+
+        _buildFormField(
+          controller: _cityAreaController,
+          label: 'City / area (optional)',
+          icon: Icons.place_outlined,
+          validator: (_) => null,
         ),
         const SizedBox(height: 15),
 
@@ -764,6 +783,13 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
             }
             return null;
           },
+        ),
+        const SizedBox(height: 15),
+        _buildFormField(
+          controller: _cityAreaController,
+          label: 'City / area (optional)',
+          icon: Icons.place_outlined,
+          validator: (_) => null,
         ),
         const SizedBox(height: 30),
 
