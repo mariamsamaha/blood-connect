@@ -26,7 +26,6 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   final _hospitalCodeController = TextEditingController();
 
   String _selectedBloodType = 'A+';
-  bool _canDonate = true;
   bool _isLoading = false;
   bool _isHospital = false;
   bool _isCheckingHospital = false;
@@ -177,15 +176,16 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     UserService userService,
     User firebaseUser,
   ) async {
+    final isDonor = _chosenRole == 'donor';
     return await userService.createCompleteProfile(
       firebaseUser,
       name: _nameController.text.trim(),
       email: firebaseUser.email!,
       phone: _phoneController.text.trim(),
       bloodType: _selectedBloodType,
-      canDonate: _canDonate,
+      canDonate: isDonor,
       accountType: 'regular',
-      activeMode: _chosenRole == 'recipient' ? 'recipient_view' : 'donor_view',
+      activeMode: isDonor ? 'donor_view' : 'recipient_view',
       latitude: _latitude,
       longitude: _longitude,
       cityArea: _cityAreaController.text.trim(),
@@ -488,64 +488,6 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
         ),
         const SizedBox(height: 15),
 
-        // Can Donate Checkbox
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
-                blurRadius: 5,
-                offset: const Offset(0, 1),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(15),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.volunteer_activism,
-                  color: Colors.red[600]!,
-                  size: 20,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'I am willing to donate blood',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.grey[800]!,
-                        ),
-                      ),
-                      Text(
-                        'You can change this later in settings',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600]!,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Checkbox(
-                  value: _canDonate,
-                  onChanged: (value) {
-                    setState(() => _canDonate = value ?? false);
-                  },
-                  activeColor: Colors.red[600]!,
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 15),
-
         // Location Button
         Container(
           decoration: BoxDecoration(
@@ -791,6 +733,83 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
           icon: Icons.place_outlined,
           validator: (_) => null,
         ),
+        const SizedBox(height: 15),
+
+        // Location Button
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.1),
+                blurRadius: 5,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(15),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.location_on,
+                  color: _latitude != null ? Colors.green : Colors.red[600]!,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _latitude != null
+                            ? 'Location captured'
+                            : 'Add hospital location',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey[800]!,
+                        ),
+                      ),
+                      Text(
+                        _latitude != null
+                            ? '${_latitude!.toStringAsFixed(4)}, ${_longitude!.toStringAsFixed(4)}'
+                            : 'Required for donor matching',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600]!,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (_isLoadingLocation)
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else
+                  TextButton(
+                    onPressed: _getLocation,
+                    child: Text(
+                      _latitude != null ? 'Update' : 'Get Location',
+                      style: TextStyle(color: Colors.red[600]!),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        if (_locationError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              _locationError!,
+              style: const TextStyle(color: Colors.red, fontSize: 12),
+            ),
+          ),
         const SizedBox(height: 30),
 
         // Register Button

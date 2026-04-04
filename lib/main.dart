@@ -24,7 +24,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
-GlobalKey<ScaffoldMessengerState>();
+    GlobalKey<ScaffoldMessengerState>();
 
 final authServiceProvider = Provider<AuthService>((ref) => AuthService());
 
@@ -38,7 +38,6 @@ final databaseServiceProvider = Provider<DatabaseService>((ref) {
     requireSsl: true,
   );
 });
-
 
 final userServiceProvider = Provider<UserService>((ref) {
   final db = ref.watch(databaseServiceProvider);
@@ -102,9 +101,14 @@ void main() async {
   await Firebase.initializeApp();
   await FirebaseMessaging.instance.requestPermission();
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-  await LocalNotificationService.init();
-  await FirebaseMessaging.instance
-      .setForegroundNotificationPresentationOptions(
+
+  try {
+    await LocalNotificationService.init();
+  } catch (e) {
+    print('Local notifications init failed: $e');
+  }
+
+  await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
     alert: true,
     badge: true,
     sound: true,
@@ -181,6 +185,7 @@ class _BloodConnectAppState extends ConsumerState<BloodConnectApp> {
       print('Opened from terminated: ${initial.data}');
     }
   }
+
   @override
   Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
