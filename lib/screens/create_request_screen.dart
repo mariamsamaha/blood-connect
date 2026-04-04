@@ -220,7 +220,7 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Cancel Request'),
+                  child: const Text('Go Back'),
                 ),
                 TextButton(
                   onPressed: () => Navigator.pop(ctx, true),

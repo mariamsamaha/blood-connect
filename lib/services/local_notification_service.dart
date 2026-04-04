@@ -5,11 +5,18 @@ class LocalNotificationService {
 
   static Future<void> init() async {
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const settings = InitializationSettings(android: android);
+    const ios = DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
+    const settings = InitializationSettings(android: android, iOS: ios);
     await _plugin.initialize(settings);
 
     final androidPlugin = _plugin
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
 
     await androidPlugin?.createNotificationChannel(
       const AndroidNotificationChannel(
@@ -25,14 +32,21 @@ class LocalNotificationService {
     required String title,
     required String body,
   }) async {
+    const androidDetails = AndroidNotificationDetails(
+      'blood_requests',
+      'Blood Requests',
+      importance: Importance.max,
+      priority: Priority.high,
+      icon: '@mipmap/ic_launcher',
+    );
+    const iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    );
     const details = NotificationDetails(
-      android: AndroidNotificationDetails(
-        'blood_requests',
-        'Blood Requests',
-        importance: Importance.max,
-        priority: Priority.high,
-        icon: '@mipmap/ic_launcher',
-      ),
+      android: androidDetails,
+      iOS: iosDetails,
     );
 
     await _plugin.show(
