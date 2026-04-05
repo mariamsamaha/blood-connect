@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:bloodconnect/services/local_notification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -131,42 +133,57 @@ class _BloodConnectAppState extends ConsumerState<BloodConnectApp> {
     _setupFcmListeners();
   }
 
+  bool get _isIosPlatform => Platform.isIOS;
+
   Future<void> _setupFcmToken() async {
+    // Skip FCM on iOS - APNS token not available on simulator
+    // On Android and real iOS devices, FCM works normally
+    if (_isIosPlatform) {
+      debugPrint('FCM: Skipped on iOS (APNS not available)');
+      return;
+    }
+
     final authService = ref.read(authServiceProvider);
     final userService = ref.read(userServiceProvider);
 
-    // Save token for currently logged-in user
     final user = authService.currentUser;
     if (user != null) {
-      final token = await FirebaseMessaging.instance.getToken();
-      await userService.updateFcmToken(user.uid, token);
+      try {
+        final token = await FirebaseMessaging.instance.getToken();
+        await userService.updateFcmToken(user.uid, token);
+      } catch (e) {
+        debugPrint('FCM token error: $e');
+      }
     }
 
-    // Also save whenever token refreshes
     FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
       final user = authService.currentUser;
       if (user != null) {
-        await userService.updateFcmToken(user.uid, newToken);
+        try {
+          await userService.updateFcmToken(user.uid, newToken);
+        } catch (e) {
+          debugPrint('FCM token refresh error: $e');
+        }
       }
     });
 
-    // Also listen for auth state changes to save token on login
     authService.onAuthStateChanged.listen((user) async {
       if (user != null) {
-        final token = await FirebaseMessaging.instance.getToken();
-        await userService.updateFcmToken(user.uid, token);
+        try {
+          final token = await FirebaseMessaging.instance.getToken();
+          await userService.updateFcmToken(user.uid, token);
+        } catch (e) {
+          debugPrint('FCM token on auth change error: $e');
+        }
       }
     });
   }
 
   Future<void> _setupFcmListeners() async {
-    // Single onMessage listener
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       final notification = message.notification;
       if (notification != null) {
         print('Foreground message: ${notification.title}');
-
-        // Show system banner
         LocalNotificationService.show(
           title: notification.title ?? '',
           body: notification.body ?? '',
@@ -174,12 +191,10 @@ class _BloodConnectAppState extends ConsumerState<BloodConnectApp> {
       }
     });
 
-    // Background tap
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       print('Notification tapped: ${message.data}');
     });
 
-    // Terminated tap
     final initial = await FirebaseMessaging.instance.getInitialMessage();
     if (initial != null) {
       print('Opened from terminated: ${initial.data}');
