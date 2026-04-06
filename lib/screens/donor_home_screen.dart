@@ -7,7 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:bloodconnect/models/blood_request.dart';
 import 'package:bloodconnect/main.dart';
-import 'package:bloodconnect/services/local_notification_service.dart';
+
 
 class DonorHomeScreen extends ConsumerStatefulWidget {
   const DonorHomeScreen({super.key});
@@ -27,15 +27,18 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
   void initState() {
     super.initState();
     _load();
-    _listenForForegroundNotifications();
+    _listenForNewRequestPush();
   }
 
-  void _listenForForegroundNotifications() {
+  void _listenForNewRequestPush() {
+    // The global listener in main.dart already shows the local notification.
+    // Here we only need to refresh the request list so the donor sees
+    // the new card immediately without having to pull-to-refresh manually.
     FirebaseMessaging.onMessage.listen((message) {
-      LocalNotificationService.show(
-        title: message.notification?.title ?? 'New Blood Request',
-        body: message.notification?.body ?? '',
-      );
+      final type = message.data['type'];
+      if (type == 'new_request' && mounted) {
+        _load();
+      }
     });
   }
 

@@ -11,7 +11,27 @@ admin.initializeApp();
 const app = express();
 app.use(express.json());
 
-// Health check
+// ─── Auth middleware ──────────────────────────────────────────────────────────
+// All non-health-check routes require the shared secret set in the environment.
+// The Flutter app must send the same value in the x-internal-secret header.
+const INTERNAL_SECRET = process.env.INTERNAL_SECRET || '';
+
+function requireSecret(req, res, next) {
+  if (!INTERNAL_SECRET) {
+    // Secret not configured on the server — block all requests to avoid
+    // running an open relay silently.
+    console.error('INTERNAL_SECRET env var is not set. Refusing request.');
+    return res.status(500).json({ error: 'server_misconfigured' });
+  }
+  const provided = req.headers['x-internal-secret'] || '';
+  if (provided !== INTERNAL_SECRET) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  return next();
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Health check (no auth needed)
 app.get('/', (_req, res) => {
   res.status(200).send('Notification backend is running');
 });
@@ -28,7 +48,7 @@ app.get('/', (_req, res) => {
 //   },
 //   "tokens": ["fcmToken1", "fcmToken2", ...]
 // }
-app.post('/sendNewRequest', async (req, res) => {
+app.post('/sendNewRequest', requireSecret, async (req, res) => {
   try {
     const { request, tokens } = req.body || {};
 
@@ -58,6 +78,17 @@ app.post('/sendNewRequest', async (req, res) => {
 
     const response = await admin.messaging().sendEachForMulticast(message);
 
+    // Log individual failures so stale tokens are visible in server logs
+    if (response.failureCount > 0) {
+      response.responses.forEach((r, i) => {
+        if (!r.success) {
+          console.error(`Token[${i}] failed: ${r.error?.code} — ${r.error?.message}`);
+        }
+      });
+    }
+
+    console.log(`Sent ${response.successCount}/${cleanTokens.length} notifications for request ${request.short_id}`);
+
     return res.status(200).json({
       sent: response.successCount,
       failed: response.failureCount,
@@ -71,7 +102,5 @@ app.post('/sendNewRequest', async (req, res) => {
 // Start HTTP server (for local dev or generic hosting / Cloud Run).
 const port = process.env.PORT || 8080;
 app.listen(port, () => {
-  // eslint-disable-next-line no-console
   console.log(`Notification backend listening on port ${port}`);
 });
-
