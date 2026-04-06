@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:bloodconnect/models/blood_request.dart';
 import 'package:bloodconnect/main.dart';
+import 'package:bloodconnect/services/local_notification_service.dart';
 
 class DonorHomeScreen extends ConsumerStatefulWidget {
   const DonorHomeScreen({super.key});
@@ -26,6 +27,16 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
   void initState() {
     super.initState();
     _load();
+    _listenForForegroundNotifications();
+  }
+
+  void _listenForForegroundNotifications() {
+    FirebaseMessaging.onMessage.listen((message) {
+      LocalNotificationService.show(
+        title: message.notification?.title ?? 'New Blood Request',
+        body: message.notification?.body ?? '',
+      );
+    });
   }
 
   Future<void> _load() async {
@@ -45,7 +56,9 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
         return;
       }
 
-      final profile = await userService.getProfileByFirebaseUid(firebaseUser.uid);
+      final profile = await userService.getProfileByFirebaseUid(
+        firebaseUser.uid,
+      );
       if (profile == null) {
         setState(() => _isLoading = false);
         return;
@@ -84,7 +97,8 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
       );
 
       if (useFallbackLocation) {
-        _locationError = 'Location unavailable – showing requests within ${defaultRadiusKm} km of default area. Enable location for accurate matching.';
+        _locationError =
+            'Location unavailable – showing requests within ${defaultRadiusKm} km of default area. Enable location for accurate matching.';
       } else {
         _locationError = null;
       }
@@ -101,9 +115,9 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Error: $e')));
         });
       }
     }
@@ -145,14 +159,20 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('You accepted this request. Head to the hospital!')),
+          const SnackBar(
+            content: Text('You accepted this request. Head to the hospital!'),
+          ),
         );
         _load();
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not accept: ${e.toString().replaceFirst('Exception: ', '')}')),
+          SnackBar(
+            content: Text(
+              'Could not accept: ${e.toString().replaceFirst('Exception: ', '')}',
+            ),
+          ),
         );
         _load();
       }
@@ -169,7 +189,8 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
         sound: true,
       );
       if (settings.authorizationStatus != AuthorizationStatus.authorized &&
-          settings.authorizationStatus != AuthorizationStatus.provisional) return;
+          settings.authorizationStatus != AuthorizationStatus.provisional)
+        return;
       final token = await messaging.getToken();
       if (token != null) await userService.updateFcmToken(firebaseUid, token);
     } catch (_) {
@@ -188,14 +209,21 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
     if (profile == null) return;
 
     try {
-      await donorService.declineRequest(requestId: request.id, donorId: profile.id);
+      await donorService.declineRequest(
+        requestId: request.id,
+        donorId: profile.id,
+      );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Request declined')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Request declined')));
         _load();
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
   }
@@ -341,18 +369,12 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
           const SizedBox(height: 8),
           Text(
             request.hospitalName,
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[800],
-            ),
+            style: TextStyle(fontSize: 16, color: Colors.grey[800]),
           ),
           const SizedBox(height: 8),
           Text(
             '${request.bloodType} • ${request.unitsNeeded} unit(s)',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[600],
-            ),
+            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
           ),
         ],
       ),
@@ -490,8 +512,8 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
     final urgencyColor = request.urgencyLevel == UrgencyLevel.critical
         ? Colors.red
         : request.urgencyLevel == UrgencyLevel.urgent
-            ? Colors.orange
-            : Colors.blue;
+        ? Colors.orange
+        : Colors.blue;
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -503,7 +525,10 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: urgencyColor.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(8),
@@ -529,20 +554,14 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
                 if (request.distanceKm != null)
                   Text(
                     '${request.distanceKm!.toStringAsFixed(1)} km',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[600],
-                    ),
+                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                   ),
               ],
             ),
             const SizedBox(height: 8),
             Text(
               request.hospitalName,
-              style: TextStyle(
-                fontSize: 15,
-                color: Colors.grey[800],
-              ),
+              style: TextStyle(fontSize: 15, color: Colors.grey[800]),
             ),
             const SizedBox(height: 4),
             Text(
