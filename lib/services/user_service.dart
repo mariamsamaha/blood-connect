@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:bloodconnect/models/user_profile.dart';
 import 'package:bloodconnect/services/database_service.dart';
+import 'package:flutter/foundation.dart';
 
 class UserService {
   final DatabaseService _db;
@@ -72,11 +73,11 @@ class UserService {
         '''
         INSERT INTO users (
           firebase_uid, email, name, account_type,
-          is_recipient, donor_status, role
+          is_recipient, donor_status, role, is_donor
         ) VALUES (
           @uid, @email, @name, @accountType,
-          FALSE, 'unavailable',
-          @role
+          FALSE, 'available',
+          @role, TRUE
         ) RETURNING *, 
           ST_Y(location::geometry) as latitude,
           ST_X(location::geometry) as longitude;
@@ -253,8 +254,11 @@ class UserService {
       ''',
         params: {'uid': firebaseUid, 'token': token},
       );
-    } catch (_) {
-      // Column may not exist if migration not run; ignore
+      debugPrint('FCM token saved for $firebaseUid');
+    } catch (e) {
+      // Log so the failure is visible — a silent failure here means zero notifications
+      debugPrint('FCM token save FAILED for $firebaseUid: $e');
+      debugPrint('Make sure mvp_incremental.sql has been run on Supabase (adds fcm_token column).');
     }
   }
 }

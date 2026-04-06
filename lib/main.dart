@@ -100,6 +100,13 @@ final fcmProvider = Provider<FirebaseMessaging>((ref) {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: ".env");
+
+  // Warn at startup if notification backend is not configured
+  final backendUrl = dotenv.env['NOTIFICATION_BACKEND_URL'] ?? '';
+  if (backendUrl.isEmpty) {
+    debugPrint('⚠️  WARNING: NOTIFICATION_BACKEND_URL is not set in .env — push notifications will not work.');
+  }
+
   await Firebase.initializeApp();
   await FirebaseMessaging.instance.requestPermission();
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
@@ -133,16 +140,7 @@ class _BloodConnectAppState extends ConsumerState<BloodConnectApp> {
     _setupFcmListeners();
   }
 
-  bool get _isIosPlatform => Platform.isIOS;
-
   Future<void> _setupFcmToken() async {
-    // Skip FCM on iOS - APNS token not available on simulator
-    // On Android and real iOS devices, FCM works normally
-    if (_isIosPlatform) {
-      debugPrint('FCM: Skipped on iOS (APNS not available)');
-      return;
-    }
-
     final authService = ref.read(authServiceProvider);
     final userService = ref.read(userServiceProvider);
 
@@ -152,7 +150,9 @@ class _BloodConnectAppState extends ConsumerState<BloodConnectApp> {
         final token = await FirebaseMessaging.instance.getToken();
         await userService.updateFcmToken(user.uid, token);
       } catch (e) {
-        debugPrint('FCM token error: $e');
+        // On iOS simulator APNS is unavailable
+        // On real iOS devices this should succeed.
+        debugPrint('FCM token error (may be normal on iOS simulator): $e');
       }
     }
 
