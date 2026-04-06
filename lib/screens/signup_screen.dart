@@ -176,16 +176,15 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     UserService userService,
     User firebaseUser,
   ) async {
-    final isDonor = _chosenRole == 'donor';
+    final role = _chosenRole; // 'donor' or 'recipient'
     return await userService.createCompleteProfile(
       firebaseUser,
       name: _nameController.text.trim(),
       email: firebaseUser.email!,
       phone: _phoneController.text.trim(),
       bloodType: _selectedBloodType,
-      canDonate: isDonor,
+      role: role,
       accountType: 'regular',
-      activeMode: isDonor ? 'donor_view' : 'recipient_view',
       latitude: _latitude,
       longitude: _longitude,
       cityArea: _cityAreaController.text.trim(),
@@ -202,7 +201,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       email: firebaseUser.email!,
       phone: _phoneController.text.trim(),
       bloodType: '',
-      canDonate: false,
+      role: 'hospital',
       accountType: 'hospital',
       hospitalName: _hospitalNameController.text.trim(),
       hospitalCode: _hospitalCodeController.text.trim(),
@@ -213,13 +212,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   }
 
   String _getInitialRoute(UserProfile profile) {
-    if (profile.accountType == AccountType.hospital) {
-      return '/hospital/dashboard';
-    }
-    if (profile.activeMode == ActiveMode.recipient_view) {
-      return '/recipient/home';
-    }
-    return '/donor/home';
+    return profile.homeRoute;
   }
 
   @override
