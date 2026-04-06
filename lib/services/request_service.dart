@@ -14,29 +14,30 @@ class RequestService {
     this._db, {
     NotificationService? notificationService,
     AuditLogService? audit,
-  })  : _notificationService = notificationService,
-        _audit = audit;
+  }) : _notificationService = notificationService,
+       _audit = audit;
 
-/// Verified hospitals with coordinates; nearby radius first, then all by distance.
-Future<List<Hospital>> getHospitals({
-  double? userLatitude,
-  double? userLongitude,
-  int nearbyRadiusKm = 120,
-}) async {
-  try {
-    const baseWhere = '''
+  /// Verified hospitals with coordinates; nearby radius first, then all by distance.
+  Future<List<Hospital>> getHospitals({
+    double? userLatitude,
+    double? userLongitude,
+    int nearbyRadiusKm = 120,
+  }) async {
+    try {
+      const baseWhere = '''
         account_type = 'hospital'
           AND hospital_verified = TRUE
           AND is_active = TRUE
           AND location IS NOT NULL
     ''';
 
-    if (userLatitude != null && userLongitude != null) {
-      final userPoint =
-          'ST_SetSRID(ST_MakePoint(@userLng::float8, @userLat::float8), 4326)::geography';
-      final nearbyM = nearbyRadiusKm * 1000;
+      if (userLatitude != null && userLongitude != null) {
+        final userPoint =
+            'ST_SetSRID(ST_MakePoint(@userLng::float8, @userLat::float8), 4326)::geography';
+        final nearbyM = nearbyRadiusKm * 1000;
 
-      var result = await _db.query('''
+        var result = await _db.query(
+          '''
         SELECT 
           id,
           hospital_name,
@@ -49,14 +50,17 @@ Future<List<Hospital>> getHospitals({
         WHERE $baseWhere
           AND ST_DWithin(location, $userPoint, @nearbyM::float8)
         ORDER BY ST_Distance(location, $userPoint) ASC
-      ''', params: {
-        'userLat': userLatitude,
-        'userLng': userLongitude,
-        'nearbyM': nearbyM,
-      });
+      ''',
+          params: {
+            'userLat': userLatitude,
+            'userLng': userLongitude,
+            'nearbyM': nearbyM,
+          },
+        );
 
-      if (result.isEmpty) {
-        result = await _db.query('''
+        if (result.isEmpty) {
+          result = await _db.query(
+            '''
           SELECT 
             id,
             hospital_name,
@@ -68,16 +72,15 @@ Future<List<Hospital>> getHospitals({
           FROM users
           WHERE $baseWhere
           ORDER BY ST_Distance(location, $userPoint) ASC
-        ''', params: {
-          'userLat': userLatitude,
-          'userLng': userLongitude,
-        });
+        ''',
+            params: {'userLat': userLatitude, 'userLng': userLongitude},
+          );
+        }
+
+        return result.map((row) => Hospital.fromJson(row)).toList();
       }
 
-      return result.map((row) => Hospital.fromJson(row)).toList();
-    }
-
-    final result = await _db.query('''
+      final result = await _db.query('''
         SELECT 
           id,
           hospital_name,
@@ -90,55 +93,62 @@ Future<List<Hospital>> getHospitals({
         ORDER BY hospital_name ASC
       ''');
 
-    return result.map((row) => Hospital.fromJson(row)).toList();
-  } catch (e) {
-    throw Exception('Failed to fetch hospitals: $e');
+      return result.map((row) => Hospital.fromJson(row)).toList();
+    } catch (e) {
+      throw Exception('Failed to fetch hospitals: $e');
+    }
   }
-}
 
-/// Create a new blood request with fresh location
-Future<BloodRequest> createRequest({
-  required String requesterId,
-  required String bloodType,
-  required int unitsNeeded,
-  required UrgencyLevel urgencyLevel,
-  required String hospitalId,
-  required double hospitalLat,
-  required double hospitalLng,
-  double? requesterLat,
-  double? requesterLng,
-  String? patientName,
-  String? description,
-  String? contactPhone,
-}) async {
-  try {
-    // Get hospital info
-    final hospitalResult = await _db.query('''
+  /// Create a new blood request with fresh location
+  Future<BloodRequest> createRequest({
+    required String requesterId,
+    required String bloodType,
+    required int unitsNeeded,
+    required UrgencyLevel urgencyLevel,
+    required String hospitalId,
+    required double hospitalLat,
+    required double hospitalLng,
+    double? requesterLat,
+    double? requesterLng,
+    String? patientName,
+    String? description,
+    String? contactPhone,
+  }) async {
+    try {
+      // Get hospital info
+      final hospitalResult = await _db.query(
+        '''
       SELECT hospital_code, hospital_name
       FROM users
       WHERE id = @hospitalId AND account_type = 'hospital'
-    ''', params: {'hospitalId': hospitalId});
+    ''',
+        params: {'hospitalId': hospitalId},
+      );
 
-    if (hospitalResult.isEmpty) {
-      throw Exception('Hospital not found');
-    }
+      if (hospitalResult.isEmpty) {
+        throw Exception('Hospital not found');
+      }
 
-    final hospitalCode = hospitalResult.first['hospital_code'] as String;
-    final hospitalName = hospitalResult.first['hospital_name'] as String;
+      final hospitalCode = hospitalResult.first['hospital_code'] as String;
+      final hospitalName = hospitalResult.first['hospital_name'] as String;
 
-    //  Generate short ID
-    final shortIdResult = await _db.query('''
+      //  Generate short ID
+      final shortIdResult = await _db.query(
+        '''
       SELECT generate_short_request_id(@hospitalCode) as short_id
-    ''', params: {'hospitalCode': hospitalCode});
+    ''',
+        params: {'hospitalCode': hospitalCode},
+      );
 
-    final shortId = shortIdResult.first['short_id'] as String;
+      final shortId = shortIdResult.first['short_id'] as String;
 
-    //  Determine matching location
-    final matchingLat = requesterLat ?? hospitalLat;
-    final matchingLng = requesterLng ?? hospitalLng;
+      //  Determine matching location
+      final matchingLat = requesterLat ?? hospitalLat;
+      final matchingLng = requesterLng ?? hospitalLng;
 
-    // Count nearby donors
-    final donorCountResult = await _db.query('''
+      // Count nearby donors
+      final donorCountResult = await _db.query(
+        '''
   SELECT COUNT(*) as donor_count
   FROM find_nearby_donors(
     @bloodType::varchar(3),
@@ -146,23 +156,26 @@ Future<BloodRequest> createRequest({
     120,
     200
      )
-    ''', params: {
-      'bloodType': bloodType,
-      'matchingLng': matchingLng,
-      'matchingLat': matchingLat,
-    });
+    ''',
+        params: {
+          'bloodType': bloodType,
+          'matchingLng': matchingLng,
+          'matchingLat': matchingLat,
+        },
+      );
 
-    final donorCount = donorCountResult.first['donor_count'] as int;
+      final donorCount = donorCountResult.first['donor_count'] as int;
 
-    String requesterLocationSQL;
-    if (requesterLat != null && requesterLng != null) {
-      requesterLocationSQL =
-          "ST_SetSRID(ST_MakePoint($requesterLng, $requesterLat), 4326)::geography";
-    } else {
-      requesterLocationSQL = "NULL";
-    }
+      String requesterLocationSQL;
+      if (requesterLat != null && requesterLng != null) {
+        requesterLocationSQL =
+            "ST_SetSRID(ST_MakePoint($requesterLng, $requesterLat), 4326)::geography";
+      } else {
+        requesterLocationSQL = "NULL";
+      }
 
-    final requestResult = await _db.query('''
+      final requestResult = await _db.query(
+        '''
       INSERT INTO blood_requests (
         short_id,
         requester_id,
@@ -218,56 +231,63 @@ Future<BloodRequest> createRequest({
         total_eligible_count,
         created_at,
         expires_at
-    ''', params: {
-      'shortId': shortId,
-      'requesterId': requesterId,
-      'bloodType': bloodType,
-      'unitsNeeded': unitsNeeded,
-      'urgencyLevel': urgencyLevel.name,
-      'hospitalId': hospitalId,
-      'hospitalName': hospitalName,
-      'patientName': patientName,
-      'description': description,
-      'contactPhone': contactPhone,
-      'donorCount': donorCount,
-    });
+    ''',
+        params: {
+          'shortId': shortId,
+          'requesterId': requesterId,
+          'bloodType': bloodType,
+          'unitsNeeded': unitsNeeded,
+          'urgencyLevel': urgencyLevel.name,
+          'hospitalId': hospitalId,
+          'hospitalName': hospitalName,
+          'patientName': patientName,
+          'description': description,
+          'contactPhone': contactPhone,
+          'donorCount': donorCount,
+        },
+      );
 
-    if (requestResult.isEmpty) {
-      throw Exception('Failed to insert request');
-    }
+      if (requestResult.isEmpty) {
+        throw Exception('Failed to insert request');
+      }
 
-    final createdRequest = BloodRequest.fromJson(requestResult.first);
+      final createdRequest = BloodRequest.fromJson(requestResult.first);
 
-    await _audit?.log(
-      requestId: createdRequest.id,
-      eventType: 'created',
-      detail: 'Request opened; id=${createdRequest.shortId}',
-      actorUserId: requesterId,
-    );
+      await _audit?.log(
+        requestId: createdRequest.id,
+        eventType: 'created',
+        detail: 'Request opened; id=${createdRequest.shortId}',
+        actorUserId: requesterId,
+      );
 
-    // Update user to be a recipient
-    await _db.query('''
+      // Update user to be a recipient
+      await _db.query(
+        '''
       UPDATE users
       SET 
         is_recipient = TRUE,
-        active_mode = 'recipient_view',
         updated_at = NOW()
       WHERE id = @requesterId
-    ''', params: {'requesterId': requesterId});
+    ''',
+        params: {'requesterId': requesterId},
+      );
 
-    // Fire-and-forget best-effort push notification to donors
-    unawaited(_notificationService?.sendNewRequestNotifications(createdRequest));
+      // Fire-and-forget best-effort push notification to donors
+      unawaited(
+        _notificationService?.sendNewRequestNotifications(createdRequest),
+      );
 
-    return createdRequest;
-  } catch (e) {
-    throw Exception('Failed to create blood request: $e');
+      return createdRequest;
+    } catch (e) {
+      throw Exception('Failed to create blood request: $e');
+    }
   }
-}
 
   /// Get the current active or in-progress request for a recipient.
   Future<BloodRequest?> getActiveRequest(String userId) async {
     try {
-      final result = await _db.query('''
+      final result = await _db.query(
+        '''
         SELECT 
           id,
           short_id,
@@ -290,13 +310,16 @@ Future<BloodRequest> createRequest({
           AND status IN ('active', 'in_progress')
         ORDER BY created_at DESC
         LIMIT 1
-      ''', params: {'userId': userId.toString()});
+      ''',
+        params: {'userId': userId.toString()},
+      );
 
       if (result.isEmpty) return null;
       return BloodRequest.fromJson(result.first);
     } catch (e) {
       try {
-        final result = await _db.query('''
+        final result = await _db.query(
+          '''
           SELECT 
             id, short_id, requester_id, blood_type, units_needed, urgency_level,
             hospital_name, status, nearby_donors_count, total_eligible_count,
@@ -308,7 +331,9 @@ Future<BloodRequest> createRequest({
             AND status IN ('active', 'in_progress')
           ORDER BY created_at DESC
           LIMIT 1
-        ''', params: {'userId': userId.toString()});
+        ''',
+          params: {'userId': userId.toString()},
+        );
         if (result.isEmpty) return null;
         return BloodRequest.fromJson(result.first);
       } catch (_) {
@@ -317,9 +342,10 @@ Future<BloodRequest> createRequest({
     }
   }
 
-Future<List<BloodRequest>> getMyRequests(String userId) async {
-  try {
-    final result = await _db.query('''
+  Future<List<BloodRequest>> getMyRequests(String userId) async {
+    try {
+      final result = await _db.query(
+        '''
       SELECT *,
         ST_Y(hospital_location::geometry) as hospital_lat,
         ST_X(hospital_location::geometry) as hospital_lng,
@@ -328,13 +354,15 @@ Future<List<BloodRequest>> getMyRequests(String userId) async {
       FROM blood_requests
       WHERE requester_id = @userId
       ORDER BY created_at DESC
-    ''', params: {'userId': userId.toString()});
+    ''',
+        params: {'userId': userId.toString()},
+      );
 
-    return result.map((row) => BloodRequest.fromJson(row)).toList();
-  } catch (e) {
-    throw Exception('Failed to fetch requests: $e');
+      return result.map((row) => BloodRequest.fromJson(row)).toList();
+    } catch (e) {
+      throw Exception('Failed to fetch requests: $e');
+    }
   }
-}
 
   Future<void> updateActiveRequest({
     required String requestId,
@@ -389,7 +417,8 @@ Future<List<BloodRequest>> getMyRequests(String userId) async {
 
   Future<bool> cancelRequest(String requestId, String userId) async {
     try {
-      final result = await _db.query('''
+      final result = await _db.query(
+        '''
         WITH cancelled AS (
           UPDATE blood_requests
           SET 
@@ -403,15 +432,13 @@ Future<List<BloodRequest>> getMyRequests(String userId) async {
         UPDATE users
         SET 
           is_recipient = FALSE,
-          active_mode = 'donor_view',
           updated_at = NOW()
         WHERE id = @userId::uuid
           AND EXISTS (SELECT 1 FROM cancelled)
         RETURNING id
-      ''', params: {
-        'requestId': requestId,
-        'userId': userId,
-      });
+      ''',
+        params: {'requestId': requestId, 'userId': userId},
+      );
       final ok = result.isNotEmpty;
       if (ok) {
         await _audit?.log(
