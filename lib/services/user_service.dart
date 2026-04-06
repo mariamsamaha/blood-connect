@@ -72,11 +72,11 @@ class UserService {
         '''
         INSERT INTO users (
           firebase_uid, email, name, account_type,
-          is_donor, is_recipient, donor_status, active_mode
+          is_recipient, donor_status, role
         ) VALUES (
           @uid, @email, @name, @accountType,
-          FALSE, FALSE, 'unavailable',
-          @defaultMode
+          FALSE, 'unavailable',
+          @role
         ) RETURNING *, 
           ST_Y(location::geometry) as latitude,
           ST_X(location::geometry) as longitude;
@@ -86,9 +86,7 @@ class UserService {
           'email': firebaseUser.email!,
           'name': firebaseUser.displayName ?? 'User',
           'accountType': accountType,
-          'defaultMode': accountType == 'hospital'
-              ? 'hospital_view'
-              : 'donor_view',
+          'role': accountType == 'hospital' ? 'hospital' : 'donor',
         },
       );
 
@@ -100,24 +98,16 @@ class UserService {
     }
   }
 
-  Future<UserProfile> getCurrentProfile() async {
-    // This would normally get the current Firebase user and fetch their profile
-    throw UnimplementedError('Implement getCurrentProfile');
-  }
-
   Future<UserProfile> createCompleteProfile(
     User firebaseUser, {
     required String name,
     required String email,
     required String phone,
     required String bloodType,
-    required bool canDonate,
-    required String accountType,
+    required String role, // 'donor' or 'recipient'
+    required String accountType, // 'regular' or 'hospital'
     String? hospitalName,
     String? hospitalCode,
-
-    /// For regular users: 'donor_view' or 'recipient_view' (role chosen at signup).
-    String activeMode = 'donor_view',
     double? latitude,
     double? longitude,
     String? cityArea,
@@ -186,12 +176,12 @@ class UserService {
           INSERT INTO users (
             firebase_uid, email, name, phone,
             account_type, hospital_name, hospital_code, 
-            is_donor, is_recipient, donor_status, active_mode, location,
+            is_recipient, donor_status, role, location,
             hospital_verified, city_area
           ) VALUES (
             @uid, @email, @name, @phone,
             'hospital', @hospitalName, @hospitalCode,
-            FALSE, FALSE, 'unavailable', 'hospital_view', $locationSql,
+            FALSE, 'unavailable', 'hospital', $locationSql,
             TRUE, @cityArea
           ) RETURNING *, 
             ST_Y(location::geometry) as latitude,
@@ -209,9 +199,8 @@ class UserService {
           if (longitude != null) 'longitude': longitude,
         };
       } else {
-        final mode = activeMode == 'recipient_view'
-            ? 'recipient_view'
-            : 'donor_view';
+        final donorStatus = role == 'donor' ? 'available' : 'unavailable';
+
         String locationSql = latitude != null && longitude != null
             ? "ST_SetSRID(ST_MakePoint(@longitude, @latitude), 4326)::geography"
             : 'NULL';
@@ -220,11 +209,11 @@ class UserService {
             '''
           INSERT INTO users (
             firebase_uid, email, name, phone, blood_type,
-            account_type, is_donor, is_recipient, donor_status, active_mode, location,
+            account_type, is_recipient, donor_status, role, location,
             city_area
           ) VALUES (
             @uid, @email, @name, @phone, @bloodType,
-            'regular', @canDonate, FALSE, @donorStatus, @activeMode, $locationSql,
+            'regular', FALSE, @donorStatus, @role, $locationSql,
             @cityArea
           ) RETURNING *, 
             ST_Y(location::geometry) as latitude,
@@ -236,9 +225,8 @@ class UserService {
           'name': name,
           'phone': phone,
           'bloodType': bloodType,
-          'canDonate': canDonate,
-          'donorStatus': canDonate ? 'available' : 'unavailable',
-          'activeMode': mode,
+          'role': role,
+          'donorStatus': donorStatus,
           'cityArea': cityArea ?? '',
           if (latitude != null) 'latitude': latitude,
           if (longitude != null) 'longitude': longitude,
@@ -252,18 +240,6 @@ class UserService {
     } catch (e) {
       throw Exception('Unexpected error while creating user profile: $e');
     }
-  }
-
-  Future<bool> updateActiveMode(String firebaseUid, ActiveMode mode) async {
-    final result = await _db.query(
-      '''
-      UPDATE users SET active_mode = @mode, updated_at = NOW()
-      WHERE firebase_uid = @uid
-      RETURNING id
-    ''',
-      params: {'uid': firebaseUid, 'mode': mode.name},
-    );
-    return result.isNotEmpty;
   }
 
   /// Save FCM token for push notifications (e.g. donor request alerts).

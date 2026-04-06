@@ -2,7 +2,7 @@ enum AccountType { regular, hospital }
 
 enum DonorStatus { available, on_cooldown, unavailable }
 
-enum ActiveMode { donor_view, recipient_view, hospital_view }
+enum UserRole { donor, recipient, hospital }
 
 class UserProfile {
   final String id;
@@ -13,11 +13,14 @@ class UserProfile {
 
   final String bloodType;
   final AccountType accountType;
-  final bool isDonor;
+
+  /// Permanent role - set at signup, never changes
+  final UserRole role;
+
+  /// Operational state - TRUE when user has a live blood request
   final bool isRecipient;
   final DonorStatus donorStatus;
 
-  final ActiveMode activeMode;
   final double? latitude;
   final double? longitude;
 
@@ -42,10 +45,9 @@ class UserProfile {
     required this.phone,
     required this.bloodType,
     required this.accountType,
-    required this.isDonor,
+    required this.role,
     required this.isRecipient,
     required this.donorStatus,
-    required this.activeMode,
     this.latitude,
     this.longitude,
     this.hospitalName,
@@ -59,6 +61,22 @@ class UserProfile {
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
     final n = _parseInt(json['notification_radius_km']);
+
+    // Parse role - new field, fallback to old logic
+    UserRole parsedRole;
+    if (json['role'] != null) {
+      parsedRole = UserRole.values.byName(json['role'] as String);
+    } else {
+      // Fallback: derive role from active_mode or account_type
+      if (json['account_type'] == 'hospital') {
+        parsedRole = UserRole.hospital;
+      } else if (json['active_mode'] == 'recipient_view') {
+        parsedRole = UserRole.recipient;
+      } else {
+        parsedRole = UserRole.donor;
+      }
+    }
+
     return UserProfile(
       id: json['id'] as String,
       firebaseUid: json['firebase_uid'] as String? ?? '',
@@ -69,14 +87,11 @@ class UserProfile {
       accountType: AccountType.values.byName(
         json['account_type'] as String? ?? 'regular',
       ),
-      isDonor: json['is_donor'] as bool? ?? false,
+      role: parsedRole,
       isRecipient: json['is_recipient'] as bool? ?? false,
       donorStatus: DonorStatus.values.byName(
         json['donor_status'] as String? ?? 'available',
       ),
-      activeMode: json['active_mode'] == null
-          ? ActiveMode.donor_view
-          : ActiveMode.values.byName(json['active_mode'] as String),
       latitude: _parseDouble(json['latitude']),
       longitude: _parseDouble(json['longitude']),
       hospitalName: json['hospital_name'] as String?,
@@ -113,10 +128,9 @@ class UserProfile {
     'phone': phone,
     'blood_type': bloodType,
     'account_type': accountType.name,
-    'is_donor': isDonor,
+    'role': role.name,
     'is_recipient': isRecipient,
     'donor_status': donorStatus.name,
-    'active_mode': activeMode.name,
     'latitude': latitude,
     'longitude': longitude,
     'hospital_name': hospitalName,
@@ -127,4 +141,15 @@ class UserProfile {
     'city_area': cityArea,
     'notification_radius_km': notificationRadiusKm,
   };
+
+  String get homeRoute {
+    switch (role) {
+      case UserRole.hospital:
+        return '/hospital/dashboard';
+      case UserRole.recipient:
+        return '/recipient/home';
+      case UserRole.donor:
+        return '/donor/home';
+    }
+  }
 }
