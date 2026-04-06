@@ -21,12 +21,13 @@ class NotificationService {
       final donorTypes = donorBloodTypesCompatibleWith(request.bloodType);
       if (donorTypes.isEmpty) return;
 
-      final donors = await _db.query('''
+      final donors = await _db.query(
+        '''
         SELECT DISTINCT u.fcm_token
         FROM users u
         WHERE u.fcm_token IS NOT NULL
           AND u.account_type = 'regular'
-          AND u.is_donor = TRUE
+          AND u.role = 'donor'
           AND u.donor_status = 'available'
           AND u.is_active = TRUE
           AND u.notification_enabled = TRUE
@@ -37,11 +38,13 @@ class NotificationService {
             ST_SetSRID(ST_MakePoint(@hospitalLng::float8, @hospitalLat::float8), 4326)::geography,
             (GREATEST(COALESCE(u.notification_radius_km, 50), 80) * 1000)::double precision
           )
-      ''', params: {
-        'typesCsv': donorTypes.join(','),
-        'hospitalLng': request.hospitalLng,
-        'hospitalLat': request.hospitalLat,
-      });
+      ''',
+        params: {
+          'typesCsv': donorTypes.join(','),
+          'hospitalLng': request.hospitalLng,
+          'hospitalLat': request.hospitalLat,
+        },
+      );
 
       if (donors.isEmpty) return;
 

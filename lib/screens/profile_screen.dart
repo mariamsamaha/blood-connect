@@ -7,7 +7,6 @@ import 'package:bloodconnect/models/user_profile.dart';
 import 'package:bloodconnect/models/blood_request.dart';
 import 'package:bloodconnect/models/donor_response_entry.dart';
 import 'package:bloodconnect/main.dart';
-import 'package:bloodconnect/routing/app_router.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -16,34 +15,16 @@ class ProfileScreen extends ConsumerStatefulWidget {
   ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends ConsumerState<ProfileScreen>
-    with SingleTickerProviderStateMixin {
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   UserProfile? _profile;
   List<BloodRequest> _myRequests = [];
   List<DonorResponseEntry> _donorHistory = [];
   bool _isLoading = true;
-  bool _isSwitchingRole = false;
-
-  late AnimationController _roleAnimController;
-  late Animation<double> _roleScaleAnimation;
 
   @override
   void initState() {
     super.initState();
-    _roleAnimController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    );
-    _roleScaleAnimation = Tween<double>(begin: 1.0, end: 0.95).animate(
-      CurvedAnimation(parent: _roleAnimController, curve: Curves.easeInOut),
-    );
     _load();
-  }
-
-  @override
-  void dispose() {
-    _roleAnimController.dispose();
-    super.dispose();
   }
 
   Future<void> _load() async {
@@ -112,52 +93,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     if (mounted) context.go('/login');
   }
 
-  Future<void> _switchActiveMode(ActiveMode mode) async {
-    if (_profile == null || _profile!.accountType != AccountType.regular)
-      return;
-    if (_profile!.activeMode == mode) return;
-
-    final fb = FirebaseAuth.instance.currentUser;
-    if (fb == null) return;
-
-    setState(() => _isSwitchingRole = true);
-    _roleAnimController.forward();
-
-    final userService = ref.read(userServiceProvider);
-    final ok = await userService.updateActiveMode(fb.uid, mode);
-
-    if (!ok) {
-      if (mounted) {
-        _roleAnimController.reverse();
-        setState(() => _isSwitchingRole = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not switch view. Please try again.'),
-          ),
-        );
-      }
-      return;
-    }
-
-    onRoleSwitched();
-
-    final updated = await userService.getProfileByFirebaseUid(fb.uid);
-    if (!mounted || updated == null) return;
-
-    _roleAnimController.reverse();
-    setState(() {
-      _profile = updated;
-      _isSwitchingRole = false;
-    });
-    context.go(homeRouteForProfile(updated));
-  }
-
   String _roleTitle() {
     if (_profile == null) return '';
     if (_profile!.accountType == AccountType.hospital) return 'Hospital';
-    return _profile!.activeMode == ActiveMode.recipient_view
-        ? 'Recipient'
-        : 'Donor';
+    return _profile!.role == UserRole.recipient ? 'Recipient' : 'Donor';
   }
 
   @override
@@ -188,8 +127,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 child: Column(
                   children: [
                     _buildProfileHeader(),
-                    if (_profile!.accountType == AccountType.regular)
-                      _buildRoleSwitcher(),
                     const SizedBox(height: 16),
                     _buildHistorySection(),
                     const SizedBox(height: 100),
@@ -201,7 +138,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   }
 
   Widget _buildProfileHeader() {
-    final isDonor = _profile!.activeMode == ActiveMode.donor_view;
+    final isDonor = _profile!.role == UserRole.donor;
 
     return Container(
       width: double.infinity,
@@ -342,12 +279,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                     ],
                   ),
                 ),
-              if (_profile!.cityArea.isNotEmpty)
-                _buildInfoChip(
-                  icon: Icons.location_on,
-                  label: _profile!.cityArea,
-                  color: Colors.white.withOpacity(0.2),
-                ),
               if (_profile!.accountType == AccountType.hospital) ...[
                 const SizedBox(height: 12),
                 Container(
@@ -388,225 +319,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     );
   }
 
-  Widget _buildInfoChip({
-    required IconData icon,
-    required String label,
-    required Color color,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: Colors.white),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 13,
-              color: Colors.white,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRoleSwitcher() {
-    final isDonor = _profile!.activeMode == ActiveMode.donor_view;
-
-    return AnimatedBuilder(
-      animation: _roleScaleAnimation,
-      builder: (context, child) {
-        return Transform.scale(
-          scale: _isSwitchingRole ? _roleScaleAnimation.value : 1.0,
-          child: child,
-        );
-      },
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(16, 24, 16, 0),
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.grey.withOpacity(0.1),
-              blurRadius: 15,
-              offset: const Offset(0, 5),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    Icons.swap_horiz,
-                    color: Colors.red.shade600,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Switch Mode',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      Text(
-                        'Toggle between Donor and Recipient',
-                        style: TextStyle(fontSize: 13, color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _buildRoleOption(
-                      icon: Icons.volunteer_activism,
-                      title: 'Donor',
-                      subtitle: 'Help save lives',
-                      isSelected: isDonor,
-                      color: Colors.red,
-                      onTap: () => _switchActiveMode(ActiveMode.donor_view),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildRoleOption(
-                      icon: Icons.bloodtype,
-                      title: 'Recipient',
-                      subtitle: 'Request blood',
-                      isSelected: !isDonor,
-                      color: Colors.blue,
-                      onTap: () => _switchActiveMode(ActiveMode.recipient_view),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (_isSwitchingRole) ...[
-              const SizedBox(height: 16),
-              const LinearProgressIndicator(
-                backgroundColor: Colors.grey,
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.red),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRoleOption({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required bool isSelected,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: isSelected ? null : onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isSelected ? color.withOpacity(0.1) : Colors.grey.shade50,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected ? color : Colors.grey.shade300,
-            width: isSelected ? 2 : 1,
-          ),
-        ),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? color.withOpacity(0.2)
-                    : Colors.grey.shade200,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                icon,
-                color: isSelected ? color : Colors.grey,
-                size: 28,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: isSelected ? color : Colors.grey.shade700,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              style: TextStyle(
-                fontSize: 11,
-                color: isSelected ? color.withOpacity(0.8) : Colors.grey,
-              ),
-            ),
-            if (isSelected) ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Text(
-                  'ACTIVE',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildHistorySection() {
-    final isRecipient = _profile!.activeMode == ActiveMode.recipient_view;
+    final isRecipient = _profile!.role == UserRole.recipient;
     final title = isRecipient ? 'My Requests' : 'My Responses';
     final icon = isRecipient ? Icons.bloodtype : Icons.volunteer_activism;
     final data = isRecipient ? _myRequests : _donorHistory;
