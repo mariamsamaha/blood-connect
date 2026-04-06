@@ -418,59 +418,60 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
         ),
         const SizedBox(height: 20),
 
-        // Role: Donor or Recipient
+        // Role: Donor or Recipient - Modern Card Selector
         Container(
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
                 color: Colors.grey.withOpacity(0.1),
-                blurRadius: 5,
-                offset: const Offset(0, 1),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
           child: Padding(
-            padding: const EdgeInsets.all(15),
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    Icon(Icons.person_pin, color: Colors.red[600]!, size: 20),
+                    Icon(Icons.person_pin, color: Colors.red[600]!, size: 22),
                     const SizedBox(width: 10),
                     Text(
-                      'I am signing up as',
+                      'Choose your role',
                       style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
                         color: Colors.grey[800]!,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 Row(
                   children: [
                     Expanded(
-                      child: SegmentedButton<String>(
-                        segments: const [
-                          ButtonSegment(
-                            value: 'donor',
-                            label: Text('Donor'),
-                            icon: Icon(Icons.volunteer_activism, size: 20),
-                          ),
-                          ButtonSegment(
-                            value: 'recipient',
-                            label: Text('Recipient'),
-                            icon: Icon(Icons.bloodtype, size: 20),
-                          ),
-                        ],
-                        selected: {_chosenRole},
-                        onSelectionChanged: (Set<String> selected) {
-                          setState(() => _chosenRole = selected.first);
-                        },
+                      child: _RoleCard(
+                        icon: Icons.volunteer_activism,
+                        title: 'Donor',
+                        description: 'Help save lives',
+                        isSelected: _chosenRole == 'donor',
+                        onTap: () => setState(() => _chosenRole = 'donor'),
+                        color: Colors.red,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _RoleCard(
+                        icon: Icons.bloodtype,
+                        title: 'Recipient',
+                        description: 'Request blood',
+                        isSelected: _chosenRole == 'recipient',
+                        onTap: () => setState(() => _chosenRole = 'recipient'),
+                        color: Colors.blue,
                       ),
                     ),
                   ],
@@ -892,6 +893,109 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
           contentPadding: const EdgeInsets.all(15),
         ),
         validator: validator,
+      ),
+    );
+  }
+}
+
+class _RoleCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String description;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final Color color;
+
+  const _RoleCard({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.isSelected,
+    required this.onTap,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isSelected ? color.withValues(alpha: 0.1) : Colors.grey[50],
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? color : Colors.grey[300]!,
+            width: isSelected ? 2 : 1,
+          ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.2),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isSelected ? color : Colors.grey[200],
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon,
+                size: 28,
+                color: isSelected ? Colors.white : Colors.grey[600],
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: isSelected ? color : Colors.grey[700],
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              description,
+              style: TextStyle(
+                fontSize: 12,
+                color: isSelected
+                    ? color.withValues(alpha: 0.8)
+                    : Colors.grey[500],
+              ),
+              textAlign: TextAlign.center,
+            ),
+            if (isSelected) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  'Selected',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

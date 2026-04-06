@@ -20,19 +20,21 @@ class DatabaseService {
   });
 
   Future<Connection> _getConnection() async {
-    _connection ??= await Connection.open(
-      Endpoint(
-        host: host,
-        port: port,
-        database: database,
-        username: username,
-        password: password,
-      ),
-      settings: ConnectionSettings(
-        sslMode: requireSsl ? SslMode.require : SslMode.disable,
-        queryMode: QueryMode.extended,
-      ),
-    );
+    if (_connection == null || !_connection!.isOpen) {
+      _connection = await Connection.open(
+        Endpoint(
+          host: host,
+          port: port,
+          database: database,
+          username: username,
+          password: password,
+        ),
+        settings: ConnectionSettings(
+          sslMode: requireSsl ? SslMode.require : SslMode.disable,
+          queryMode: QueryMode.extended,
+        ),
+      );
+    }
     return _connection!;
   }
 
@@ -41,10 +43,7 @@ class DatabaseService {
     Map<String, dynamic>? params,
   }) async {
     final conn = await _getConnection();
-    final result = await conn.execute(
-      Sql.named(sql),
-      parameters: params ?? {},
-    );
+    final result = await conn.execute(Sql.named(sql), parameters: params ?? {});
     return result.map((row) => row.toColumnMap()).toList();
   }
 

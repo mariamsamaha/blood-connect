@@ -68,7 +68,7 @@ class NotificationService {
       };
 
       await http.post(
-        Uri.parse(backendUrl),
+        Uri.parse('$backendUrl/sendNewRequest'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(body),
       );

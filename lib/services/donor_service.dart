@@ -78,8 +78,9 @@ class DonorService {
       return result.map((row) {
         final r = Map<String, dynamic>.from(row);
         final raw = row['distance_km'];
-        r['distance_km'] =
-            raw == null ? 0.0 : double.tryParse(raw.toString()) ?? 0.0;
+        r['distance_km'] = raw == null
+            ? 0.0
+            : double.tryParse(raw.toString()) ?? 0.0;
         return BloodRequest.fromJson(r);
       }).toList();
     } catch (e) {
@@ -94,7 +95,8 @@ class DonorService {
     required double donorLng,
   }) async {
     try {
-      await _db.query('''
+      await _db.query(
+        '''
         WITH locked AS (
           SELECT id, status
           FROM blood_requests
@@ -118,17 +120,22 @@ class DonorService {
         SET status = 'in_progress', updated_at = NOW()
         FROM locked, accepted
         WHERE br.id = @requestId::uuid AND locked.status = 'active'
-      ''', params: {
-        'requestId': requestId,
-        'donorId': donorId,
-        'donorLng': donorLng,
-        'donorLat': donorLat,
-      });
+      ''',
+        params: {
+          'requestId': requestId,
+          'donorId': donorId,
+          'donorLng': donorLng,
+          'donorLat': donorLat,
+        },
+      );
 
-      final check = await _db.query('''
+      final check = await _db.query(
+        '''
         SELECT response_type FROM donor_responses
         WHERE request_id = @requestId::uuid AND donor_id = @donorId::uuid
-      ''', params: {'requestId': requestId, 'donorId': donorId});
+      ''',
+        params: {'requestId': requestId, 'donorId': donorId},
+      );
 
       if (check.isEmpty || check.first['response_type'] != 'accepted') {
         throw Exception(
@@ -136,9 +143,12 @@ class DonorService {
         );
       }
 
-      final statusCheck = await _db.query('''
+      final statusCheck = await _db.query(
+        '''
         SELECT status FROM blood_requests WHERE id = @requestId::uuid
-      ''', params: {'requestId': requestId});
+      ''',
+        params: {'requestId': requestId},
+      );
       if (statusCheck.isEmpty || statusCheck.first['status'] != 'in_progress') {
         throw Exception('Accept failed: request was taken by another donor.');
       }
@@ -166,12 +176,15 @@ class DonorService {
     required String donorId,
   }) async {
     try {
-      await _db.query('''
+      await _db.query(
+        '''
         INSERT INTO donor_responses (request_id, donor_id, response_type)
         VALUES (@requestId::uuid, @donorId::uuid, 'declined')
         ON CONFLICT (request_id, donor_id) DO UPDATE
         SET response_type = 'declined', updated_at = NOW()
-      ''', params: {'requestId': requestId, 'donorId': donorId});
+      ''',
+        params: {'requestId': requestId, 'donorId': donorId},
+      );
     } catch (e) {
       throw Exception('Failed to decline request: $e');
     }
@@ -179,7 +192,8 @@ class DonorService {
 
   Future<BloodRequest?> getActiveMission(String donorId) async {
     try {
-      final result = await _db.query('''
+      final result = await _db.query(
+        '''
         SELECT 
           br.id,
           br.short_id,
@@ -203,7 +217,9 @@ class DonorService {
           AND br.status IN ('active', 'in_progress')
         ORDER BY br.created_at DESC
         LIMIT 1
-      ''', params: {'donorId': donorId});
+      ''',
+        params: {'donorId': donorId},
+      );
 
       if (result.isEmpty) return null;
       return BloodRequest.fromJson(result.first);
@@ -212,16 +228,21 @@ class DonorService {
     }
   }
 
-  Future<List<DonorResponseEntry>> getDonorResponseHistory(String donorId) async {
+  Future<List<DonorResponseEntry>> getDonorResponseHistory(
+    String donorId,
+  ) async {
     try {
-      final result = await _db.query('''
+      final result = await _db.query(
+        '''
         SELECT br.id AS request_id, br.short_id, br.hospital_name, br.blood_type,
                dr.response_type, dr.responded_at
         FROM donor_responses dr
         JOIN blood_requests br ON br.id = dr.request_id
         WHERE dr.donor_id = @donorId::uuid
         ORDER BY dr.responded_at DESC
-      ''', params: {'donorId': donorId});
+      ''',
+        params: {'donorId': donorId},
+      );
       return result.map((row) => DonorResponseEntry.fromJson(row)).toList();
     } catch (e) {
       return [];
@@ -230,10 +251,13 @@ class DonorService {
 
   Future<Map<String, int>> getDonorStats(String donorId) async {
     try {
-      final result = await _db.query('''
+      final result = await _db.query(
+        '''
         SELECT total_donations, reward_points
         FROM users WHERE id = @donorId::uuid
-      ''', params: {'donorId': donorId});
+      ''',
+        params: {'donorId': donorId},
+      );
       if (result.isEmpty) return {'totalDonations': 0, 'rewardPoints': 0};
       final r = result.first;
       return {
@@ -243,5 +267,36 @@ class DonorService {
     } catch (e) {
       return {'totalDonations': 0, 'rewardPoints': 0};
     }
+  }
+
+  Future<void> withdrawAcceptance({
+    required String requestId,
+    required String donorId,
+  }) async {
+    await _db.query(
+      '''
+      WITH withdrawn AS (
+        UPDATE donor_responses
+        SET response_type = 'declined', updated_at = NOW()
+        WHERE request_id = @requestId::uuid
+          AND donor_id = @donorId::uuid
+          AND response_type = 'accepted'
+        RETURNING id
+      )
+      UPDATE blood_requests
+      SET status = 'active', updated_at = NOW()
+      FROM withdrawn
+      WHERE id = @requestId::uuid
+        AND status = 'in_progress'
+    ''',
+      params: {'requestId': requestId, 'donorId': donorId},
+    );
+
+    await _audit?.log(
+      requestId: requestId,
+      eventType: 'donor_withdrew',
+      detail: 'Donor withdrew acceptance.',
+      actorUserId: donorId,
+    );
   }
 }
