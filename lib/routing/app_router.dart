@@ -22,20 +22,9 @@ void clearProfileCache() {
   _isFetchingProfile = false;
 }
 
-/// Call this after role switch to clear cached profile
-void onRoleSwitched() {
-  clearProfileCache();
-}
-
 /// Post-login home route for this profile (MVP role routing).
 String homeRouteForProfile(UserProfile profile) {
-  if (profile.accountType == AccountType.hospital) {
-    return '/hospital/dashboard';
-  }
-  if (profile.activeMode == ActiveMode.recipient_view) {
-    return '/recipient/home';
-  }
-  return '/donor/home';
+  return profile.homeRoute;
 }
 
 GoRouter buildRouter({
@@ -123,14 +112,14 @@ GoRouter buildRouter({
       }
 
       if (loc == '/donor/home') {
-        if (profile.activeMode != ActiveMode.donor_view) {
+        if (profile.role != UserRole.donor) {
           return '/recipient/home';
         }
         return null;
       }
 
       if (loc == '/recipient/home' || loc == '/create-request') {
-        if (profile.activeMode != ActiveMode.recipient_view) {
+        if (profile.role != UserRole.recipient) {
           return '/donor/home';
         }
         return null;

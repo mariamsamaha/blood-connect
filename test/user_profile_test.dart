@@ -12,13 +12,11 @@ void main() {
         'phone': '0123456789',
         'blood_type': 'O+',
         'account_type': 'regular',
-        'is_donor': true,
+        'role': 'donor',
         'is_recipient': false,
         'donor_status': 'available',
-        'active_mode': 'donor_view',
         'total_donations': 3,
         'reward_points': 50,
-        
       };
 
       final profile = UserProfile.fromJson(json);
@@ -30,10 +28,9 @@ void main() {
       expect(profile.phone, '0123456789');
       expect(profile.bloodType, 'O+');
       expect(profile.accountType, AccountType.regular);
-      expect(profile.isDonor, isTrue);
+      expect(profile.role, UserRole.donor);
       expect(profile.isRecipient, isFalse);
       expect(profile.donorStatus, DonorStatus.available);
-      expect(profile.activeMode, ActiveMode.donor_view);
       expect(profile.latitude, isNull);
       expect(profile.longitude, isNull);
       expect(profile.hospitalName, isNull);
@@ -54,21 +51,20 @@ void main() {
         'phone': null,
         'blood_type': null,
         'account_type': 'hospital',
-        'is_donor': false,
+        'role': 'hospital',
         'is_recipient': false,
         'donor_status': 'unavailable',
-        'active_mode': 'hospital_view',
         'hospital_name': 'Zewail City University Hospital',
         'hospital_code': 'ZC',
         'hospital_verified': true,
         'total_donations': null,
         'reward_points': null,
-        // location columns (latitude/longitude) omitted intentionally
       };
 
       final profile = UserProfile.fromJson(json);
 
       expect(profile.accountType, AccountType.hospital);
+      expect(profile.role, UserRole.hospital);
       expect(profile.hospitalName, 'Zewail City University Hospital');
       expect(profile.hospitalCode, 'ZC');
       expect(profile.hospitalVerified, isTrue);
@@ -89,10 +85,9 @@ void main() {
         phone: '0100000000',
         bloodType: 'A-',
         accountType: AccountType.regular,
-        isDonor: true,
+        role: UserRole.donor,
         isRecipient: false,
         donorStatus: DonorStatus.available,
-        activeMode: ActiveMode.donor_view,
         totalDonations: 1,
         rewardPoints: 10,
         cityArea: 'Cairo',
@@ -109,15 +104,69 @@ void main() {
       expect(roundTripped.phone, original.phone);
       expect(roundTripped.bloodType, original.bloodType);
       expect(roundTripped.accountType, original.accountType);
-      expect(roundTripped.isDonor, original.isDonor);
+      expect(roundTripped.role, original.role);
       expect(roundTripped.isRecipient, original.isRecipient);
       expect(roundTripped.donorStatus, original.donorStatus);
-      expect(roundTripped.activeMode, original.activeMode);
       expect(roundTripped.totalDonations, original.totalDonations);
       expect(roundTripped.rewardPoints, original.rewardPoints);
       expect(roundTripped.cityArea, original.cityArea);
       expect(roundTripped.notificationRadiusKm, original.notificationRadiusKm);
     });
   });
-}
 
+  group('UserProfile.homeRoute', () {
+    test('returns /donor/home for donor role', () {
+      final profile = UserProfile(
+        id: 'user-1',
+        firebaseUid: 'firebase_uid_1',
+        email: 'donor@example.com',
+        name: 'Donor',
+        phone: '0123456789',
+        bloodType: 'O+',
+        accountType: AccountType.regular,
+        role: UserRole.donor,
+        isRecipient: false,
+        donorStatus: DonorStatus.available,
+      );
+
+      expect(profile.homeRoute, '/donor/home');
+    });
+
+    test('returns /recipient/home for recipient role', () {
+      final profile = UserProfile(
+        id: 'user-1',
+        firebaseUid: 'firebase_uid_1',
+        email: 'recipient@example.com',
+        name: 'Recipient',
+        phone: '0123456789',
+        bloodType: 'O+',
+        accountType: AccountType.regular,
+        role: UserRole.recipient,
+        isRecipient: true,
+        donorStatus: DonorStatus.unavailable,
+      );
+
+      expect(profile.homeRoute, '/recipient/home');
+    });
+
+    test('returns /hospital/dashboard for hospital role', () {
+      final profile = UserProfile(
+        id: 'hospital-1',
+        firebaseUid: 'firebase_hospital_uid',
+        email: 'admin@hospital.com',
+        name: 'Hospital',
+        phone: '0123456789',
+        bloodType: '',
+        accountType: AccountType.hospital,
+        role: UserRole.hospital,
+        isRecipient: false,
+        donorStatus: DonorStatus.unavailable,
+        hospitalName: 'Test Hospital',
+        hospitalCode: 'TH',
+        hospitalVerified: true,
+      );
+
+      expect(profile.homeRoute, '/hospital/dashboard');
+    });
+  });
+}
