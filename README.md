@@ -51,7 +51,6 @@ BloodConnect provides:
 - [x] Edit and cancel active requests
 
 ### 2. Donor Features
-- [x] Role toggle (Donor/Recipient view)
 - [x] Blood type + location-based matching
 - [x] Push notifications for nearby requests
 - [x] Accept/Decline requests
