@@ -10,8 +10,9 @@ class HospitalService {
   static String normalizeFourDigitCode(String raw) {
     final digits = raw.replaceAll(RegExp(r'\D'), '');
     if (digits.isEmpty) return '';
-    final tail =
-        digits.length > 4 ? digits.substring(digits.length - 4) : digits;
+    final tail = digits.length > 4
+        ? digits.substring(digits.length - 4)
+        : digits;
     return tail.padLeft(4, '0');
   }
 
@@ -47,7 +48,7 @@ class HospitalService {
       LEFT JOIN donor_responses dr ON dr.request_id = br.id AND dr.response_type = 'accepted'
       LEFT JOIN users u ON u.id = dr.donor_id
       WHERE br.hospital_id = @hospitalId::uuid
-        AND split_part(br.short_id, '-', 3) = @code
+        AND REPLACE(SPLIT_PART(br.short_id, '-', 3), ' ', '') = @code
         AND br.status IN ('active', 'in_progress')
       ORDER BY br.created_at DESC
     ''',
@@ -60,10 +61,12 @@ class HospitalService {
       final donorPhone = m.remove('donor_phone')?.toString();
       return HospitalRequestMatch(
         request: BloodRequest.fromJson(m),
-        donorName:
-            (donorName != null && donorName.isNotEmpty) ? donorName : null,
-        donorPhone:
-            (donorPhone != null && donorPhone.isNotEmpty) ? donorPhone : null,
+        donorName: (donorName != null && donorName.isNotEmpty)
+            ? donorName
+            : null,
+        donorPhone: (donorPhone != null && donorPhone.isNotEmpty)
+            ? donorPhone
+            : null,
       );
     }).toList();
   }
@@ -114,3 +117,4 @@ class HospitalService {
     }
   }
 }
+
