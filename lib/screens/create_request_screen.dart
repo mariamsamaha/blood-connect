@@ -29,6 +29,10 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
   bool _isLoadingHospitals = true;
   bool _isSubmitting = false;
 
+  double? _userLat;
+  double? _userLng;
+  bool _isLoadingLocation = false;
+
   final List<String> bloodTypes = [
     'A+',
     'A-',
@@ -45,6 +49,45 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
     super.initState();
     _loadHospitals();
     _prefillContactPhone();
+    _loadUserLocation();
+  }
+
+  Future<void> _loadUserLocation() async {
+    setState(() => _isLoadingLocation = true);
+
+    // First try GPS
+    try {
+      final locationService = ref.read(locationServiceProvider);
+      final pos = await locationService.getCurrentPosition();
+      if (pos != null) {
+        _userLat = pos.latitude;
+        _userLng = pos.longitude;
+        if (mounted) setState(() => _isLoadingLocation = false);
+        return;
+      }
+    } catch (_) {}
+
+    // Then try profile (signup) location
+    try {
+      final authService = ref.read(authServiceProvider);
+      final userService = ref.read(userServiceProvider);
+      final firebaseUser = authService.currentUser;
+      if (firebaseUser != null) {
+        final profile = await userService.getProfileByFirebaseUid(
+          firebaseUser.uid,
+        );
+        if (profile != null &&
+            profile.latitude != null &&
+            profile.longitude != null) {
+          _userLat = profile.latitude;
+          _userLng = profile.longitude;
+        }
+      }
+    } catch (_) {}
+
+    if (mounted) {
+      setState(() => _isLoadingLocation = false);
+    }
   }
 
   Future<void> _loadHospitals() async {
@@ -455,6 +498,10 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
                       _buildHospitalSelector(),
                       const SizedBox(height: 20),
 
+                      _buildSectionLabel('Location for Donor Matching'),
+                      _buildLocationCard(),
+                      const SizedBox(height: 20),
+
                       _buildSectionLabel('Patient Name (Optional)'),
                       _buildTextField(
                         controller: _patientNameController,
@@ -815,6 +862,72 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
             },
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildLocationCard() {
+    final hasLocation = _userLat != null && _userLng != null;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withValues(alpha: 0.1),
+            blurRadius: 5,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(15),
+        child: Row(
+          children: [
+            Icon(
+              Icons.location_on,
+              color: hasLocation ? Colors.green : Colors.red[600],
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    hasLocation ? 'Location captured' : 'Add your location',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey[800],
+                    ),
+                  ),
+                  Text(
+                    hasLocation
+                        ? '${_userLat!.toStringAsFixed(4)}, ${_userLng!.toStringAsFixed(4)}'
+                        : 'Required for donor matching',
+                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+            if (_isLoadingLocation)
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else
+              TextButton(
+                onPressed: _loadUserLocation,
+                child: Text(
+                  hasLocation ? 'Update' : 'Get Location',
+                  style: TextStyle(color: Colors.red[600]),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

@@ -18,10 +18,11 @@ class DonorService {
     int radiusKm = 120,
   }) async {
     try {
+      final donorPoint =
+          'ST_SetSRID(ST_MakePoint(${donorLng}, ${donorLat}), 4326)::geography';
+
       final params = <String, dynamic>{
         'donorId': donorId,
-        'donorLng': donorLng,
-        'donorLat': donorLat,
         'radiusM': radiusKm * 1000,
         'compatibleTypesCsv':
             (donorCanFulfillRequestTypes[donorBloodType] ??
@@ -47,20 +48,13 @@ class DonorService {
     br.total_eligible_count,
     br.created_at,
     br.expires_at,
-    ROUND((
-      ST_Distance(
-        br.hospital_location,
-        ST_SetSRID(ST_MakePoint(@donorLng::float8, @donorLat::float8), 4326)::geography
-      ) / 1000
-    )::numeric, 2) AS distance_km
+    ROUND((ST_Distance(br.hospital_location, $donorPoint) / 1000)::numeric, 2) AS distance_km
   FROM blood_requests br
   WHERE br.status = 'active'
     AND br.expires_at > NOW()
-    AND br.blood_type = ANY(string_to_array(@compatibleTypesCsv, ',')::varchar[])
-    AND ST_Distance(
-          br.hospital_location,
-          ST_SetSRID(ST_MakePoint(@donorLng::float8, @donorLat::float8), 4326)::geography
-        ) <= @radiusM::float8
+    AND UPPER(br.blood_type) = ANY(SELECT UPPER(v) FROM unnest(string_to_array(@compatibleTypesCsv, ',')) AS v)
+    AND br.hospital_location IS NOT NULL
+    AND ST_Distance(br.hospital_location, $donorPoint) <= @radiusM::float8
     AND NOT EXISTS (
       SELECT 1 FROM donor_responses dr
       WHERE dr.request_id = br.id 
@@ -300,3 +294,4 @@ class DonorService {
     );
   }
 }
+
