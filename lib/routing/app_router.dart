@@ -10,6 +10,7 @@ import 'package:bloodconnect/screens/donor_home_screen.dart';
 import 'package:bloodconnect/screens/recipient_home_screen.dart';
 import 'package:bloodconnect/screens/hospital_dashboard_screen.dart';
 import 'package:bloodconnect/screens/create_request_screen.dart';
+import 'package:bloodconnect/screens/schedule_appointment_screen.dart';
 import 'package:bloodconnect/screens/profile_screen.dart';
 
 UserProfile? _cachedProfile;
@@ -58,6 +59,10 @@ GoRouter buildRouter({
       GoRoute(
         path: '/create-request',
         builder: (ctx, s) => const CreateRequestScreen(),
+      ),
+      GoRoute(
+        path: '/schedule',
+        builder: (ctx, s) => const ScheduleAppointmentScreen(),
       ),
       GoRoute(path: '/profile', builder: (ctx, s) => const ProfileScreen()),
     ],
