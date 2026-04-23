@@ -16,6 +16,7 @@ import 'package:bloodconnect/services/notification_service.dart';
 import 'package:bloodconnect/services/location_service.dart';
 import 'package:bloodconnect/services/donor_service.dart';
 import 'package:bloodconnect/services/hospital_service.dart';
+import 'package:bloodconnect/services/appointment_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
@@ -70,6 +71,10 @@ final donorServiceProvider = Provider<DonorService>((ref) {
 
 final hospitalServiceProvider = Provider<HospitalService>((ref) {
   return HospitalService(ref.watch(databaseServiceProvider));
+});
+
+final appointmentServiceProvider = Provider<AppointmentService>((ref) {
+  return AppointmentService(ref.watch(databaseServiceProvider));
 });
 
 final routerRefreshProvider = Provider<RouterRefreshNotifier>((ref) {
