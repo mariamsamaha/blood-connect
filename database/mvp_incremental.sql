@@ -106,16 +106,27 @@ BEGIN
 
     UPDATE users SET
         is_recipient = FALSE,
-        active_mode = 'donor_view',
         updated_at = NOW()
     WHERE id = v_requester;
 
+    -- Update donor stats
     UPDATE users SET
         total_donations = COALESCE(total_donations, 0) + 1,
         last_donation_date = CURRENT_DATE,
         reward_points = COALESCE(reward_points, 0) + 10,
         updated_at = NOW()
     WHERE id = v_donor;
+
+    -- Auto-award badges based on donation count
+    INSERT INTO user_badges (user_id, badge_id)
+    SELECT v_donor, b.id
+    FROM badges b
+    WHERE b.requirement_type = 'donation_count'
+      AND b.requirement_value <= (SELECT total_donations FROM users WHERE id = v_donor)
+      AND NOT EXISTS (
+          SELECT 1 FROM user_badges ub 
+          WHERE ub.user_id = v_donor AND ub.badge_id = b.id
+      );
 
     RETURN QUERY SELECT TRUE, NULL::TEXT;
 END;

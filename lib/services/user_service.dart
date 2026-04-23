@@ -243,7 +243,7 @@ class UserService {
     }
   }
 
-  /// Save FCM token for push notifications (e.g. donor request alerts).
+/// Save FCM token for push notifications (e.g. donor request alerts).
   Future<void> updateFcmToken(String firebaseUid, String? token) async {
     if (token == null || token.isEmpty) return;
     try {
@@ -251,14 +251,31 @@ class UserService {
         '''
         UPDATE users SET fcm_token = @token, updated_at = NOW()
         WHERE firebase_uid = @uid
-      ''',
+        ''',
         params: {'uid': firebaseUid, 'token': token},
       );
       debugPrint('FCM token saved for $firebaseUid');
     } catch (e) {
-      // Log so the failure is visible — a silent failure here means zero notifications
       debugPrint('FCM token save FAILED for $firebaseUid: $e');
       debugPrint('Make sure mvp_incremental.sql has been run on Supabase (adds fcm_token column).');
+    }
+  }
+
+  /// Get badges earned by user
+  Future<List<Map<String, dynamic>>> getUserBadges(String userId) async {
+    try {
+      return await _db.query(
+        '''
+        SELECT b.id, b.name, b.description, b.icon, b.points_required, ub.awarded_at
+        FROM user_badges ub
+        JOIN badges b ON b.id = ub.badge_id
+        WHERE ub.user_id = @userId::uuid
+        ORDER BY ub.awarded_at DESC
+        ''',
+        params: {'userId': userId},
+      );
+    } catch (e) {
+      return [];
     }
   }
 }
