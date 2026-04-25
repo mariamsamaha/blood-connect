@@ -42,7 +42,7 @@ class NotificationService {
         FROM users u
         WHERE u.fcm_token IS NOT NULL
           AND u.account_type = 'regular'
-          AND u.is_donor = TRUE
+          AND u.role = 'donor'
           AND u.donor_status = 'available'
           AND u.is_active = TRUE
           AND u.notification_enabled = TRUE
