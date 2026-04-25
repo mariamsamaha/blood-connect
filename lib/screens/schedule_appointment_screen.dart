@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:bloodconnect/main.dart';
-import 'package:bloodconnect/models/user_profile.dart';
 
 class ScheduleAppointmentScreen extends ConsumerStatefulWidget {
   const ScheduleAppointmentScreen({super.key});
@@ -15,7 +14,8 @@ class _ScheduleAppointmentScreenState extends ConsumerState<ScheduleAppointmentS
   List<Map<String, dynamic>> _slots = [];
   List<Map<String, dynamic>> _myAppointments = [];
   bool _isLoading = true;
-  String? _selectedHospitalId;
+  String? _donorId;
+  String _donorBloodType = 'O+';
 
   @override
   void initState() {
@@ -36,14 +36,18 @@ class _ScheduleAppointmentScreenState extends ConsumerState<ScheduleAppointmentS
       final profile = await userService.getProfileByFirebaseUid(firebaseUser.uid);
       if (profile == null) return;
 
+      // Get available slots (from any hospital)
+      final allSlots = await appointmentService.getAvailableSlots(null);
+      
       // Get my appointments
       final myAppts = await appointmentService.getDonorAppointments(profile.id);
 
       if (mounted) {
         setState(() {
-          _slots = [];
+          _slots = allSlots;
           _myAppointments = myAppts;
-          _selectedHospitalId = profile.id;
+          _donorId = profile.id;
+          _donorBloodType = profile.bloodType.isNotEmpty ? profile.bloodType : 'O+';
           _isLoading = false;
         });
       }
@@ -56,14 +60,21 @@ class _ScheduleAppointmentScreenState extends ConsumerState<ScheduleAppointmentS
   }
 
   Future<void> _bookSlot(Map<String, dynamic> slot) async {
-    if (_selectedHospitalId == null) return;
+    if (_donorId == null) return;
+
+    DateTime slotDate;
+    try {
+      slotDate = DateTime.parse(slot['slot_date'].toString());
+    } catch (e) {
+      slotDate = DateTime.now();
+    }
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Book Appointment'),
         content: Text(
-          'Book ${DateFormat('MMM d, yyyy').format(slot['slot_date'] as DateTime)} '
+          'Book ${DateFormat('MMM d, yyyy').format(slotDate)} '
           'at ${slot['slot_time']}?',
         ),
         actions: [
@@ -85,8 +96,8 @@ class _ScheduleAppointmentScreenState extends ConsumerState<ScheduleAppointmentS
       final appointmentService = ref.read(appointmentServiceProvider);
       await appointmentService.bookSlot(
         slotId: slot['id'].toString(),
-        donorId: _selectedHospitalId!,
-        bloodType: 'O+',
+        donorId: _donorId!,
+        bloodType: _donorBloodType,
       );
 
       if (mounted) {
@@ -115,15 +126,19 @@ class _ScheduleAppointmentScreenState extends ConsumerState<ScheduleAppointmentS
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildMyAppointments(),
-                  const SizedBox(height: 24),
-                  _buildAvailableSlots(),
-                ],
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildMyAppointments(),
+                    const SizedBox(height: 24),
+                    _buildAvailableSlots(),
+                  ],
+                ),
               ),
             ),
     );
@@ -137,10 +152,10 @@ class _ScheduleAppointmentScreenState extends ConsumerState<ScheduleAppointmentS
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
         ),
-        child: const Center(
+        child: Center(
           child: Text(
             'No appointments yet',
-            style: TextStyle(color: Colors.grey),
+            style: TextStyle(color: Colors.grey.shade500),
           ),
         ),
       );
@@ -155,9 +170,15 @@ class _ScheduleAppointmentScreenState extends ConsumerState<ScheduleAppointmentS
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'My Appointments',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          Row(
+            children: [
+              Icon(Icons.calendar_today, color: Colors.red.shade600),
+              const SizedBox(width: 8),
+              const Text(
+                'My Appointments',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           ..._myAppointments.map((appt) => _buildAppointmentTile(appt)),
@@ -169,6 +190,13 @@ class _ScheduleAppointmentScreenState extends ConsumerState<ScheduleAppointmentS
   Widget _buildAppointmentTile(Map<String, dynamic> appt) {
     final status = appt['status']?.toString() ?? '';
     final statusColor = status == 'scheduled' ? Colors.green : Colors.grey;
+
+    DateTime slotDate;
+    try {
+      slotDate = DateTime.parse(appt['slot_date'].toString());
+    } catch (e) {
+      slotDate = DateTime.now();
+    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -188,7 +216,7 @@ class _ScheduleAppointmentScreenState extends ConsumerState<ScheduleAppointmentS
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
                 Text(
-                  '${DateFormat('MMM d, yyyy').format(appt['slot_date'] as DateTime)} at ${appt['slot_time']}',
+                  '${DateFormat('MMM d, yyyy').format(slotDate)} at ${appt['slot_time']}',
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                 ),
               ],
@@ -220,18 +248,24 @@ class _ScheduleAppointmentScreenState extends ConsumerState<ScheduleAppointmentS
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Available Slots',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          Row(
+            children: [
+              Icon(Icons.access_time, color: Colors.red.shade600),
+              const SizedBox(width: 8),
+              const Text(
+                'Available Slots',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           if (_slots.isEmpty)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
+            Container(
+              padding: const EdgeInsets.all(24),
+              child: Center(
                 child: Text(
                   'No slots available. Contact hospital to schedule.',
-                  style: TextStyle(color: Colors.grey),
+                  style: TextStyle(color: Colors.grey.shade500),
                 ),
               ),
             )
@@ -246,6 +280,13 @@ class _ScheduleAppointmentScreenState extends ConsumerState<ScheduleAppointmentS
     final available = slot['available_slots'] as int? ?? 0;
     final isAvailable = available > 0;
 
+    DateTime slotDate;
+    try {
+      slotDate = DateTime.parse(slot['slot_date'].toString());
+    } catch (e) {
+      slotDate = DateTime.now();
+    }
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
@@ -259,7 +300,7 @@ class _ScheduleAppointmentScreenState extends ConsumerState<ScheduleAppointmentS
       child: Row(
         children: [
           Icon(
-            Icons.calendar_today,
+            Icons.event,
             color: isAvailable ? Colors.green : Colors.grey,
           ),
           const SizedBox(width: 12),
@@ -268,11 +309,11 @@ class _ScheduleAppointmentScreenState extends ConsumerState<ScheduleAppointmentS
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  DateFormat('EEEE, MMM d, yyyy').format(slot['slot_date'] as DateTime),
+                  DateFormat('EEEE, MMM d, yyyy').format(slotDate),
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
                 Text(
-                  '${slot['slot_time']} - ${available} slots left',
+                  '${slot['slot_time']} - $available slots left',
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                 ),
               ],

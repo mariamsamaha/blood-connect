@@ -62,15 +62,15 @@ class UserProfile {
   factory UserProfile.fromJson(Map<String, dynamic> json) {
     final n = _parseInt(json['notification_radius_km']);
 
-    // Parse role - new field, fallback to old logic
+    // Parse role - new field, fallback to account_type
     UserRole parsedRole;
     if (json['role'] != null) {
       parsedRole = UserRole.values.byName(json['role'] as String);
     } else {
-      // Fallback: derive role from active_mode or account_type
+      // Fallback: derive role from account_type
       if (json['account_type'] == 'hospital') {
         parsedRole = UserRole.hospital;
-      } else if (json['active_mode'] == 'recipient_view') {
+      } else if (json['is_recipient'] == true) {
         parsedRole = UserRole.recipient;
       } else {
         parsedRole = UserRole.donor;

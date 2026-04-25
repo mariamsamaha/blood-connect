@@ -73,11 +73,11 @@ class UserService {
         '''
         INSERT INTO users (
           firebase_uid, email, name, account_type,
-          is_recipient, donor_status, role, is_donor
+          is_recipient, donor_status, role
         ) VALUES (
           @uid, @email, @name, @accountType,
           FALSE, 'available',
-          @role, TRUE
+          @role
         ) RETURNING *, 
           ST_Y(location::geometry) as latitude,
           ST_X(location::geometry) as longitude;
