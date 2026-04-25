@@ -14,7 +14,10 @@ class AppointmentService {
           (max_donors - current_count) as available_slots
         FROM appointment_slots
         WHERE hospital_id = @hospitalId::uuid
-          AND slot_date >= CURRENT_DATE
+          AND (
+            slot_date > CURRENT_DATE 
+            OR (slot_date = CURRENT_DATE AND slot_time > CURRENT_TIME)
+          )
           AND current_count < max_donors
         ORDER BY slot_date, slot_time
       ''', params: {'hospitalId': hospitalId});
@@ -24,7 +27,10 @@ class AppointmentService {
           id, slot_date, slot_time, max_donors, current_count,
           (max_donors - current_count) as available_slots
         FROM appointment_slots
-        WHERE slot_date >= CURRENT_DATE
+        WHERE (
+          slot_date > CURRENT_DATE 
+          OR (slot_date = CURRENT_DATE AND slot_time > CURRENT_TIME)
+        )
           AND current_count < max_donors
         ORDER BY slot_date, slot_time
       ''');
@@ -51,19 +57,24 @@ class AppointmentService {
     required String bloodType,
     String? notes,
   }) async {
-    await _db.query('''
+    final result = await _db.query('''
       INSERT INTO appointments (donor_id, slot_id, blood_type, notes)
       SELECT @donorId::uuid, @slotId::uuid, @bloodType, @notes
       WHERE EXISTS (
         SELECT 1 FROM appointment_slots 
         WHERE id = @slotId::uuid AND current_count < max_donors
       )
+      RETURNING id
     ''', params: {
       'slotId': slotId,
       'donorId': donorId,
       'bloodType': bloodType,
       'notes': notes,
     });
+
+    if (result.isEmpty) {
+      throw Exception('Slot is fully booked. Please choose another time.');
+    }
   }
 
   /// Get donor's appointments
@@ -86,16 +97,21 @@ class AppointmentService {
     required String appointmentId,
     required String donorId,
   }) async {
-    await _db.query('''
+    final result = await _db.query('''
       UPDATE appointments 
       SET status = 'cancelled'
       WHERE id = @appointmentId::uuid 
         AND donor_id = @donorId::uuid 
         AND status = 'scheduled'
+      RETURNING id
     ''', params: {
       'appointmentId': appointmentId,
       'donorId': donorId,
     });
+
+    if (result.isEmpty) {
+      throw Exception('Appointment not found or already cancelled.');
+    }
   }
 
   /// Hospital creates slots

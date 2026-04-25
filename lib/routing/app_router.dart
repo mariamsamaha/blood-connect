@@ -132,6 +132,13 @@ GoRouter buildRouter({
 
       if (loc == '/profile') return null;
 
+      if (loc == '/schedule') {
+        if (profile.role != UserRole.donor) {
+          return homeRouteForProfile(profile);
+        }
+        return null;
+      }
+
       if (loc == '/' || loc == '/login') {
         return homeRouteForProfile(profile);
       }

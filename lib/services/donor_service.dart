@@ -18,11 +18,10 @@ class DonorService {
     int radiusKm = 120,
   }) async {
     try {
-      final donorPoint =
-          'ST_SetSRID(ST_MakePoint(${donorLng}, ${donorLat}), 4326)::geography';
-
       final params = <String, dynamic>{
         'donorId': donorId,
+        'donorLng': donorLng,
+        'donorLat': donorLat,
         'radiusM': radiusKm * 1000,
         'compatibleTypesCsv':
             (donorCanFulfillRequestTypes[donorBloodType] ??
@@ -48,13 +47,13 @@ class DonorService {
     br.total_eligible_count,
     br.created_at,
     br.expires_at,
-    ROUND((ST_Distance(br.hospital_location, $donorPoint) / 1000)::numeric, 2) AS distance_km
+    ROUND((ST_Distance(br.hospital_location, ST_SetSRID(ST_MakePoint(@donorLng::float8, @donorLat::float8), 4326)::geography) / 1000)::numeric, 2) AS distance_km
   FROM blood_requests br
   WHERE br.status = 'active'
     AND br.expires_at > NOW()
     AND UPPER(br.blood_type) = ANY(SELECT UPPER(v) FROM unnest(string_to_array(@compatibleTypesCsv, ',')) AS v)
     AND br.hospital_location IS NOT NULL
-    AND ST_Distance(br.hospital_location, $donorPoint) <= @radiusM::float8
+    AND ST_Distance(br.hospital_location, ST_SetSRID(ST_MakePoint(@donorLng::float8, @donorLat::float8), 4326)::geography) <= @radiusM::float8
     AND NOT EXISTS (
       SELECT 1 FROM donor_responses dr
       WHERE dr.request_id = br.id 
@@ -267,31 +266,40 @@ class DonorService {
     required String requestId,
     required String donorId,
   }) async {
-    await _db.query(
-      '''
-      WITH withdrawn AS (
-        UPDATE donor_responses
-        SET response_type = 'declined', updated_at = NOW()
-        WHERE request_id = @requestId::uuid
-          AND donor_id = @donorId::uuid
-          AND response_type = 'accepted'
+    try {
+      final result = await _db.query(
+        '''
+        WITH withdrawn AS (
+          UPDATE donor_responses
+          SET response_type = 'declined', updated_at = NOW()
+          WHERE request_id = @requestId::uuid
+            AND donor_id = @donorId::uuid
+            AND response_type = 'accepted'
+          RETURNING id
+        )
+        UPDATE blood_requests
+        SET status = 'active', updated_at = NOW()
+        FROM withdrawn
+        WHERE id = @requestId::uuid
+          AND status = 'in_progress'
         RETURNING id
-      )
-      UPDATE blood_requests
-      SET status = 'active', updated_at = NOW()
-      FROM withdrawn
-      WHERE id = @requestId::uuid
-        AND status = 'in_progress'
-    ''',
-      params: {'requestId': requestId, 'donorId': donorId},
-    );
+      ''',
+        params: {'requestId': requestId, 'donorId': donorId},
+      );
 
-    await _audit?.log(
-      requestId: requestId,
-      eventType: 'donor_withdrew',
-      detail: 'Donor withdrew acceptance.',
-      actorUserId: donorId,
-    );
+      if (result.isEmpty) {
+        throw Exception('No active acceptance found to withdraw.');
+      }
+
+      await _audit?.log(
+        requestId: requestId,
+        eventType: 'donor_withdrew',
+        detail: 'Donor withdrew acceptance.',
+        actorUserId: donorId,
+      );
+    } catch (e) {
+      throw Exception('Failed to withdraw acceptance: $e');
+    }
   }
 }
 

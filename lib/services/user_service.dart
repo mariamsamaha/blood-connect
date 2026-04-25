@@ -266,11 +266,13 @@ class UserService {
     try {
       return await _db.query(
         '''
-        SELECT b.id, b.name, b.description, b.icon, b.points_required, ub.awarded_at
+        SELECT b.id, b.badge_name AS name, b.description, 
+               b.icon_url AS icon, b.requirement_value AS points_required, 
+               ub.earned_at
         FROM user_badges ub
         JOIN badges b ON b.id = ub.badge_id
         WHERE ub.user_id = @userId::uuid
-        ORDER BY ub.awarded_at DESC
+        ORDER BY ub.earned_at DESC
         ''',
         params: {'userId': userId},
       );
