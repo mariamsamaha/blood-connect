@@ -5,18 +5,30 @@ class AppointmentService {
 
   AppointmentService(this._db);
 
-  /// Get available slots for a hospital
-  Future<List<Map<String, dynamic>>> getAvailableSlots(String hospitalId) async {
-    return await _db.query('''
-      SELECT 
-        id, slot_date, slot_time, max_donors, current_count,
-        (max_donors - current_count) as available_slots
-      FROM appointment_slots
-      WHERE hospital_id = @hospitalId::uuid
-        AND slot_date >= CURRENT_DATE
-        AND current_count < max_donors
-      ORDER BY slot_date, slot_time
-    ''', params: {'hospitalId': hospitalId});
+  /// Get available slots for a hospital (or all if hospitalId is null)
+  Future<List<Map<String, dynamic>>> getAvailableSlots(String? hospitalId) async {
+    if (hospitalId != null) {
+      return await _db.query('''
+        SELECT 
+          id, slot_date, slot_time, max_donors, current_count,
+          (max_donors - current_count) as available_slots
+        FROM appointment_slots
+        WHERE hospital_id = @hospitalId::uuid
+          AND slot_date >= CURRENT_DATE
+          AND current_count < max_donors
+        ORDER BY slot_date, slot_time
+      ''', params: {'hospitalId': hospitalId});
+    } else {
+      return await _db.query('''
+        SELECT 
+          id, slot_date, slot_time, max_donors, current_count,
+          (max_donors - current_count) as available_slots
+        FROM appointment_slots
+        WHERE slot_date >= CURRENT_DATE
+          AND current_count < max_donors
+        ORDER BY slot_date, slot_time
+      ''');
+    }
   }
 
   /// Get all slots for a hospital (for hospital to manage)
@@ -40,16 +52,12 @@ class AppointmentService {
     String? notes,
   }) async {
     await _db.query('''
-      WITH updated AS (
-        UPDATE appointment_slots 
-        SET current_count = current_count + 1 
-        WHERE id = @slotId::uuid 
-          AND current_count < max_donors
-        RETURNING id
-      )
       INSERT INTO appointments (donor_id, slot_id, blood_type, notes)
       SELECT @donorId::uuid, @slotId::uuid, @bloodType, @notes
-      FROM updated
+      WHERE EXISTS (
+        SELECT 1 FROM appointment_slots 
+        WHERE id = @slotId::uuid AND current_count < max_donors
+      )
     ''', params: {
       'slotId': slotId,
       'donorId': donorId,
@@ -79,18 +87,11 @@ class AppointmentService {
     required String donorId,
   }) async {
     await _db.query('''
-      WITH cancelled AS (
-        UPDATE appointments 
-        SET status = 'cancelled'
-        WHERE id = @appointmentId::uuid 
-          AND donor_id = @donorId::uuid 
-          AND status = 'scheduled'
-        RETURNING slot_id
-      )
-      UPDATE appointment_slots
-      SET current_count = current_count - 1
-      FROM cancelled
-      WHERE appointment_slots.id = cancelled.slot_id
+      UPDATE appointments 
+      SET status = 'cancelled'
+      WHERE id = @appointmentId::uuid 
+        AND donor_id = @donorId::uuid 
+        AND status = 'scheduled'
     ''', params: {
       'appointmentId': appointmentId,
       'donorId': donorId,
