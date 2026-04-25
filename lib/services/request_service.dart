@@ -176,62 +176,56 @@ class RequestService {
 
       final requestResult = await _db.query(
         '''
-      INSERT INTO blood_requests (
-        short_id,
-        requester_id,
-        blood_type,
-        units_needed,
-        urgency_level,
-        hospital_id,
-        hospital_name,
-        hospital_location,
-        requester_location,
-        patient_name,
-        description,
-        contact_phone,
-        status,
-        nearby_donors_count,
-        total_eligible_count,
-        expires_at
-      ) VALUES (
-        @shortId,
-        @requesterId,
-        @bloodType,
-        @unitsNeeded,
-        @urgencyLevel,
-        @hospitalId,
-        @hospitalName,
-        ST_SetSRID(ST_MakePoint($hospitalLng, $hospitalLat), 4326)::geography,
-        $requesterLocationSQL,
-        @patientName,
-        @description,
-        @contactPhone,
-        'active',
-        @donorCount,
-        @donorCount,
-        NOW() + INTERVAL '24 hours'
-      )
-      RETURNING 
-        id,
-        short_id,
-        requester_id,
-        blood_type,
-        units_needed,
-        urgency_level,
-        hospital_name,
-        ST_Y(hospital_location::geometry) as hospital_lat,
-        ST_X(hospital_location::geometry) as hospital_lng,
-        ST_Y(requester_location::geometry) as requester_lat,
-        ST_X(requester_location::geometry) as requester_lng,
-        patient_name,
-        description,
-        contact_phone,
-        status,
-        nearby_donors_count,
-        total_eligible_count,
-        created_at,
-        expires_at
-    ''',
+        WITH new_request AS (
+          INSERT INTO blood_requests (
+            short_id,
+            requester_id,
+            blood_type,
+            units_needed,
+            urgency_level,
+            hospital_id,
+            hospital_name,
+            hospital_location,
+            requester_location,
+            patient_name,
+            description,
+            contact_phone,
+            status,
+            nearby_donors_count,
+            total_eligible_count,
+            expires_at
+          ) VALUES (
+            @shortId,
+            @requesterId,
+            @bloodType,
+            @unitsNeeded,
+            @urgencyLevel,
+            @hospitalId,
+            @hospitalName,
+            ST_SetSRID(ST_MakePoint($hospitalLng, $hospitalLat), 4326)::geography,
+            $requesterLocationSQL,
+            @patientName,
+            @description,
+            @contactPhone,
+            'active',
+            @donorCount,
+            @donorCount,
+            NOW() + INTERVAL '24 hours'
+          )
+          RETURNING *,
+            ST_Y(hospital_location::geometry) as hospital_lat,
+            ST_X(hospital_location::geometry) as hospital_lng,
+            ST_Y(requester_location::geometry) as requester_lat,
+            ST_X(requester_location::geometry) as requester_lng
+        ),
+        mark_recipient AS (
+          UPDATE users
+          SET is_recipient = TRUE, updated_at = NOW()
+          WHERE id = @requesterId::uuid
+          RETURNING id
+        )
+        SELECT * FROM new_request
+        ''',
         params: {
           'shortId': shortId,
           'requesterId': requesterId,
@@ -258,18 +252,6 @@ class RequestService {
         eventType: 'created',
         detail: 'Request opened; id=${createdRequest.shortId}',
         actorUserId: requesterId,
-      );
-
-      // Update user to be a recipient
-      await _db.query(
-        '''
-      UPDATE users
-      SET 
-        is_recipient = TRUE,
-        updated_at = NOW()
-      WHERE id = @requesterId
-    ''',
-        params: {'requesterId': requesterId},
       );
 
       // Fire-and-forget best-effort push notification to donors
