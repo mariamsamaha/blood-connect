@@ -45,11 +45,12 @@ class RequestService {
           email,
           ST_Y(location::geometry) as latitude,
           ST_X(location::geometry) as longitude,
-          ROUND((ST_Distance(location, $userPoint) / 1000)::numeric, 2) as distance_km
+          ROUND((ST_Distance(location, $userPoint) / 1000)::numeric, 2) as distance_km,
+          CASE WHEN ST_DWithin(location, $userPoint, @nearbyM::float8) THEN 0 ELSE 1 END as is_far
         FROM users
         WHERE $baseWhere
-          AND ST_DWithin(location, $userPoint, @nearbyM::float8)
-        ORDER BY ST_Distance(location, $userPoint) ASC
+          AND location IS NOT NULL
+        ORDER BY is_far ASC, distance_km ASC
       ''',
           params: {
             'userLat': userLatitude,
@@ -58,26 +59,11 @@ class RequestService {
           },
         );
 
-        if (result.isEmpty) {
-          result = await _db.query(
-            '''
-          SELECT 
-            id,
-            hospital_name,
-            hospital_code,
-            email,
-            ST_Y(location::geometry) as latitude,
-            ST_X(location::geometry) as longitude,
-            ROUND((ST_Distance(location, $userPoint) / 1000)::numeric, 2) as distance_km
-          FROM users
-          WHERE $baseWhere
-          ORDER BY ST_Distance(location, $userPoint) ASC
-        ''',
-            params: {'userLat': userLatitude, 'userLng': userLongitude},
-          );
-        }
-
-        return result.map((row) => Hospital.fromJson(row)).toList();
+        return result.map((row) {
+          final r = Map<String, dynamic>.from(row);
+          r.remove('is_far');
+          return Hospital.fromJson(r);
+        }).toList();
       }
 
       final result = await _db.query('''
@@ -89,7 +75,9 @@ class RequestService {
           ST_Y(location::geometry) as latitude,
           ST_X(location::geometry) as longitude
         FROM users
-        WHERE $baseWhere
+        WHERE account_type = 'hospital'
+          AND hospital_verified = TRUE
+          AND is_active = TRUE
         ORDER BY hospital_name ASC
       ''');
 
@@ -266,7 +254,7 @@ class RequestService {
   }
 
   /// Get the current active or in-progress request for a recipient.
-  Future<BloodRequest?> getActiveRequest(String userId) async {
+Future<BloodRequest?> getActiveRequest(String userId) async {
     try {
       final result = await _db.query(
         '''
@@ -292,35 +280,13 @@ class RequestService {
           AND status IN ('active', 'in_progress')
         ORDER BY created_at DESC
         LIMIT 1
-      ''',
-        params: {'userId': userId.toString()},
+        ''',
+        params: {'userId': userId},
       );
-
       if (result.isEmpty) return null;
       return BloodRequest.fromJson(result.first);
     } catch (e) {
-      try {
-        final result = await _db.query(
-          '''
-          SELECT 
-            id, short_id, requester_id, blood_type, units_needed, urgency_level,
-            hospital_name, status, nearby_donors_count, total_eligible_count,
-            created_at, expires_at,
-            ST_Y(hospital_location::geometry) as hospital_lat,
-            ST_X(hospital_location::geometry) as hospital_lng
-          FROM blood_requests
-          WHERE requester_id = @userId
-            AND status IN ('active', 'in_progress')
-          ORDER BY created_at DESC
-          LIMIT 1
-        ''',
-          params: {'userId': userId.toString()},
-        );
-        if (result.isEmpty) return null;
-        return BloodRequest.fromJson(result.first);
-      } catch (_) {
-        rethrow;
-      }
+      throw Exception('Failed to fetch active request: $e');
     }
   }
 
