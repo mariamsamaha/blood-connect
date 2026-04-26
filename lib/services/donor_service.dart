@@ -302,5 +302,35 @@ class DonorService {
       throw Exception('Failed to withdraw acceptance: $e');
     }
   }
+
+  Future<List<Map<String, dynamic>>> getFullDonationHistory(String donorId) async {
+    try {
+      return await _db.query(
+        '''
+        SELECT
+          d.id,
+          d.donation_date,
+          d.units_donated,
+          br.blood_type,
+          br.short_id,
+          br.urgency_level,
+          u.hospital_name,
+          CASE br.urgency_level
+            WHEN 'critical' THEN 30
+            WHEN 'urgent'   THEN 20
+            ELSE 10
+          END AS points_earned
+        FROM donations d
+        JOIN blood_requests br ON br.id = d.request_id
+        JOIN users u ON u.id = d.verified_by_hospital_id
+        WHERE d.donor_id = @donorId::uuid
+        ORDER BY d.donation_date DESC
+        ''',
+        params: {'donorId': donorId},
+      );
+    } catch (_) {
+      return [];
+    }
+  }
 }
 
