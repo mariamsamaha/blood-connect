@@ -10,29 +10,31 @@ class AppointmentService {
     if (hospitalId != null) {
       return await _db.query('''
         SELECT 
-          id, slot_date, slot_time, max_donors, current_count,
+          s.id, s.hospital_id, h.hospital_name, s.slot_date, s.slot_time, s.max_donors, s.current_count,
           (max_donors - current_count) as available_slots
-        FROM appointment_slots
-        WHERE hospital_id = @hospitalId::uuid
+        FROM appointment_slots s
+        JOIN users h ON h.id = s.hospital_id
+        WHERE s.hospital_id = @hospitalId::uuid
           AND (
-            slot_date > CURRENT_DATE 
-            OR (slot_date = CURRENT_DATE AND slot_time > CURRENT_TIME)
+            s.slot_date > CURRENT_DATE 
+            OR (s.slot_date = CURRENT_DATE AND s.slot_time > CURRENT_TIME)
           )
-          AND current_count < max_donors
-        ORDER BY slot_date, slot_time
+          AND s.current_count < s.max_donors
+        ORDER BY s.slot_date, s.slot_time
       ''', params: {'hospitalId': hospitalId});
     } else {
       return await _db.query('''
         SELECT 
-          id, slot_date, slot_time, max_donors, current_count,
+          s.id, s.hospital_id, h.hospital_name, s.slot_date, s.slot_time, s.max_donors, s.current_count,
           (max_donors - current_count) as available_slots
-        FROM appointment_slots
+        FROM appointment_slots s
+        JOIN users h ON h.id = s.hospital_id
         WHERE (
-          slot_date > CURRENT_DATE 
-          OR (slot_date = CURRENT_DATE AND slot_time > CURRENT_TIME)
+          s.slot_date > CURRENT_DATE 
+          OR (s.slot_date = CURRENT_DATE AND s.slot_time > CURRENT_TIME)
         )
-          AND current_count < max_donors
-        ORDER BY slot_date, slot_time
+          AND s.current_count < s.max_donors
+        ORDER BY h.hospital_name, s.slot_date, s.slot_time
       ''');
     }
   }
@@ -119,17 +121,25 @@ class AppointmentService {
     required String hospitalId,
     required List<Map<String, dynamic>> slots,
   }) async {
-    for (final slot in slots) {
-      await _db.query('''
-        INSERT INTO appointment_slots (hospital_id, slot_date, slot_time, max_donors)
-        VALUES (@hospitalId::uuid, @slotDate, @slotTime, @maxDonors)
-        ON CONFLICT (hospital_id, slot_date, slot_time) DO NOTHING
-      ''', params: {
+    if (slots.isEmpty) return;
+
+    final dates = slots.map((s) => s['slot_date'].toString()).toList();
+    final times = slots.map((s) => s['slot_time'].toString()).toList();
+    final maxDonors = slots.map((s) => (s['max_donors'] ?? 5) as int).toList();
+
+    await _db.query(
+      '''
+      INSERT INTO appointment_slots (hospital_id, slot_date, slot_time, max_donors)
+      SELECT @hospitalId::uuid, d::date, t::time, m::int
+      FROM unnest(@dates::text[], @times::text[], @maxDonors::int[]) AS u(d, t, m)
+      ON CONFLICT (hospital_id, slot_date, slot_time) DO NOTHING
+      ''',
+      params: {
         'hospitalId': hospitalId,
-        'slotDate': slot['slot_date'],
-        'slotTime': slot['slot_time'],
-        'maxDonors': slot['max_donors'] ?? 5,
-      });
-    }
+        'dates': dates,
+        'times': times,
+        'maxDonors': maxDonors,
+      },
+    );
   }
 }

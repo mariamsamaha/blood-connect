@@ -1,4 +1,5 @@
 import 'package:bloodconnect/services/database_service.dart';
+import 'package:flutter/foundation.dart';
 
 /// Minimal audit trail for MVP (requires `request_audit_log` from SQL migration).
 class AuditLogService {
@@ -16,8 +17,8 @@ class AuditLogService {
       await _db.query(
         '''
         INSERT INTO request_audit_log (request_id, event_type, detail, actor_user_id)
-        VALUES (@requestId, @eventType, @detail, @actorUserId)
-      ''',
+        VALUES (@requestId::uuid, @eventType, @detail, @actorUserId::uuid)
+        ''',
         params: {
           'requestId': requestId,
           'eventType': eventType,
@@ -25,6 +26,9 @@ class AuditLogService {
           'actorUserId': actorUserId,
         },
       );
-    } catch (_) {}
+    } catch (e, stack) {
+      debugPrint('AuditLog FAILED [$eventType] request=$requestId: $e');
+      debugPrint('$stack');
+    }
   }
 }
