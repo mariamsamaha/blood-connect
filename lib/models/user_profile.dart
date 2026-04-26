@@ -37,6 +37,9 @@ class UserProfile {
   /// Donor notification radius from DB (km).
   final int notificationRadiusKm;
 
+  /// Push notifications enabled.
+  final bool notificationEnabled;
+
   const UserProfile({
     required this.id,
     required this.firebaseUid,
@@ -48,6 +51,7 @@ class UserProfile {
     required this.role,
     required this.isRecipient,
     required this.donorStatus,
+    this.notificationEnabled = true,
     this.latitude,
     this.longitude,
     this.hospitalName,
@@ -101,6 +105,7 @@ class UserProfile {
       rewardPoints: _parseInt(json['reward_points']),
       cityArea: (json['city_area'] ?? '') as String,
       notificationRadiusKm: n <= 0 ? 50 : n.clamp(10, 400),
+      notificationEnabled: json['notification_enabled'] as bool? ?? true,
     );
   }
 
@@ -140,6 +145,7 @@ class UserProfile {
     'reward_points': rewardPoints,
     'city_area': cityArea,
     'notification_radius_km': notificationRadiusKm,
+    'notification_enabled': notificationEnabled,
   };
 
   String get homeRoute {
