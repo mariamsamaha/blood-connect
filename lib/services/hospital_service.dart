@@ -99,7 +99,7 @@ class HospitalService {
     return result.first['error_message']?.toString() ?? 'Verification failed';
   }
 
-  Future<List<Map<String, dynamic>>> getRecentAuditForRequest(
+Future<List<Map<String, dynamic>>> getRecentAuditForRequest(
     String requestId,
   ) async {
     try {
@@ -109,8 +109,29 @@ class HospitalService {
         FROM request_audit_log
         WHERE request_id = @requestId::uuid
         ORDER BY created_at ASC
-      ''',
+        ''',
         params: {'requestId': requestId},
+      );
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getInventory(String hospitalId) async {
+    try {
+      return await _db.query(
+        '''
+        SELECT
+          blood_type,
+          units_available,
+          minimum_threshold,
+          units_available < minimum_threshold AS is_low,
+          last_updated
+        FROM hospital_inventory
+        WHERE hospital_id = @hospitalId::uuid
+        ORDER BY blood_type
+        ''',
+        params: {'hospitalId': hospitalId},
       );
     } catch (_) {
       return [];

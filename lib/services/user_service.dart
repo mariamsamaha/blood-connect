@@ -280,4 +280,36 @@ class UserService {
       return [];
     }
   }
+
+  /// Get all badges with progress for user
+  Future<List<Map<String, dynamic>>> getAllBadgesWithProgress(String userId) async {
+    try {
+      return await _db.query(
+        '''
+        SELECT
+          b.id,
+          b.badge_name AS name,
+          b.description,
+          b.icon_url AS icon,
+          b.requirement_value,
+          b.requirement_type,
+          ub.earned_at IS NOT NULL AS is_earned,
+          CASE b.requirement_type
+            WHEN 'donation_count' THEN u.total_donations
+            WHEN 'points' THEN COALESCE(u.reward_points, 0)
+            ELSE 0
+          END AS current_value
+        FROM badges b
+        CROSS JOIN users u
+        LEFT JOIN user_badges ub
+          ON ub.badge_id = b.id AND ub.user_id = u.id
+        WHERE u.id = @userId::uuid
+        ORDER BY is_earned DESC, b.requirement_value ASC
+        ''',
+        params: {'userId': userId},
+      );
+    } catch (e) {
+      return [];
+    }
+  }
 }
