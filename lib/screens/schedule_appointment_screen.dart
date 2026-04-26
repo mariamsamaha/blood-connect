@@ -5,6 +5,7 @@ import 'package:bloodconnect/widgets/section_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
 /// Widget structure:
 /// - Scaffold
@@ -192,13 +193,17 @@ class _ScheduleAppointmentScreenState extends ConsumerState<ScheduleAppointmentS
                 const SizedBox(height: 20),
                 const SectionHeader(title: 'My Appointments'),
                 const SizedBox(height: 8),
-                ..._appointments.map((a) => ListTile(
+                ..._appointments.map((a) {
+                    final date = DateTime.parse(a['slot_date'].toString());
+                    final time = a['slot_time'].toString().substring(0, 5);
+                    return ListTile(
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       tileColor: Theme.of(context).cardColor,
                       title: Text('${a['hospital_name']}'),
-                      subtitle: Text('${a['slot_date']} • ${a['slot_time']}'),
+                      subtitle: Text('${DateFormat('EEE, MMM d').format(date)} • $time'),
                       trailing: Chip(label: Text('${a['status']}')),
-                    )),
+                    );
+                  }),
               ],
             ),
       bottomSheet: SafeArea(
