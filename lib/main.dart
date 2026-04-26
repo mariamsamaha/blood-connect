@@ -212,15 +212,28 @@ class _BloodConnectAppState extends ConsumerState<BloodConnectApp> {
           body: notification.body ?? '',
         );
       }
+      print('New request notification - pull to refresh');
     });
 
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      print('Notification tapped: ${message.data}');
+      final requestId = message.data['request_id'] ?? '';
+      if (requestId.isNotEmpty) {
+        print('Notification tapped: $requestId');
+        final router = ref.read(routerProvider);
+        router.go('/donor/home');
+      }
     });
 
     final initial = await FirebaseMessaging.instance.getInitialMessage();
     if (initial != null) {
-      print('Opened from terminated: ${initial.data}');
+      final requestId = initial.data['request_id'] ?? '';
+      if (requestId.isNotEmpty) {
+        print('Opened from terminated: $requestId');
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final router = ref.read(routerProvider);
+          router.go('/donor/home');
+        });
+      }
     }
   }
 
