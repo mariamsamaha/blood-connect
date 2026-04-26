@@ -66,6 +66,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        actions: [
+          IconButton(
+            onPressed: () => context.push('/settings'),
+            icon: const Icon(Icons.settings_rounded),
+          ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
@@ -103,28 +111,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       itemCount: _badges.length,
                     ),
                   ),
-                  const SizedBox(height: 20),
+const SizedBox(height: 20),
                   Row(children: [
-                    const Expanded(child: SectionHeader(title: 'Donation History')),
-                    TextButton(
-                      onPressed: () => context.push('/donation-history'),
-                      child: const Text('See All'),
+                    Expanded(child: StatCard(title: 'Points', value: '${_profile!.rewardPoints}', icon: Icons.star_rounded)),
+                    const SizedBox(width: 10),
+                    IconButton(
+                      onPressed: () => context.push('/leaderboard'),
+                      icon: const Icon(Icons.leaderboard_rounded),
+                      tooltip: 'Leaderboard',
                     ),
                   ]),
-                  const SizedBox(height: 12),
-                  if (_history.isEmpty)
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(16)),
-                      child: const Column(children: [Icon(Icons.history_rounded), SizedBox(height: 8), Text('No donation history yet')]),
-                    )
-                  else
-                    ..._history.map((h) => ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                          leading: const CircleAvatar(child: Icon(Icons.bloodtype_rounded)),
-                          title: Text(h.hospitalName),
-                          subtitle: Text('${h.bloodType} • ${h.responseType}'),
-                        )),
                   const SizedBox(height: 20),
                   Container(
                     padding: const EdgeInsets.all(16),

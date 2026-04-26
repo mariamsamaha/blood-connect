@@ -13,6 +13,8 @@ import 'package:bloodconnect/screens/hospital_slot_management_screen.dart';
 import 'package:bloodconnect/screens/donor_mission_screen.dart';
 import 'package:bloodconnect/screens/donation_history_screen.dart';
 import 'package:bloodconnect/screens/badges_screen.dart';
+import 'package:bloodconnect/screens/leaderboard_screen.dart';
+import 'package:bloodconnect/screens/settings_screen.dart';
 import 'package:bloodconnect/screens/create_request_screen.dart';
 import 'package:bloodconnect/screens/schedule_appointment_screen.dart';
 import 'package:bloodconnect/screens/profile_screen.dart';
@@ -75,6 +77,14 @@ GoRouter buildRouter({
       GoRoute(
         path: '/badges',
         builder: (ctx, s) => const BadgesScreen(),
+      ),
+      GoRoute(
+        path: '/leaderboard',
+        builder: (ctx, s) => const LeaderboardScreen(),
+      ),
+      GoRoute(
+        path: '/settings',
+        builder: (ctx, s) => const SettingsScreen(),
       ),
       GoRoute(
         path: '/create-request',
@@ -154,6 +164,13 @@ GoRouter buildRouter({
 
       if (loc == '/schedule') {
         if (profile.role != UserRole.recipient) {
+          return homeRouteForProfile(profile);
+        }
+        return null;
+      }
+
+      if (loc == '/leaderboard') {
+        if (profile.role != UserRole.donor) {
           return homeRouteForProfile(profile);
         }
         return null;
