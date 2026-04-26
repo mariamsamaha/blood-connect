@@ -66,6 +66,7 @@ class DonorService {
       ELSE 3 
     END,
     br.created_at DESC
+  LIMIT 50
 ''', params: params);
 
       return result.map((row) {
