@@ -168,7 +168,10 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
                           _GreetingCard(profile: _profile, donations: _donations, points: _points),
                           if (_activeMission != null) ...[
                             const SizedBox(height: 16),
-                            _MissionCard(request: _activeMission!),
+                            GestureDetector(
+                              onTap: () => context.push('/donor/mission'),
+                              child: _MissionCard(request: _activeMission!),
+                            ),
                           ],
                           if (_locationWarning != null) ...[
                             const SizedBox(height: 12),
