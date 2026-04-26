@@ -3,6 +3,7 @@ import 'package:bloodconnect/models/hospital_request_match.dart';
 import 'package:bloodconnect/models/user_profile.dart';
 import 'package:bloodconnect/theme/app_theme.dart';
 import 'package:bloodconnect/widgets/app_button.dart';
+import 'package:bloodconnect/widgets/section_header.dart';
 import 'package:bloodconnect/widgets/stat_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,6 +25,7 @@ class _HospitalDashboardScreenState extends ConsumerState<HospitalDashboardScree
   String _code = '';
   HospitalRequestMatch? _match;
   UserProfile? _profile;
+  List<Map<String, dynamic>> _inventory = [];
   bool _loading = true;
 
   @override
@@ -37,8 +39,15 @@ class _HospitalDashboardScreenState extends ConsumerState<HospitalDashboardScree
     if (user == null) return;
     final profile = await ref.read(userServiceProvider).getProfileByFirebaseUid(user.uid);
     if (!mounted) return;
+    
+    List<Map<String, dynamic>> inventory = [];
+    if (profile != null) {
+      inventory = await ref.read(hospitalServiceProvider).getInventory(profile.id);
+    }
+    
     setState(() {
       _profile = profile;
+      _inventory = inventory;
       _loading = false;
     });
   }
@@ -92,6 +101,39 @@ class _HospitalDashboardScreenState extends ConsumerState<HospitalDashboardScree
                   SizedBox(width: 10),
                   Expanded(child: StatCard(title: 'Fulfilled', value: '0', icon: Icons.verified_rounded)),
                 ]),
+                const SizedBox(height: 20),
+                if (_inventory.isNotEmpty) ...[
+                  const SectionHeader(title: 'Blood Inventory'),
+                  const SizedBox(height: 8),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: _inventory.map((i) {
+                        final isLow = i['is_low'] as bool? ?? false;
+                        return Container(
+                          margin: const EdgeInsets.only(right: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: isLow ? AppColors.error.withAlpha(20) : AppColors.surface,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: isLow ? AppColors.error : AppColors.divider),
+                          ),
+                          child: Column(children: [
+                            Text('${i['blood_type']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                            Text('${i['units_available']} units'),
+                            if (isLow) const Text('Low', style: TextStyle(color: AppColors.error, fontSize: 11)),
+                          ]),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                ],
+                const SizedBox(height: 8),
+                AppButton.secondary(
+                  label: 'Manage Appointment Slots',
+                  onPressed: () => context.push('/hospital/slots'),
+                ),
                 const SizedBox(height: 20),
                 const Text('Enter 4-digit request code'),
                 const SizedBox(height: 10),
