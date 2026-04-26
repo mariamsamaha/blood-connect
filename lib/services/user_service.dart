@@ -312,4 +312,20 @@ class UserService {
       return [];
     }
   }
+
+  Future<void> updateProfile({
+    required String firebaseUid,
+    required Map<String, dynamic> updates,
+  }) async {
+    if (updates.isEmpty) return;
+    final sets = updates.keys.map((k) => '$k = @$k').join(', ');
+    await _db.query(
+      '''
+      UPDATE users
+      SET $sets, updated_at = NOW()
+      WHERE firebase_uid = @firebaseUid
+      ''',
+      params: {...updates, 'firebaseUid': firebaseUid},
+    );
+  }
 }

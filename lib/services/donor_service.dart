@@ -332,5 +332,46 @@ class DonorService {
       return [];
     }
   }
+
+  Future<List<Map<String, dynamic>>> getLeaderboard({int limit = 20}) async {
+    try {
+      return await _db.query(
+        '''
+        SELECT
+          u.id, u.name, u.blood_type,
+          u.total_donations, u.reward_points,
+          RANK() OVER (ORDER BY u.reward_points DESC) AS rank
+        FROM users u
+        WHERE u.role = 'donor'
+          AND u.total_donations > 0
+        ORDER BY u.reward_points DESC
+        LIMIT @limit
+        ''',
+        params: {'limit': limit},
+      );
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<int?> getMyRank(String userId) async {
+    try {
+      final result = await _db.query(
+        '''
+        SELECT rank FROM (
+          SELECT id,
+            RANK() OVER (ORDER BY reward_points DESC) AS rank
+          FROM users
+          WHERE role = 'donor'
+        ) r
+        WHERE id = @userId::uuid
+        ''',
+        params: {'userId': userId},
+      );
+      return result.isEmpty ? null : result.first['rank'] as int?;
+    } catch (_) {
+      return null;
+    }
+  }
 }
 
