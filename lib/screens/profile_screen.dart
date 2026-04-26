@@ -83,7 +83,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     const Expanded(child: StatCard(title: 'Member', value: '2026', icon: Icons.calendar_month_rounded)),
                   ]),
                   const SizedBox(height: 20),
-                  const SectionHeader(title: 'Badges'),
+                  Row(children: [
+                    const Expanded(child: SectionHeader(title: 'Badges')),
+                    TextButton(
+                      onPressed: () => context.push('/badges'),
+                      child: const Text('See All'),
+                    ),
+                  ]),
                   const SizedBox(height: 12),
                   SizedBox(
                     height: 120,
@@ -98,7 +104,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  const SectionHeader(title: 'Donation History'),
+                  Row(children: [
+                    const Expanded(child: SectionHeader(title: 'Donation History')),
+                    TextButton(
+                      onPressed: () => context.push('/donation-history'),
+                      child: const Text('See All'),
+                    ),
+                  ]),
                   const SizedBox(height: 12),
                   if (_history.isEmpty)
                     Container(
