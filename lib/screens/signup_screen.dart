@@ -1,1002 +1,222 @@
-import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:bloodconnect/models/user_profile.dart';
-import 'package:bloodconnect/services/user_service.dart';
-import 'package:bloodconnect/main.dart';
 import 'package:go_router/go_router.dart';
-import 'package:bloodconnect/services/location_service.dart';
 
+import 'package:bloodconnect/main.dart';
+import 'package:bloodconnect/models/user_profile.dart';
+import 'package:bloodconnect/theme/app_theme.dart';
+import 'package:bloodconnect/widgets/app_button.dart';
+import 'package:bloodconnect/widgets/app_text_field.dart';
+import 'package:bloodconnect/widgets/blood_type_chip.dart';
+
+/// Widget structure:
+/// - Scaffold
+///   - Progress indicator
+///   - Step 1 role cards + hospital link
+///   - Step 2 profile details + blood chips + location card
+///   - Fixed bottom CTA
 class SignUpScreen extends ConsumerStatefulWidget {
   const SignUpScreen({super.key});
-
   @override
   ConsumerState<SignUpScreen> createState() => _SignUpScreenState();
 }
 
 class _SignUpScreenState extends ConsumerState<SignUpScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _phoneController = TextEditingController();
-  final _cityAreaController = TextEditingController();
-
-  // Hospital specific fields
-  final _hospitalNameController = TextEditingController();
-  final _hospitalCodeController = TextEditingController();
-
-  String _selectedBloodType = 'A+';
-  bool _isLoading = false;
-  bool _isHospital = false;
-  bool _isCheckingHospital = false;
-  String _chosenRole = 'donor';
-
-  // Location fields
-  double? _latitude;
-  double? _longitude;
-  bool _isLoadingLocation = false;
-  String? _locationError;
-
-  final List<String> bloodTypes = [
-    'A+',
-    'A-',
-    'B+',
-    'B-',
-    'AB+',
-    'AB-',
-    'O+',
-    'O-',
-  ];
-
-  final List<String> basicHospitalDomains = [
-    'hospital.com',
-    'health.gov',
-    'nhs.uk',
-    'clinic.org',
-  ];
+  int _step = 0;
+  bool _hospital = false;
+  String _role = 'donor';
+  String _blood = 'A+';
+  final _name = TextEditingController();
+  final _phone = TextEditingController();
+  final _city = TextEditingController();
+  bool _loading = false;
+  double? _lat;
+  double? _lng;
+  final _bloodTypes = const ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
   @override
   void initState() {
     super.initState();
-    _prefillFromGoogleAuth();
-  }
-
-  Future<void> _prefillFromGoogleAuth() async {
-    final firebaseUser = FirebaseAuth.instance.currentUser;
-    if (firebaseUser != null) {
-      _nameController.text = firebaseUser.displayName ?? '';
-      _emailController.text = firebaseUser.email ?? '';
-
-      setState(() => _isCheckingHospital = true);
-      try {
-        final domainHospital = await _isHospitalEmail(firebaseUser.email!);
-        final claimHospital = await UserService.hasHospitalAdminClaim(
-          firebaseUser,
-        );
-        if (mounted) {
-          setState(() {
-            _isHospital = domainHospital || claimHospital;
-            _isCheckingHospital = false;
-          });
-        }
-      } catch (_) {
-        if (mounted) {
-          setState(() => _isCheckingHospital = false);
-        }
-      }
-    }
+    final u = FirebaseAuth.instance.currentUser;
+    if (u != null) _name.text = u.displayName ?? '';
   }
 
   @override
   void dispose() {
-    _nameController.dispose();
-    _emailController.dispose();
-    _phoneController.dispose();
-    _cityAreaController.dispose();
-    _hospitalNameController.dispose();
-    _hospitalCodeController.dispose();
+    _name.dispose();
+    _phone.dispose();
+    _city.dispose();
     super.dispose();
   }
 
-  Future<bool> _isHospitalEmail(String email) async {
-    try {
-      final db = ref.read(databaseServiceProvider);
-      final emailDomain = email.split('@').last.toLowerCase();
-
-      final result = await db.query(
-        'SELECT COUNT(*) as count FROM hospital_domains WHERE domain = @domain AND active = TRUE',
-        params: {'domain': emailDomain},
-      );
-
-      return (result.first['count'] as int) > 0;
-    } catch (e) {
-      return basicHospitalDomains.any((hDomain) => email.contains(hDomain));
-    }
-  }
-
-  Future<void> _getLocation() async {
+  Future<void> _fetchLocation() async {
+    final pos = await ref.read(locationServiceProvider).getCurrentPosition();
+    if (!mounted) return;
     setState(() {
-      _isLoadingLocation = true;
-      _locationError = null;
+      _lat = pos?.latitude;
+      _lng = pos?.longitude;
     });
+  }
 
+  Future<void> _submit() async {
+    if (_name.text.trim().isEmpty || _phone.text.trim().isEmpty) return;
+    setState(() => _loading = true);
     try {
-      final locationService = LocationService();
-      final position = await locationService.getCurrentPosition();
-      if (position != null) {
-        setState(() {
-          _latitude = position.latitude;
-          _longitude = position.longitude;
-        });
-      }
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('No authenticated user');
+      final profile = await ref.read(userServiceProvider).createCompleteProfile(
+            user,
+            name: _name.text.trim(),
+            email: user.email ?? '',
+            phone: _phone.text.trim(),
+            bloodType: _hospital ? '' : _blood,
+            role: _hospital ? 'hospital' : _role,
+            accountType: _hospital ? 'hospital' : 'regular',
+            cityArea: _city.text.trim(),
+            latitude: _lat,
+            longitude: _lng,
+            hospitalName: _hospital ? _name.text.trim() : null,
+            hospitalCode: _hospital ? 'HSP' : null,
+          );
+      if (!mounted) return;
+      context.go(profile.homeRoute);
     } catch (e) {
-      setState(() {
-        _locationError = e.toString();
-      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
     } finally {
-      setState(() {
-        _isLoadingLocation = false;
-      });
+      if (mounted) setState(() => _loading = false);
     }
-  }
-
-  Future<void> _handleSignUp() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _isLoading = true);
-
-    try {
-      final userService = ref.read(userServiceProvider);
-      final firebaseUser = FirebaseAuth.instance.currentUser;
-
-      if (firebaseUser == null) {
-        throw Exception('No authenticated user found');
-      }
-
-      final profile = _isHospital
-          ? await _createHospitalProfile(userService, firebaseUser)
-          : await _createRegularProfile(userService, firebaseUser);
-
-      if (mounted) {
-        final route = _getInitialRoute(profile);
-        context.pushReplacement(route);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Sign up failed: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<UserProfile> _createRegularProfile(
-    UserService userService,
-    User firebaseUser,
-  ) async {
-    final role = _chosenRole; // 'donor' or 'recipient'
-    return await userService.createCompleteProfile(
-      firebaseUser,
-      name: _nameController.text.trim(),
-      email: firebaseUser.email!,
-      phone: _phoneController.text.trim(),
-      bloodType: _selectedBloodType,
-      role: role,
-      accountType: 'regular',
-      latitude: _latitude,
-      longitude: _longitude,
-      cityArea: _cityAreaController.text.trim(),
-    );
-  }
-
-  Future<UserProfile> _createHospitalProfile(
-    UserService userService,
-    User firebaseUser,
-  ) async {
-    return await userService.createCompleteProfile(
-      firebaseUser,
-      name: _hospitalNameController.text.trim(),
-      email: firebaseUser.email!,
-      phone: _phoneController.text.trim(),
-      bloodType: '',
-      role: 'hospital',
-      accountType: 'hospital',
-      hospitalName: _hospitalNameController.text.trim(),
-      hospitalCode: _hospitalCodeController.text.trim(),
-      latitude: _latitude,
-      longitude: _longitude,
-      cityArea: _cityAreaController.text.trim(),
-    );
-  }
-
-  String _getInitialRoute(UserProfile profile) {
-    return profile.homeRoute;
   }
 
   @override
   Widget build(BuildContext context) {
+    final isStep2 = _step == 1;
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        title: Text(
-          _isCheckingHospital
-              ? 'Checking...'
-              : (_isHospital
-                    ? 'Hospital Registration'
-                    : 'Complete Your Profile'),
-        ),
-        backgroundColor: Colors.red[600]!,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        actions: [
-          TextButton(
-            onPressed: () => FirebaseAuth.instance.signOut(),
-            child: const Text(
-              'Sign Out',
-              style: TextStyle(color: Colors.white),
-            ),
+      appBar: AppBar(title: const Text('Sign Up')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
+        children: [
+          LinearProgressIndicator(
+            value: (_step + 1) / 2,
+            minHeight: 8,
+            borderRadius: BorderRadius.circular(999),
           ),
-        ],
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20.0),
-          child: _isCheckingHospital
-              ? _buildLoadingIndicator()
-              : Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (!_isHospital) _buildRegularSignupForm(),
-                      if (_isHospital) _buildHospitalSignupForm(),
-                    ],
-                  ),
+          const SizedBox(height: 6),
+          Text('Step ${_step + 1} of 2', style: const TextStyle(color: AppColors.textSecondary)),
+          const SizedBox(height: 20),
+          if (!isStep2) ...[
+            Row(children: [
+              Expanded(
+                child: _RoleCard(
+                  icon: Icons.bloodtype_rounded,
+                  title: 'I Want to Donate',
+                  subtitle: 'Help save lives by donating blood',
+                  selected: _role == 'donor',
+                  onTap: () => setState(() => _role = 'donor'),
                 ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLoadingIndicator() {
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.all(40),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(color: Colors.red.shade600),
-            SizedBox(height: 20),
-            Text('Checking hospital domain...'),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _RoleCard(
+                  icon: Icons.favorite_rounded,
+                  title: 'I Need Blood',
+                  subtitle: 'Request blood for yourself or loved one',
+                  selected: _role == 'recipient',
+                  onTap: () => setState(() => _role = 'recipient'),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: () => setState(() => _hospital = !_hospital),
+              child: Text(_hospital ? 'Not a hospital?' : 'Are you a hospital?'),
+            ),
+          ] else ...[
+            AppTextField(controller: _name, label: 'Full Name', icon: Icons.person_outline_rounded),
+            const SizedBox(height: 16),
+            AppTextField(controller: _phone, label: 'Phone', keyboardType: TextInputType.phone, icon: Icons.phone_outlined),
+            const SizedBox(height: 16),
+            if (!_hospital) ...[
+              const Text('Blood Type'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _bloodTypes.map((e) => BloodTypeChip(type: e, selected: _blood == e, onTap: () => setState(() => _blood = e))).toList(),
+              ),
+              const SizedBox(height: 16),
+            ],
+            AppTextField(controller: _city, label: 'City Area', icon: Icons.place_outlined),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(16)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Row(children: [Icon(Icons.location_pin), SizedBox(width: 8), Text('Allow location for better matching')]),
+                const SizedBox(height: 10),
+                Text(_lat == null ? 'Location not enabled yet' : '${_lat!.toStringAsFixed(4)}, ${_lng!.toStringAsFixed(4)}'),
+                const SizedBox(height: 10),
+                Row(children: [
+                  Expanded(child: AppButton.primary(label: 'Enable', onPressed: _fetchLocation)),
+                  const SizedBox(width: 8),
+                  Expanded(child: AppButton.secondary(label: 'Skip', onPressed: () {})),
+                ]),
+              ]),
+            ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRegularSignupForm() {
-    return Column(
-      children: [
-        // Profile Header
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(15),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
-                blurRadius: 10,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 40,
-                backgroundColor: Colors.red[100]!,
-                child: Icon(Icons.person, size: 40, color: Colors.red[600]!),
-              ),
-              const SizedBox(width: 15),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Complete Your Profile',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey[800]!,
-                      ),
-                    ),
-                    Text(
-                      'Tell us about yourself to help save lives',
-                      style: TextStyle(fontSize: 14, color: Colors.grey[600]!),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 25),
-
-        // Name Field
-        _buildFormField(
-          controller: _nameController,
-          label: 'Full Name',
-          icon: Icons.person,
-          validator: (value) {
-            if (value == null || value.trim().isEmpty) {
-              return 'Please enter your name';
-            }
-            return null;
-          },
-        ),
-        const SizedBox(height: 15),
-
-        // Email Field (read-only if from Google)
-        _buildFormField(
-          controller: _emailController,
-          label: 'Email Address',
-          icon: Icons.email,
-          keyboardType: TextInputType.emailAddress,
-          readOnly: true,
-          validator: (value) {
-            if (value == null || value.trim().isEmpty) {
-              return 'Please enter your email';
-            }
-            if (!value.contains('@')) {
-              return 'Please enter a valid email';
-            }
-            return null;
-          },
-        ),
-        const SizedBox(height: 15),
-
-        // Phone Field
-        _buildFormField(
-          controller: _phoneController,
-          label: 'Phone Number',
-          icon: Icons.phone,
-          keyboardType: TextInputType.phone,
-          validator: (value) {
-            if (value == null || value.trim().isEmpty) {
-              return 'Please enter your phone number';
-            }
-            return null;
-          },
-        ),
-        const SizedBox(height: 15),
-
-        _buildFormField(
-          controller: _cityAreaController,
-          label: 'City / area (optional)',
-          icon: Icons.place_outlined,
-          validator: (_) => null,
-        ),
-        const SizedBox(height: 15),
-
-        // Blood Type Field
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
-                blurRadius: 5,
-                offset: const Offset(0, 1),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(15),
-            child: Row(
-              children: [
-                Icon(Icons.opacity, color: Colors.red[600]!, size: 20),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: _selectedBloodType,
-                    decoration: const InputDecoration(border: InputBorder.none),
-                    items: bloodTypes.map((type) {
-                      return DropdownMenuItem(value: type, child: Text(type));
-                    }).toList(),
-                    onChanged: (value) {
-                      setState(() => _selectedBloodType = value!);
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 20),
-
-        // Role: Donor or Recipient - Modern Card Selector
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.person_pin, color: Colors.red[600]!, size: 22),
-                    const SizedBox(width: 10),
-                    Text(
-                      'Choose your role',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey[800]!,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _RoleCard(
-                        icon: Icons.volunteer_activism,
-                        title: 'Donor',
-                        description: 'Help save lives',
-                        isSelected: _chosenRole == 'donor',
-                        onTap: () => setState(() => _chosenRole = 'donor'),
-                        color: Colors.red,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _RoleCard(
-                        icon: Icons.bloodtype,
-                        title: 'Recipient',
-                        description: 'Request blood',
-                        isSelected: _chosenRole == 'recipient',
-                        onTap: () => setState(() => _chosenRole = 'recipient'),
-                        color: Colors.blue,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 15),
-
-        // Location Button
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
-                blurRadius: 5,
-                offset: const Offset(0, 1),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(15),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.location_on,
-                  color: _latitude != null ? Colors.green : Colors.red[600]!,
-                  size: 20,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _latitude != null
-                            ? 'Location captured'
-                            : 'Add your location',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.grey[800]!,
-                        ),
-                      ),
-                      Text(
-                        _latitude != null
-                            ? '${_latitude!.toStringAsFixed(4)}, ${_longitude!.toStringAsFixed(4)}'
-                            : 'Required for donor matching',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600]!,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (_isLoadingLocation)
-                  const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                else
-                  TextButton(
-                    onPressed: _getLocation,
-                    child: Text(
-                      _latitude != null ? 'Update' : 'Get Location',
-                      style: TextStyle(color: Colors.red[600]!),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-        if (_locationError != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(
-              _locationError!,
-              style: const TextStyle(color: Colors.red, fontSize: 12),
-            ),
-          ),
-        const SizedBox(height: 30),
-
-        // Sign Up Button
-        Container(
-          width: double.infinity,
-          height: 50,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(25),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.red.withOpacity(0.3),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: ElevatedButton(
-            onPressed: _isLoading ? null : _handleSignUp,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red[600]!,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 15),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(25),
-              ),
-              elevation: 0,
-            ),
-            child: _isLoading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                  )
-                : const Text(
-                    'Complete Registration',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
-          ),
-        ),
-        const SizedBox(height: 20),
-      ],
-    );
-  }
-
-  Widget _buildHospitalSignupForm() {
-    return Column(
-      children: [
-        // Hospital Header
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(15),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
-                blurRadius: 10,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 40,
-                backgroundColor: Colors.red[100]!,
-                child: Icon(
-                  Icons.local_hospital,
-                  size: 40,
-                  color: Colors.red[600]!,
-                ),
-              ),
-              const SizedBox(width: 15),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Hospital Registration',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey[800]!,
-                      ),
-                    ),
-                    Text(
-                      'Register your hospital to join BloodConnect',
-                      style: TextStyle(fontSize: 14, color: Colors.grey[600]!),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 25),
-
-        // Hospital Name Field
-        _buildFormField(
-          controller: _hospitalNameController,
-          label: 'Hospital Name',
-          icon: Icons.local_hospital,
-          validator: (value) {
-            if (value == null || value.trim().isEmpty) {
-              return 'Please enter hospital name';
-            }
-            return null;
-          },
-        ),
-        const SizedBox(height: 15),
-
-        // Hospital Code Field
-        _buildFormField(
-          controller: _hospitalCodeController,
-          label: 'Hospital Code (e.g., "CH")',
-          icon: Icons.code,
-          validator: (value) {
-            if (value == null || value.trim().isEmpty) {
-              return 'Please enter hospital code';
-            }
-            if (value.length > 10) {
-              return 'Hospital code too long (max 10 characters)';
-            }
-            return null;
-          },
-        ),
-        const SizedBox(height: 15),
-
-        // Email Field (read-only if from Google)
-        _buildFormField(
-          controller: _emailController,
-          label: 'Email Address',
-          icon: Icons.email,
-          keyboardType: TextInputType.emailAddress,
-          readOnly: true,
-          validator: (value) {
-            if (value == null || value.trim().isEmpty) {
-              return 'Please enter your email';
-            }
-            if (!value.contains('@')) {
-              return 'Please enter a valid email';
-            }
-            return null;
-          },
-        ),
-        const SizedBox(height: 15),
-
-        // Phone Field
-        _buildFormField(
-          controller: _phoneController,
-          label: 'Contact Phone',
-          icon: Icons.phone,
-          keyboardType: TextInputType.phone,
-          validator: (value) {
-            if (value == null || value.trim().isEmpty) {
-              return 'Please enter contact phone';
-            }
-            return null;
-          },
-        ),
-        const SizedBox(height: 15),
-        _buildFormField(
-          controller: _cityAreaController,
-          label: 'City / area (optional)',
-          icon: Icons.place_outlined,
-          validator: (_) => null,
-        ),
-        const SizedBox(height: 15),
-
-        // Location Button
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
-                blurRadius: 5,
-                offset: const Offset(0, 1),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(15),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.location_on,
-                  color: _latitude != null ? Colors.green : Colors.red[600]!,
-                  size: 20,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _latitude != null
-                            ? 'Location captured'
-                            : 'Add hospital location',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.grey[800]!,
-                        ),
-                      ),
-                      Text(
-                        _latitude != null
-                            ? '${_latitude!.toStringAsFixed(4)}, ${_longitude!.toStringAsFixed(4)}'
-                            : 'Required for donor matching',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600]!,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (_isLoadingLocation)
-                  const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                else
-                  TextButton(
-                    onPressed: _getLocation,
-                    child: Text(
-                      _latitude != null ? 'Update' : 'Get Location',
-                      style: TextStyle(color: Colors.red[600]!),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-        if (_locationError != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(
-              _locationError!,
-              style: const TextStyle(color: Colors.red, fontSize: 12),
-            ),
-          ),
-        const SizedBox(height: 30),
-
-        // Register Button
-        Container(
-          width: double.infinity,
-          height: 50,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(25),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.red.withOpacity(0.3),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: ElevatedButton(
-            onPressed: _isLoading ? null : _handleSignUp,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red[600]!,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 15),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(25),
-              ),
-              elevation: 0,
-            ),
-            child: _isLoading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                  )
-                : const Text(
-                    'Register Hospital',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
-          ),
-        ),
-        const SizedBox(height: 20),
-      ],
-    );
-  }
-
-  Widget _buildFormField({
-    required TextEditingController controller,
-    required String label,
-    required IconData icon,
-    TextInputType? keyboardType,
-    bool readOnly = false,
-    String? Function(String?)? validator,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: 5,
-            offset: const Offset(0, 1),
-          ),
         ],
       ),
-      child: TextFormField(
-        controller: controller,
-        keyboardType: keyboardType,
-        readOnly: readOnly,
-        decoration: InputDecoration(
-          labelText: label,
-          prefixIcon: Icon(icon, color: Colors.red[600]!, size: 20),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
+      bottomSheet: SafeArea(
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
+          decoration: BoxDecoration(color: Theme.of(context).cardColor, border: const Border(top: BorderSide(color: AppColors.divider))),
+          child: AppButton.primary(
+            label: isStep2 ? 'Create Account' : 'Continue',
+            isLoading: _loading,
+            onPressed: isStep2 ? _submit : () => setState(() => _step = 1),
           ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.red[600]!, width: 2),
-          ),
-          contentPadding: const EdgeInsets.all(15),
         ),
-        validator: validator,
       ),
     );
   }
 }
 
 class _RoleCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String description;
-  final bool isSelected;
-  final VoidCallback onTap;
-  final Color color;
-
   const _RoleCard({
     required this.icon,
     required this.title,
-    required this.description,
-    required this.isSelected,
+    required this.subtitle,
+    required this.selected,
     required this.onTap,
-    required this.color,
   });
-
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool selected;
+  final VoidCallback onTap;
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return InkWell(
       onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        curve: Curves.easeInOut,
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: isSelected ? color.withValues(alpha: 0.1) : Colors.grey[50],
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected ? color : Colors.grey[300]!,
-            width: isSelected ? 2 : 1,
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: color.withValues(alpha: 0.2),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : null,
+          border: Border.all(color: selected ? AppColors.primaryRed : AppColors.divider, width: selected ? 1.6 : 1),
+          color: selected ? const Color(0xFFFFF1F3) : Theme.of(context).cardColor,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isSelected ? color : Colors.grey[200],
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                icon,
-                size: 28,
-                color: isSelected ? Colors.white : Colors.grey[600],
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: isSelected ? color : Colors.grey[700],
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              description,
-              style: TextStyle(
-                fontSize: 12,
-                color: isSelected
-                    ? color.withValues(alpha: 0.8)
-                    : Colors.grey[500],
-              ),
-              textAlign: TextAlign.center,
-            ),
-            if (isSelected) ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Text(
-                  'Selected',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.white,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(icon, color: selected ? AppColors.primaryRed : AppColors.textSecondary),
+          const SizedBox(height: 8),
+          Text(title, style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 6),
+          Text(subtitle, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+        ]),
       ),
     );
   }
 }
+

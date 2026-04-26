@@ -133,7 +133,7 @@ GoRouter buildRouter({
       if (loc == '/profile') return null;
 
       if (loc == '/schedule') {
-        if (profile.role != UserRole.donor) {
+        if (profile.role != UserRole.recipient) {
           return homeRouteForProfile(profile);
         }
         return null;
