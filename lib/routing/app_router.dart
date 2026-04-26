@@ -9,6 +9,10 @@ import 'package:bloodconnect/screens/onboarding_screen.dart';
 import 'package:bloodconnect/screens/donor_home_screen.dart';
 import 'package:bloodconnect/screens/recipient_home_screen.dart';
 import 'package:bloodconnect/screens/hospital_dashboard_screen.dart';
+import 'package:bloodconnect/screens/hospital_slot_management_screen.dart';
+import 'package:bloodconnect/screens/donor_mission_screen.dart';
+import 'package:bloodconnect/screens/donation_history_screen.dart';
+import 'package:bloodconnect/screens/badges_screen.dart';
 import 'package:bloodconnect/screens/create_request_screen.dart';
 import 'package:bloodconnect/screens/schedule_appointment_screen.dart';
 import 'package:bloodconnect/screens/profile_screen.dart';
@@ -55,6 +59,22 @@ GoRouter buildRouter({
       GoRoute(
         path: '/hospital/dashboard',
         builder: (ctx, s) => const HospitalDashboardScreen(),
+      ),
+      GoRoute(
+        path: '/hospital/slots',
+        builder: (ctx, s) => const HospitalSlotManagementScreen(),
+      ),
+      GoRoute(
+        path: '/donor/mission',
+        builder: (ctx, s) => const DonorMissionScreen(),
+      ),
+      GoRoute(
+        path: '/donation-history',
+        builder: (ctx, s) => const DonationHistoryScreen(),
+      ),
+      GoRoute(
+        path: '/badges',
+        builder: (ctx, s) => const BadgesScreen(),
       ),
       GoRoute(
         path: '/create-request',
