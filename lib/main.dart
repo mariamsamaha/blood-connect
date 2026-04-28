@@ -16,6 +16,8 @@ import 'package:bloodconnect/services/notification_service.dart';
 import 'package:bloodconnect/services/location_service.dart';
 import 'package:bloodconnect/services/donor_service.dart';
 import 'package:bloodconnect/services/hospital_service.dart';
+import 'package:bloodconnect/services/appointment_service.dart';
+import 'package:bloodconnect/theme/app_theme.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
@@ -30,14 +32,31 @@ final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
 
 final authServiceProvider = Provider<AuthService>((ref) => AuthService());
 
+String _envOrDefault(String key, String fallback) {
+  final value = dotenv.env[key];
+  if (value == null || value.trim().isEmpty) {
+    debugPrint('⚠️  WARNING: $key missing in .env, using fallback "$fallback".');
+    return fallback;
+  }
+  return value;
+}
+
 final databaseServiceProvider = Provider<DatabaseService>((ref) {
+  final host = _envOrDefault('SUPABASE_HOST', '127.0.0.1');
+  final portRaw = _envOrDefault('SUPABASE_PORT', '5432');
+  final database = _envOrDefault('SUPABASE_DATABASE', 'bloodconnect');
+  final username = _envOrDefault('SUPABASE_USERNAME', 'postgres');
+  final password = _envOrDefault('SUPABASE_DB_PASSWORD', 'postgres');
+  final requireSsl =
+      (dotenv.env['SUPABASE_REQUIRE_SSL'] ?? 'false').toLowerCase() == 'true';
+
   return DatabaseService(
-    host: dotenv.env['SUPABASE_HOST']!,
-    port: int.parse(dotenv.env['SUPABASE_PORT']!),
-    database: dotenv.env['SUPABASE_DATABASE']!,
-    username: dotenv.env['SUPABASE_USERNAME']!,
-    password: dotenv.env['SUPABASE_PASSWORD']!,
-    requireSsl: true,
+    host: host,
+    port: int.tryParse(portRaw) ?? 5432,
+    database: database,
+    username: username,
+    password: password,
+    requireSsl: requireSsl,
   );
 });
 
@@ -70,6 +89,10 @@ final donorServiceProvider = Provider<DonorService>((ref) {
 
 final hospitalServiceProvider = Provider<HospitalService>((ref) {
   return HospitalService(ref.watch(databaseServiceProvider));
+});
+
+final appointmentServiceProvider = Provider<AppointmentService>((ref) {
+  return AppointmentService(ref.watch(databaseServiceProvider));
 });
 
 final routerRefreshProvider = Provider<RouterRefreshNotifier>((ref) {
@@ -189,15 +212,28 @@ class _BloodConnectAppState extends ConsumerState<BloodConnectApp> {
           body: notification.body ?? '',
         );
       }
+      print('New request notification - pull to refresh');
     });
 
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      print('Notification tapped: ${message.data}');
+      final requestId = message.data['request_id'] ?? '';
+      if (requestId.isNotEmpty) {
+        print('Notification tapped: $requestId');
+        final router = ref.read(routerProvider);
+        router.go('/donor/home');
+      }
     });
 
     final initial = await FirebaseMessaging.instance.getInitialMessage();
     if (initial != null) {
-      print('Opened from terminated: ${initial.data}');
+      final requestId = initial.data['request_id'] ?? '';
+      if (requestId.isNotEmpty) {
+        print('Opened from terminated: $requestId');
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final router = ref.read(routerProvider);
+          router.go('/donor/home');
+        });
+      }
     }
   }
 
@@ -207,10 +243,9 @@ class _BloodConnectAppState extends ConsumerState<BloodConnectApp> {
     return MaterialApp.router(
       scaffoldMessengerKey: scaffoldMessengerKey,
       title: 'BloodConnect',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.red),
-        useMaterial3: true,
-      ),
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: ThemeMode.system,
       routerConfig: router,
     );
   }

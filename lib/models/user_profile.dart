@@ -37,6 +37,9 @@ class UserProfile {
   /// Donor notification radius from DB (km).
   final int notificationRadiusKm;
 
+  /// Push notifications enabled.
+  final bool notificationEnabled;
+
   const UserProfile({
     required this.id,
     required this.firebaseUid,
@@ -48,6 +51,7 @@ class UserProfile {
     required this.role,
     required this.isRecipient,
     required this.donorStatus,
+    this.notificationEnabled = true,
     this.latitude,
     this.longitude,
     this.hospitalName,
@@ -62,15 +66,15 @@ class UserProfile {
   factory UserProfile.fromJson(Map<String, dynamic> json) {
     final n = _parseInt(json['notification_radius_km']);
 
-    // Parse role - new field, fallback to old logic
+    // Parse role - new field, fallback to account_type
     UserRole parsedRole;
     if (json['role'] != null) {
       parsedRole = UserRole.values.byName(json['role'] as String);
     } else {
-      // Fallback: derive role from active_mode or account_type
+      // Fallback: derive role from account_type
       if (json['account_type'] == 'hospital') {
         parsedRole = UserRole.hospital;
-      } else if (json['active_mode'] == 'recipient_view') {
+      } else if (json['is_recipient'] == true) {
         parsedRole = UserRole.recipient;
       } else {
         parsedRole = UserRole.donor;
@@ -101,6 +105,7 @@ class UserProfile {
       rewardPoints: _parseInt(json['reward_points']),
       cityArea: (json['city_area'] ?? '') as String,
       notificationRadiusKm: n <= 0 ? 50 : n.clamp(10, 400),
+      notificationEnabled: json['notification_enabled'] as bool? ?? true,
     );
   }
 
@@ -140,6 +145,7 @@ class UserProfile {
     'reward_points': rewardPoints,
     'city_area': cityArea,
     'notification_radius_km': notificationRadiusKm,
+    'notification_enabled': notificationEnabled,
   };
 
   String get homeRoute {

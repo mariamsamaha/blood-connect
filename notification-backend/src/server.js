@@ -3,13 +3,23 @@
 // GOOGLE_APPLICATION_CREDENTIALS in your environment.
 
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const admin = require('firebase-admin');
 
-// Initialize Firebase Admin (uses GOOGLE_APPLICATION_CREDENTIALS env var).
 admin.initializeApp();
 
 const app = express();
 app.use(express.json());
+
+const limiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  message: { error: 'too_many_requests' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use('/sendNewRequest', limiter);
 
 // ─── Auth middleware ──────────────────────────────────────────────────────────
 // All non-health-check routes require the shared secret set in the environment.
@@ -76,23 +86,41 @@ app.post('/sendNewRequest', requireSecret, async (req, res) => {
       tokens: cleanTokens,
     };
 
-    const response = await admin.messaging().sendEachForMulticast(message);
+    const CHUNK = 500;
+    let successCount = 0;
+    let failureCount = 0;
+    const staleTokens = [];
 
-    // Log individual failures so stale tokens are visible in server logs
-    if (response.failureCount > 0) {
-      response.responses.forEach((r, i) => {
-        if (!r.success) {
-          console.error(`Token[${i}] failed: ${r.error?.code} — ${r.error?.message}`);
-        }
+    for (let i = 0; i < cleanTokens.length; i += CHUNK) {
+      const chunk = cleanTokens.slice(i, i + CHUNK);
+      const response = await admin.messaging().sendEachForMulticast({
+        ...message,
+        tokens: chunk,
       });
+
+      successCount += response.successCount;
+      failureCount += response.failureCount;
+
+      if (response.failureCount > 0) {
+        response.responses.forEach((r, j) => {
+          if (!r.success) {
+            const code = r.error?.code;
+            console.error(`Token[${i + j}] failed: ${code}`);
+            if (code === 'messaging/registration-token-not-registered' ||
+                code === 'messaging/invalid-registration-token') {
+              staleTokens.push(cleanTokens[i + j]);
+            }
+          }
+        });
+      }
     }
 
-    console.log(`Sent ${response.successCount}/${cleanTokens.length} notifications for request ${request.short_id}`);
+    if (staleTokens.length > 0) {
+      console.warn(`Stale tokens to purge: ${staleTokens.length}`);
+    }
 
-    return res.status(200).json({
-      sent: response.successCount,
-      failed: response.failureCount,
-    });
+    console.log(`Sent ${successCount}/${cleanTokens.length} for request ${request.short_id}`);
+    return res.status(200).json({ sent: successCount, failed: failureCount, stale_tokens: staleTokens });
   } catch (err) {
     console.error('Error in /sendNewRequest', err);
     return res.status(500).json({ error: 'internal_error' });

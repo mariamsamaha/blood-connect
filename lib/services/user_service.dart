@@ -73,11 +73,11 @@ class UserService {
         '''
         INSERT INTO users (
           firebase_uid, email, name, account_type,
-          is_recipient, donor_status, role, is_donor
+          is_recipient, donor_status, role
         ) VALUES (
           @uid, @email, @name, @accountType,
           FALSE, 'available',
-          @role, TRUE
+          @role
         ) RETURNING *, 
           ST_Y(location::geometry) as latitude,
           ST_X(location::geometry) as longitude;
@@ -243,7 +243,7 @@ class UserService {
     }
   }
 
-  /// Save FCM token for push notifications (e.g. donor request alerts).
+/// Save FCM token for push notifications (e.g. donor request alerts).
   Future<void> updateFcmToken(String firebaseUid, String? token) async {
     if (token == null || token.isEmpty) return;
     try {
@@ -251,14 +251,81 @@ class UserService {
         '''
         UPDATE users SET fcm_token = @token, updated_at = NOW()
         WHERE firebase_uid = @uid
-      ''',
+        ''',
         params: {'uid': firebaseUid, 'token': token},
       );
       debugPrint('FCM token saved for $firebaseUid');
     } catch (e) {
-      // Log so the failure is visible — a silent failure here means zero notifications
       debugPrint('FCM token save FAILED for $firebaseUid: $e');
       debugPrint('Make sure mvp_incremental.sql has been run on Supabase (adds fcm_token column).');
     }
+  }
+
+  /// Get badges earned by user
+  Future<List<Map<String, dynamic>>> getUserBadges(String userId) async {
+    try {
+      return await _db.query(
+        '''
+        SELECT b.id, b.badge_name AS name, b.description, 
+               b.icon_url AS icon, b.requirement_value AS points_required, 
+               ub.earned_at
+        FROM user_badges ub
+        JOIN badges b ON b.id = ub.badge_id
+        WHERE ub.user_id = @userId::uuid
+        ORDER BY ub.earned_at DESC
+        ''',
+        params: {'userId': userId},
+      );
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// Get all badges with progress for user
+  Future<List<Map<String, dynamic>>> getAllBadgesWithProgress(String userId) async {
+    try {
+      return await _db.query(
+        '''
+        SELECT
+          b.id,
+          b.badge_name AS name,
+          b.description,
+          b.icon_url AS icon,
+          b.requirement_value,
+          b.requirement_type,
+          ub.earned_at IS NOT NULL AS is_earned,
+          CASE b.requirement_type
+            WHEN 'donation_count' THEN u.total_donations
+            WHEN 'points' THEN COALESCE(u.reward_points, 0)
+            ELSE 0
+          END AS current_value
+        FROM badges b
+        CROSS JOIN users u
+        LEFT JOIN user_badges ub
+          ON ub.badge_id = b.id AND ub.user_id = u.id
+        WHERE u.id = @userId::uuid
+        ORDER BY is_earned DESC, b.requirement_value ASC
+        ''',
+        params: {'userId': userId},
+      );
+    } catch (e) {
+      return [];
+    }
+  }
+
+  Future<void> updateProfile({
+    required String firebaseUid,
+    required Map<String, dynamic> updates,
+  }) async {
+    if (updates.isEmpty) return;
+    final sets = updates.keys.map((k) => '$k = @$k').join(', ');
+    await _db.query(
+      '''
+      UPDATE users
+      SET $sets, updated_at = NOW()
+      WHERE firebase_uid = @firebaseUid
+      ''',
+      params: {...updates, 'firebaseUid': firebaseUid},
+    );
   }
 }

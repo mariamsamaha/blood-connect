@@ -18,11 +18,10 @@ class DonorService {
     int radiusKm = 120,
   }) async {
     try {
-      final donorPoint =
-          'ST_SetSRID(ST_MakePoint(${donorLng}, ${donorLat}), 4326)::geography';
-
       final params = <String, dynamic>{
         'donorId': donorId,
+        'donorLng': donorLng,
+        'donorLat': donorLat,
         'radiusM': radiusKm * 1000,
         'compatibleTypesCsv':
             (donorCanFulfillRequestTypes[donorBloodType] ??
@@ -48,13 +47,13 @@ class DonorService {
     br.total_eligible_count,
     br.created_at,
     br.expires_at,
-    ROUND((ST_Distance(br.hospital_location, $donorPoint) / 1000)::numeric, 2) AS distance_km
+    ROUND((ST_Distance(br.hospital_location, ST_SetSRID(ST_MakePoint(@donorLng::float8, @donorLat::float8), 4326)::geography) / 1000)::numeric, 2) AS distance_km
   FROM blood_requests br
   WHERE br.status = 'active'
     AND br.expires_at > NOW()
     AND UPPER(br.blood_type) = ANY(SELECT UPPER(v) FROM unnest(string_to_array(@compatibleTypesCsv, ',')) AS v)
     AND br.hospital_location IS NOT NULL
-    AND ST_Distance(br.hospital_location, $donorPoint) <= @radiusM::float8
+    AND ST_Distance(br.hospital_location, ST_SetSRID(ST_MakePoint(@donorLng::float8, @donorLat::float8), 4326)::geography) <= @radiusM::float8
     AND NOT EXISTS (
       SELECT 1 FROM donor_responses dr
       WHERE dr.request_id = br.id 
@@ -67,6 +66,7 @@ class DonorService {
       ELSE 3 
     END,
     br.created_at DESC
+  LIMIT 50
 ''', params: params);
 
       return result.map((row) {
@@ -267,31 +267,111 @@ class DonorService {
     required String requestId,
     required String donorId,
   }) async {
-    await _db.query(
-      '''
-      WITH withdrawn AS (
-        UPDATE donor_responses
-        SET response_type = 'declined', updated_at = NOW()
-        WHERE request_id = @requestId::uuid
-          AND donor_id = @donorId::uuid
-          AND response_type = 'accepted'
+    try {
+      final result = await _db.query(
+        '''
+        WITH withdrawn AS (
+          UPDATE donor_responses
+          SET response_type = 'declined', updated_at = NOW()
+          WHERE request_id = @requestId::uuid
+            AND donor_id = @donorId::uuid
+            AND response_type = 'accepted'
+          RETURNING id
+        )
+        UPDATE blood_requests
+        SET status = 'active', updated_at = NOW()
+        FROM withdrawn
+        WHERE id = @requestId::uuid
+          AND status = 'in_progress'
         RETURNING id
-      )
-      UPDATE blood_requests
-      SET status = 'active', updated_at = NOW()
-      FROM withdrawn
-      WHERE id = @requestId::uuid
-        AND status = 'in_progress'
-    ''',
-      params: {'requestId': requestId, 'donorId': donorId},
-    );
+      ''',
+        params: {'requestId': requestId, 'donorId': donorId},
+      );
 
-    await _audit?.log(
-      requestId: requestId,
-      eventType: 'donor_withdrew',
-      detail: 'Donor withdrew acceptance.',
-      actorUserId: donorId,
-    );
+      if (result.isEmpty) {
+        throw Exception('No active acceptance found to withdraw.');
+      }
+
+      await _audit?.log(
+        requestId: requestId,
+        eventType: 'donor_withdrew',
+        detail: 'Donor withdrew acceptance.',
+        actorUserId: donorId,
+      );
+    } catch (e) {
+      throw Exception('Failed to withdraw acceptance: $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getFullDonationHistory(String donorId) async {
+    try {
+      return await _db.query(
+        '''
+        SELECT
+          d.id,
+          d.donation_date,
+          d.units_donated,
+          br.blood_type,
+          br.short_id,
+          br.urgency_level,
+          u.hospital_name,
+          CASE br.urgency_level
+            WHEN 'critical' THEN 30
+            WHEN 'urgent'   THEN 20
+            ELSE 10
+          END AS points_earned
+        FROM donations d
+        JOIN blood_requests br ON br.id = d.request_id
+        JOIN users u ON u.id = d.verified_by_hospital_id
+        WHERE d.donor_id = @donorId::uuid
+        ORDER BY d.donation_date DESC
+        ''',
+        params: {'donorId': donorId},
+      );
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getLeaderboard({int limit = 20}) async {
+    try {
+      return await _db.query(
+        '''
+        SELECT
+          u.id, u.name, u.blood_type,
+          u.total_donations, u.reward_points,
+          RANK() OVER (ORDER BY u.reward_points DESC) AS rank
+        FROM users u
+        WHERE u.role = 'donor'
+          AND u.total_donations > 0
+        ORDER BY u.reward_points DESC
+        LIMIT @limit
+        ''',
+        params: {'limit': limit},
+      );
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<int?> getMyRank(String userId) async {
+    try {
+      final result = await _db.query(
+        '''
+        SELECT rank FROM (
+          SELECT id,
+            RANK() OVER (ORDER BY reward_points DESC) AS rank
+          FROM users
+          WHERE role = 'donor'
+        ) r
+        WHERE id = @userId::uuid
+        ''',
+        params: {'userId': userId},
+      );
+      return result.isEmpty ? null : result.first['rank'] as int?;
+    } catch (_) {
+      return null;
+    }
   }
 }
 
