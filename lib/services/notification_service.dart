@@ -42,7 +42,7 @@ class NotificationService {
         FROM users u
         WHERE u.fcm_token IS NOT NULL
           AND u.account_type = 'regular'
-          AND u.is_donor = TRUE
+          AND u.role = 'donor'
           AND u.donor_status = 'available'
           AND u.is_active = TRUE
           AND u.notification_enabled = TRUE
@@ -114,6 +114,17 @@ class NotificationService {
       // Step 5: log result
       if (response.statusCode == 200) {
         debugPrint('NotificationService: backend responded 200 — ${response.body}');
+        
+        final body = jsonDecode(response.body);
+        final staleTokens = body['stale_tokens'] as List<dynamic>?;
+        if (staleTokens != null && staleTokens.isNotEmpty) {
+          final tokenList = staleTokens.cast<String>();
+          await _db.query(
+            'UPDATE users SET fcm_token = NULL WHERE fcm_token = ANY(@tokens::text[])',
+            params: {'tokens': tokenList},
+          );
+          debugPrint('NotificationService: purged ${staleTokens.length} stale FCM token(s)');
+        }
       } else {
         debugPrint('NotificationService: backend responded ${response.statusCode} — ${response.body}');
       }

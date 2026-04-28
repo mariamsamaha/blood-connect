@@ -1,10 +1,16 @@
-# Flutter/Dart
-*.class
-*.log
-*.pyc
-*.pyc
-*.swp
-*.dart_tool/
+.env
+.env.*
+secrets/
+keys/
+*.key
+*.pem
+*.p12
+*.jks
+*.keystore
+google-services.json
+GoogleService-Info.plist
+*firebase-adminsdk*.json
+
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
@@ -12,94 +18,35 @@
 .pub-cache/
 .pub/
 build/
-flutter_*.png
-linked_*.ds
-unlinked.ds
-unlinked_spec.ds
-
-# Build and development
-*.log
-*.log*
-.history/
 coverage/
-build/
-.dart_tool/
-.flutter-plugins/
-.flutter-plugins-dependencies/
-.packages/
-.pub-cache/
-.mutation_history/
 
-# IDE and editors
+# ── IDE ────────────────────────────────────────────────────────────────────────
 .vscode/
 .idea/
 *.iml
 *.ipr
 *.iws
-*.sublime-*
 .atom/
-.brackets.json
-.eslintrc.json
+.history/
 
-firebase.json
-google-services.json
-GoogleService-Info.plist
-.env
-.env
-secrets/
-keys/
-*.key
-*.pem
-*.p12
-*.jks
-
-# Platform specific
-# macOS
 .DS_Store
 .AppleDouble
-.LSOverride
-# Windows
+
 Thumbs.db
 
-# Android
-*.keystore
-*.jks
-*.key
 android/.gradle/
-android/captures/
 android/local.properties
-android/app/debug/
-android/app/profile/
-android/app/release/
+android/captures/
 
-# iOS specific
 *.pbxuser
 *.mode1v3
 *.mode2v3
 *.xcuserstate
-*.moved-aside
-*.hmap
 *.ipa
 
-# Development environment
-flutter_*.png
-*.svg
+*.log
+*.log.*
 
-# Database migrations
-migrations/
-
-# API keys and configurations (encrypted)
-config/production.json
-config/staging.json
-
-# Emergency overrides (use sparingly)
-.gitignore_override
-
-# Test data (use for testing only)
 test_data/
 sample_requests.sql
 test_users.sql
-
-.env
-.env
-!.env
