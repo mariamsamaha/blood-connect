@@ -328,4 +328,30 @@ class UserService {
       params: {...updates, 'firebaseUid': firebaseUid},
     );
   }
+
+  Future<void> updateLocation({
+    required String firebaseUid,
+    required double latitude,
+    required double longitude,
+  }) async {
+    try {
+      await _db.query(
+        '''
+        UPDATE users
+        SET location = ST_SetSRID(
+              ST_MakePoint(@lng::float8, @lat::float8), 4326
+            )::geography,
+            updated_at = NOW()
+        WHERE firebase_uid = @uid
+        ''',
+        params: {
+          'lng': longitude,
+          'lat': latitude,
+          'uid': firebaseUid,
+        },
+      );
+    } catch (e) {
+      debugPrint('updateLocation failed: $e');
+    }
+  }
 }
