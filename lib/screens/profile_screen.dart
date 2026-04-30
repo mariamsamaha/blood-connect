@@ -46,7 +46,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final donorService = ref.read(donorServiceProvider);
     final p = await userService.getProfileByFirebaseUid(auth.uid);
     if (p == null) return;
-    final badges = await userService.getUserBadges(p.id);
+    final badges = await userService.getAllBadgesWithProgress(p.id);
     final history = await donorService.getDonorResponseHistory(p.id);
     if (!mounted) return;
     setState(() {
@@ -105,7 +105,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       scrollDirection: Axis.horizontal,
                       itemBuilder: (_, i) {
                         final b = _badges[i];
-                        return BadgeCard(icon: '${b['icon'] ?? '🏅'}', name: '${b['name'] ?? 'Badge'}', earned: true);
+                        final earned = b['is_earned'] as bool? ?? false;
+                        return BadgeCard(
+                          icon: '${b['icon'] ?? '🏅'}',
+                          name: '${b['name'] ?? 'Badge'}',
+                          earned: earned,
+                          progress: earned
+                              ? 1.0
+                              : ((b['current_value'] as int? ?? 0) /
+                                  (b['requirement_value'] as int? ?? 1))
+                                      .clamp(0.0, 1.0),
+                          progressLabel: earned
+                              ? 'Earned'
+                              : '${b['current_value']}/${b['requirement_value']}',
+                        );
                       },
                       separatorBuilder: (_, __) => const SizedBox(width: 10),
                       itemCount: _badges.length,

@@ -116,12 +116,10 @@ class _RecipientHomeScreenState extends ConsumerState<RecipientHomeScreen> {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: 0,
         onTap: (i) {
-          if (i == 1) context.go('/schedule');
-          if (i == 2) context.go('/profile');
+          if (i == 1) context.go('/profile');
         },
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.calendar_month_rounded), label: 'Schedule'),
           BottomNavigationBarItem(icon: Icon(Icons.person_rounded), label: 'Profile'),
         ],
       ),
@@ -146,11 +144,6 @@ class _HeroCreateCard extends StatelessWidget {
         const Text('Create an urgent request and notify compatible donors.', style: TextStyle(color: Colors.white70)),
         const SizedBox(height: 16),
         AppButton.primary(label: 'Create Request', onPressed: onCreate),
-        const SizedBox(height: 10),
-        AppButton.secondary(
-          label: 'Schedule Appointment',
-          onPressed: () => context.push('/schedule'),
-        ),
       ]),
     );
   }

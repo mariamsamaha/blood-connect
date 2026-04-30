@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:bloodconnect/main.dart';
@@ -60,12 +61,19 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
       final stats = await donorService.getDonorStats(profile.id);
       final mission = await donorService.getActiveMission(profile.id);
 
-      double? lat = profile.latitude;
-      double? lng = profile.longitude;
-      if (lat == null || lng == null) {
-        final pos = await locationService.getCurrentPosition();
-        lat = pos?.latitude;
-        lng = pos?.longitude;
+      // GPS first, saved location as fallback
+      final pos = await locationService.getCurrentPosition();
+      double? lat = pos?.latitude ?? profile.latitude;
+      double? lng = pos?.longitude ?? profile.longitude;
+
+      if (pos != null && profile.firebaseUid.isNotEmpty) {
+        unawaited(
+          ref.read(userServiceProvider).updateLocation(
+            firebaseUid: profile.firebaseUid,
+            latitude: pos.latitude,
+            longitude: pos.longitude,
+          ),
+        );
       }
       const fallbackLat = 30.0444;
       const fallbackLng = 31.2357;
@@ -78,7 +86,7 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
         donorBloodType: profile.bloodType,
         donorLat: searchLat,
         donorLng: searchLng,
-        radiusKm: usedFallback ? 300 : math.max(100, profile.notificationRadiusKm),
+        radiusKm: usedFallback ? 300 : math.max(25, profile.notificationRadiusKm),
       );
 
       if (!mounted) return;
@@ -119,14 +127,19 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
 
     try {
       if (accept) {
-        var lat = profile.latitude;
-        var lng = profile.longitude;
-        if (lat == null || lng == null) {
-          final pos = await locationService.getCurrentPosition();
-          lat = pos?.latitude;
-          lng = pos?.longitude;
-        }
+        final pos = await locationService.getCurrentPosition();
+        var lat = pos?.latitude ?? profile.latitude;
+        var lng = pos?.longitude ?? profile.longitude;
         if (lat == null || lng == null) throw Exception('Location required');
+        if (pos != null && profile.firebaseUid.isNotEmpty) {
+          unawaited(
+            ref.read(userServiceProvider).updateLocation(
+              firebaseUid: profile.firebaseUid,
+              latitude: pos.latitude,
+              longitude: pos.longitude,
+            ),
+          );
+        }
         await donorService.acceptRequest(
           requestId: request.id,
           donorId: profile.id,
