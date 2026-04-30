@@ -9,14 +9,12 @@ import 'package:bloodconnect/screens/onboarding_screen.dart';
 import 'package:bloodconnect/screens/donor_home_screen.dart';
 import 'package:bloodconnect/screens/recipient_home_screen.dart';
 import 'package:bloodconnect/screens/hospital_dashboard_screen.dart';
-import 'package:bloodconnect/screens/hospital_slot_management_screen.dart';
 import 'package:bloodconnect/screens/donor_mission_screen.dart';
 import 'package:bloodconnect/screens/donation_history_screen.dart';
 import 'package:bloodconnect/screens/badges_screen.dart';
 import 'package:bloodconnect/screens/leaderboard_screen.dart';
 import 'package:bloodconnect/screens/settings_screen.dart';
 import 'package:bloodconnect/screens/create_request_screen.dart';
-import 'package:bloodconnect/screens/schedule_appointment_screen.dart';
 import 'package:bloodconnect/screens/profile_screen.dart';
 
 UserProfile? _cachedProfile;
@@ -63,10 +61,6 @@ GoRouter buildRouter({
         builder: (ctx, s) => const HospitalDashboardScreen(),
       ),
       GoRoute(
-        path: '/hospital/slots',
-        builder: (ctx, s) => const HospitalSlotManagementScreen(),
-      ),
-      GoRoute(
         path: '/donor/mission',
         builder: (ctx, s) => const DonorMissionScreen(),
       ),
@@ -89,10 +83,6 @@ GoRouter buildRouter({
       GoRoute(
         path: '/create-request',
         builder: (ctx, s) => const CreateRequestScreen(),
-      ),
-      GoRoute(
-        path: '/schedule',
-        builder: (ctx, s) => const ScheduleAppointmentScreen(),
       ),
       GoRoute(path: '/profile', builder: (ctx, s) => const ProfileScreen()),
     ],
@@ -162,10 +152,10 @@ GoRouter buildRouter({
 
       if (loc == '/profile') return null;
 
-      if (loc == '/schedule') {
-        if (profile.role != UserRole.recipient) {
-          return homeRouteForProfile(profile);
-        }
+      if (loc == '/donor/mission' ||
+          loc == '/donation-history' ||
+          loc == '/badges') {
+        if (profile.role != UserRole.donor) return homeRouteForProfile(profile);
         return null;
       }
 

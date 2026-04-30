@@ -22,6 +22,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _notificationsEnabled = true;
   double _radiusKm = 25;
   bool _donorAvailable = true;
+  bool _updatingLocation = false;
 
   @override
   void initState() {
@@ -69,6 +70,47 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       );
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _updateLocation() async {
+    final profile = _profile;
+    if (profile == null) return;
+    setState(() => _updatingLocation = true);
+    try {
+      final locationService = ref.read(locationServiceProvider);
+      final pos = await locationService.getCurrentPosition();
+      if (pos == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not get location. Enable location in settings.'),
+          ),
+        );
+        return;
+      }
+      await ref.read(userServiceProvider).updateLocation(
+        firebaseUid: profile.firebaseUid,
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Location updated to '
+            '${pos.latitude.toStringAsFixed(4)}, '
+            '${pos.longitude.toStringAsFixed(4)}',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to update location: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _updatingLocation = false);
     }
   }
 
@@ -168,6 +210,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       onChanged: (v) =>
                           setState(() => _donorAvailable = v),
                       activeTrackColor: AppColors.primaryRed,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _SettingsTile(
+                    title: 'Matching Location',
+                    subtitle: 'Update where you are available to donate from',
+                    trailing: TextButton(
+                      onPressed: _updatingLocation ? null : _updateLocation,
+                      child: Text(
+                        _updatingLocation ? 'Updating...' : 'Update',
+                        style: const TextStyle(color: AppColors.primaryRed),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 24),
