@@ -129,11 +129,6 @@ class _HospitalDashboardScreenState extends ConsumerState<HospitalDashboardScree
                   ),
                   const SizedBox(height: 20),
                 ],
-                const SizedBox(height: 8),
-                AppButton.secondary(
-                  label: 'Manage Appointment Slots',
-                  onPressed: () => context.push('/hospital/slots'),
-                ),
                 const SizedBox(height: 20),
                 const Text('Enter 4-digit request code'),
                 const SizedBox(height: 10),
