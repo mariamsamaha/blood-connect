@@ -6,6 +6,7 @@ import 'package:bloodconnect/widgets/app_button.dart';
 import 'package:bloodconnect/widgets/section_header.dart';
 import 'package:bloodconnect/widgets/stat_card.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -26,7 +27,10 @@ class _HospitalDashboardScreenState extends ConsumerState<HospitalDashboardScree
   HospitalRequestMatch? _match;
   UserProfile? _profile;
   List<Map<String, dynamic>> _inventory = [];
+  Map<String, int> _stats = {'pending': 0, 'today': 0, 'fulfilled': 0};
+  List<Map<String, dynamic>> _pendingRequests = [];
   bool _loading = true;
+  final FocusNode _codeFocus = FocusNode();
 
   @override
   void initState() {
@@ -34,22 +38,34 @@ class _HospitalDashboardScreenState extends ConsumerState<HospitalDashboardScree
     _loadProfile();
   }
 
+  @override
+  void dispose() {
+    _codeFocus.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadProfile() async {
+    setState(() => _loading = true);
     final user = ref.read(authServiceProvider).currentUser;
     if (user == null) return;
     final profile = await ref.read(userServiceProvider).getProfileByFirebaseUid(user.uid);
     if (!mounted) return;
     
-    List<Map<String, dynamic>> inventory = [];
     if (profile != null) {
-      inventory = await ref.read(hospitalServiceProvider).getInventory(profile.id);
+      final results = await Future.wait([
+        ref.read(hospitalServiceProvider).getInventory(profile.id),
+        ref.read(hospitalServiceProvider).getHospitalStats(profile.id),
+        ref.read(hospitalServiceProvider).getPendingRequests(profile.id),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _profile = profile;
+        _inventory = results[0] as List<Map<String, dynamic>>;
+        _stats = results[1] as Map<String, int>;
+        _pendingRequests = results[2] as List<Map<String, dynamic>>;
+        _loading = false;
+      });
     }
-    
-    setState(() {
-      _profile = profile;
-      _inventory = inventory;
-      _loading = false;
-    });
   }
 
   Future<void> _searchCode() async {
@@ -80,8 +96,39 @@ class _HospitalDashboardScreenState extends ConsumerState<HospitalDashboardScree
 
   void _tapDigit(String d) {
     if (_code.length >= 4) return;
+    if (_match != null) {
+      setState(() {
+        _code = d;
+        _match = null;
+      });
+      return;
+    }
     setState(() => _code += d);
     if (_code.length == 4) _searchCode();
+  }
+
+  void _handleKeyEvent(KeyEvent event) {
+    if (event is KeyDownEvent) {
+      final key = event.logicalKey;
+      if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter) {
+        if (_match != null) {
+          _verify();
+        } else if (_code.length == 4) {
+          _searchCode();
+        }
+        return;
+      }
+      if (key == LogicalKeyboardKey.backspace || key == LogicalKeyboardKey.delete) {
+        setState(() {
+          _code = _code.isEmpty ? '' : _code.substring(0, _code.length - 1);
+          _match = null;
+        });
+        return;
+      }
+      if (key.keyLabel.length == 1 && RegExp(r'[0-9]').hasMatch(key.keyLabel)) {
+        _tapDigit(key.keyLabel);
+      }
+    }
   }
 
   @override
@@ -94,12 +141,12 @@ class _HospitalDashboardScreenState extends ConsumerState<HospitalDashboardScree
               children: [
                 _Header(profile: _profile),
                 const SizedBox(height: 16),
-                const Row(children: [
-                  Expanded(child: StatCard(title: 'Today', value: '0', icon: Icons.today_rounded)),
+                Row(children: [
+                  Expanded(child: StatCard(title: 'Today', value: '${_stats['today']}', icon: Icons.today_rounded)),
                   SizedBox(width: 10),
-                  Expanded(child: StatCard(title: 'Pending', value: '0', icon: Icons.pending_actions_rounded)),
+                  Expanded(child: StatCard(title: 'Pending', value: '${_stats['pending']}', icon: Icons.pending_actions_rounded)),
                   SizedBox(width: 10),
-                  Expanded(child: StatCard(title: 'Fulfilled', value: '0', icon: Icons.verified_rounded)),
+                  Expanded(child: StatCard(title: 'Fulfilled', value: '${_stats['fulfilled']}', icon: Icons.verified_rounded)),
                 ]),
                 const SizedBox(height: 20),
                 if (_inventory.isNotEmpty) ...[
@@ -132,9 +179,18 @@ class _HospitalDashboardScreenState extends ConsumerState<HospitalDashboardScree
                 const SizedBox(height: 20),
                 const Text('Enter 4-digit request code'),
                 const SizedBox(height: 10),
-                _OtpBoxes(code: _code),
-                const SizedBox(height: 12),
-                _Keypad(onDigit: _tapDigit, onBack: () => setState(() => _code = _code.isEmpty ? '' : _code.substring(0, _code.length - 1))),
+                KeyboardListener(
+                  focusNode: _codeFocus,
+                  autofocus: true,
+                  onKeyEvent: _handleKeyEvent,
+                  child: Column(
+                    children: [
+                      _OtpBoxes(code: _code),
+                      const SizedBox(height: 12),
+                      _Keypad(onDigit: _tapDigit, onBack: () => setState(() => _code = _code.isEmpty ? '' : _code.substring(0, _code.length - 1))),
+                    ],
+                  ),
+                ),
                 if (_match != null) ...[
                   const SizedBox(height: 14),
                   Container(
@@ -148,6 +204,59 @@ class _HospitalDashboardScreenState extends ConsumerState<HospitalDashboardScree
                       AppButton.primary(label: 'Verify Donation', onPressed: _verify),
                     ]),
                   ),
+                ],
+                if (_pendingRequests.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  const SectionHeader(title: 'Active Requests'),
+                  const SizedBox(height: 8),
+                  ..._pendingRequests.map((r) {
+                    final urgency = r['urgency_level'] as String? ?? 'routine';
+                    final urgencyColor = urgency == 'critical'
+                        ? AppColors.primaryRed
+                        : urgency == 'urgent'
+                            ? AppColors.warning
+                            : Colors.blue;
+                    final hasDonor = r['donor_name'] != null;
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).cardColor,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: urgencyColor.withAlpha(102)),
+                      ),
+                      child: Row(children: [
+                        Container(width: 4, height: 60, color: urgencyColor, margin: const EdgeInsets.only(right: 12)),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(children: [
+                                Text('${r['blood_type']}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primaryRed)),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: urgencyColor.withAlpha(25),
+                                    borderRadius: BorderRadius.circular(99),
+                                  ),
+                                  child: Text(urgency.toUpperCase(), style: TextStyle(fontSize: 10, color: urgencyColor, fontWeight: FontWeight.bold)),
+                                ),
+                                const Spacer(),
+                                Text('Code: ${r['display_code']}', style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 16)),
+                              ]),
+                              const SizedBox(height: 4),
+                              Text('Patient: ${r['requester_name'] ?? 'Unknown'}', style: const TextStyle(color: AppColors.textSecondary)),
+                              if (hasDonor)
+                                Text('Donor: ${r['donor_name']} (${r['donor_blood_type']})', style: const TextStyle(color: AppColors.textSecondary))
+                              else
+                                const Text('Waiting for donor...', style: TextStyle(color: AppColors.warning)),
+                            ],
+                          ),
+                        ),
+                      ]),
+                    );
+                  }),
                 ],
               ],
             ),

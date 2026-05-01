@@ -3,7 +3,6 @@ import 'package:bloodconnect/theme/app_theme.dart';
 import 'package:bloodconnect/widgets/app_button.dart';
 import 'package:bloodconnect/widgets/urgency_badge.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 class RequestCard extends StatefulWidget {
   const RequestCard({
