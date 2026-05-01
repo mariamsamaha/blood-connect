@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:bloodconnect/main.dart';
@@ -61,19 +60,12 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
       final stats = await donorService.getDonorStats(profile.id);
       final mission = await donorService.getActiveMission(profile.id);
 
-      // GPS first, saved location as fallback
-      final pos = await locationService.getCurrentPosition();
-      double? lat = pos?.latitude ?? profile.latitude;
-      double? lng = pos?.longitude ?? profile.longitude;
-
-      if (pos != null && profile.firebaseUid.isNotEmpty) {
-        unawaited(
-          ref.read(userServiceProvider).updateLocation(
-            firebaseUid: profile.firebaseUid,
-            latitude: pos.latitude,
-            longitude: pos.longitude,
-          ),
-        );
+      double? lat = profile.latitude;
+      double? lng = profile.longitude;
+      if (lat == null || lng == null) {
+        final pos = await locationService.getCurrentPosition();
+        lat = pos?.latitude;
+        lng = pos?.longitude;
       }
       const fallbackLat = 30.0444;
       const fallbackLng = 31.2357;
@@ -86,7 +78,7 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
         donorBloodType: profile.bloodType,
         donorLat: searchLat,
         donorLng: searchLng,
-        radiusKm: usedFallback ? 300 : math.max(25, profile.notificationRadiusKm),
+        radiusKm: usedFallback ? 300 : math.max(100, profile.notificationRadiusKm),
       );
 
       if (!mounted) return;
@@ -127,19 +119,14 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
 
     try {
       if (accept) {
-        final pos = await locationService.getCurrentPosition();
-        var lat = pos?.latitude ?? profile.latitude;
-        var lng = pos?.longitude ?? profile.longitude;
-        if (lat == null || lng == null) throw Exception('Location required');
-        if (pos != null && profile.firebaseUid.isNotEmpty) {
-          unawaited(
-            ref.read(userServiceProvider).updateLocation(
-              firebaseUid: profile.firebaseUid,
-              latitude: pos.latitude,
-              longitude: pos.longitude,
-            ),
-          );
+        var lat = profile.latitude;
+        var lng = profile.longitude;
+        if (lat == null || lng == null) {
+          final pos = await locationService.getCurrentPosition();
+          lat = pos?.latitude;
+          lng = pos?.longitude;
         }
+        if (lat == null || lng == null) throw Exception('Location required');
         await donorService.acceptRequest(
           requestId: request.id,
           donorId: profile.id,
@@ -190,6 +177,10 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
                             const SizedBox(height: 12),
                             _LocationBanner(onTap: () => context.push('/profile')),
                           ],
+                          const SizedBox(height: 12),
+                          _AiQuickAction(
+                            onTap: () => context.push('/ai-check'),
+                          ),
                           const SizedBox(height: 24),
                           const SectionHeader(title: 'Nearby Requests'),
                           const SizedBox(height: 12),
@@ -303,6 +294,42 @@ class _LocationBanner extends StatelessWidget {
         const Expanded(child: Text('Location unavailable. Enable Location for better matching.')),
         TextButton(onPressed: onTap, child: const Text('Enable')),
       ]),
+    );
+  }
+}
+
+class _AiQuickAction extends StatelessWidget {
+  const _AiQuickAction({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Ink(
+        decoration: BoxDecoration(
+          color: const Color(0xFFF1F6FF),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFF9EBEFF)),
+        ),
+        child: const Padding(
+          padding: EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Icon(Icons.auto_awesome_rounded, color: Color(0xFF355DCB)),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Run AI eligibility check from blood report',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: Color(0xFF355DCB)),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

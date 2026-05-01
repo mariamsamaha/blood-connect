@@ -23,6 +23,7 @@ dependencies:
   flutter_riverpod: ^3.2.0
   flutter_local_notifications: 18.0.1
   go_router: ^17.0.1
+  google_maps_flutter: ^2.14.0
   geoflutterfire_plus: ^0.0.33
   geolocator: ^14.0.2
   google_fonts: ^8.0.2
@@ -33,8 +34,9 @@ dependencies:
   permission_handler: ^12.0.1      
   intl: ^0.20.2     
   flutter_dotenv: ^5.1.0
-  http: ^1.6.0
+  http: ^1.6.0`n  http_parser: ^4.0.2`n  http_parser: ^4.0.2
   geocoding: ^3.0.0
+  image_picker: ^1.2.0
 
 
 

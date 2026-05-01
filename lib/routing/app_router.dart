@@ -9,13 +9,16 @@ import 'package:bloodconnect/screens/onboarding_screen.dart';
 import 'package:bloodconnect/screens/donor_home_screen.dart';
 import 'package:bloodconnect/screens/recipient_home_screen.dart';
 import 'package:bloodconnect/screens/hospital_dashboard_screen.dart';
+import 'package:bloodconnect/screens/hospital_slot_management_screen.dart';
 import 'package:bloodconnect/screens/donor_mission_screen.dart';
 import 'package:bloodconnect/screens/donation_history_screen.dart';
 import 'package:bloodconnect/screens/badges_screen.dart';
 import 'package:bloodconnect/screens/leaderboard_screen.dart';
 import 'package:bloodconnect/screens/settings_screen.dart';
 import 'package:bloodconnect/screens/create_request_screen.dart';
+import 'package:bloodconnect/screens/schedule_appointment_screen.dart';
 import 'package:bloodconnect/screens/profile_screen.dart';
+import 'package:bloodconnect/screens/ai_prediction_screen.dart';
 
 UserProfile? _cachedProfile;
 String? _cachedUid;
@@ -61,6 +64,10 @@ GoRouter buildRouter({
         builder: (ctx, s) => const HospitalDashboardScreen(),
       ),
       GoRoute(
+        path: '/hospital/slots',
+        builder: (ctx, s) => const HospitalSlotManagementScreen(),
+      ),
+      GoRoute(
         path: '/donor/mission',
         builder: (ctx, s) => const DonorMissionScreen(),
       ),
@@ -84,7 +91,15 @@ GoRouter buildRouter({
         path: '/create-request',
         builder: (ctx, s) => const CreateRequestScreen(),
       ),
+      GoRoute(
+        path: '/schedule',
+        builder: (ctx, s) => const ScheduleAppointmentScreen(),
+      ),
       GoRoute(path: '/profile', builder: (ctx, s) => const ProfileScreen()),
+      GoRoute(
+        path: '/ai-check',
+        builder: (ctx, s) => const AiPredictionScreen(),
+      ),
     ],
     redirect: (context, state) async {
       if (state.matchedLocation == '/signup') {
@@ -128,7 +143,7 @@ GoRouter buildRouter({
 
       // Hospital admin: dashboard + profile only (MVP RBAC).
       if (profile.accountType == AccountType.hospital) {
-        if (loc == '/profile' || loc == '/settings' || loc.startsWith('/hospital/')) return null;
+        if (loc == '/profile' || loc.startsWith('/hospital/')) return null;
         return '/hospital/dashboard';
       }
 
@@ -151,12 +166,19 @@ GoRouter buildRouter({
       }
 
       if (loc == '/profile') return null;
+      if (loc == '/ai-check') return null;
 
-      if (loc == '/donor/mission' ||
-          loc == '/donation-history' ||
-          loc == '/badges' ||
-          loc == '/leaderboard') {
-        if (profile.role != UserRole.donor) return homeRouteForProfile(profile);
+      if (loc == '/schedule') {
+        if (profile.role != UserRole.recipient) {
+          return homeRouteForProfile(profile);
+        }
+        return null;
+      }
+
+      if (loc == '/leaderboard') {
+        if (profile.role != UserRole.donor) {
+          return homeRouteForProfile(profile);
+        }
         return null;
       }
 

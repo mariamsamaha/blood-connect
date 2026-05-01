@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:bloodconnect/services/local_notification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -14,6 +16,8 @@ import 'package:bloodconnect/services/notification_service.dart';
 import 'package:bloodconnect/services/location_service.dart';
 import 'package:bloodconnect/services/donor_service.dart';
 import 'package:bloodconnect/services/hospital_service.dart';
+import 'package:bloodconnect/services/appointment_service.dart';
+import 'package:bloodconnect/services/ai_prediction_service.dart';
 import 'package:bloodconnect/theme/app_theme.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -21,7 +25,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
-  debugPrint('Background message: ${message.notification?.title}');
+  print('Background message: ${message.notification?.title}');
 }
 
 final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
@@ -88,6 +92,10 @@ final hospitalServiceProvider = Provider<HospitalService>((ref) {
   return HospitalService(ref.watch(databaseServiceProvider));
 });
 
+final appointmentServiceProvider = Provider<AppointmentService>((ref) {
+  return AppointmentService(ref.watch(databaseServiceProvider));
+});
+
 final routerRefreshProvider = Provider<RouterRefreshNotifier>((ref) {
   final n = RouterRefreshNotifier();
   ref.onDispose(n.dispose);
@@ -96,6 +104,10 @@ final routerRefreshProvider = Provider<RouterRefreshNotifier>((ref) {
 
 final locationServiceProvider = Provider<LocationService>((ref) {
   return LocationService();
+});
+
+final aiPredictionServiceProvider = Provider<AiPredictionService>((ref) {
+  return const AiPredictionService();
 });
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -130,7 +142,7 @@ void main() async {
   try {
     await LocalNotificationService.init();
   } catch (e) {
-    debugPrint('Local notifications init failed: $e');
+    print('Local notifications init failed: $e');
   }
 
   await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
@@ -199,19 +211,19 @@ class _BloodConnectAppState extends ConsumerState<BloodConnectApp> {
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       final notification = message.notification;
       if (notification != null) {
-        debugPrint('Foreground message: ${notification.title}');
+        print('Foreground message: ${notification.title}');
         LocalNotificationService.show(
           title: notification.title ?? '',
           body: notification.body ?? '',
         );
       }
-      debugPrint('New request notification - pull to refresh');
+      print('New request notification - pull to refresh');
     });
 
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       final requestId = message.data['request_id'] ?? '';
       if (requestId.isNotEmpty) {
-        debugPrint('Notification tapped: $requestId');
+        print('Notification tapped: $requestId');
         final router = ref.read(routerProvider);
         router.go('/donor/home');
       }
@@ -221,7 +233,7 @@ class _BloodConnectAppState extends ConsumerState<BloodConnectApp> {
     if (initial != null) {
       final requestId = initial.data['request_id'] ?? '';
       if (requestId.isNotEmpty) {
-        debugPrint('Opened from terminated: $requestId');
+        print('Opened from terminated: $requestId');
         WidgetsBinding.instance.addPostFrameCallback((_) {
           final router = ref.read(routerProvider);
           router.go('/donor/home');
