@@ -118,7 +118,11 @@ class _RequestCardState extends State<RequestCard>
                         ),
                         Chip(
                           label: Text(
-                            'Posted ${createdAgo.inMinutes} min ago',
+                            createdAgo.inMinutes < 60
+                                ? 'Posted ${createdAgo.inMinutes} min ago'
+                                : createdAgo.inHours < 24
+                                    ? 'Posted ${createdAgo.inHours}h ago'
+                                    : 'Posted ${createdAgo.inDays}d ago',
                             style: Theme.of(context).textTheme.labelSmall,
                           ),
                           shape: RoundedRectangleBorder(
