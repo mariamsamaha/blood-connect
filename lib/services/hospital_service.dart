@@ -49,7 +49,7 @@ class HospitalService {
       LEFT JOIN donor_responses dr ON dr.request_id = br.id AND dr.response_type = 'accepted'
       LEFT JOIN users u ON u.id = dr.donor_id
       WHERE br.hospital_id = @hospitalId::uuid
-        AND REPLACE(SPLIT_PART(br.short_id, '-', 3), ' ', '') = @code
+        AND RIGHT(br.short_id, 4) = @code
         AND br.status IN ('active', 'in_progress')
       ORDER BY br.created_at DESC
     ''',
