@@ -434,7 +434,7 @@ class _StepContent extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           DropdownButtonFormField<Hospital>(
-            initialValue: hospital,
+            value: hospital,
             decoration: const InputDecoration(
               labelText: 'Select Hospital (nearest first)',
             ),

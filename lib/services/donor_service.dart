@@ -231,7 +231,7 @@ class DonorService {
         SELECT br.id AS request_id, br.short_id, br.hospital_name, br.blood_type,
                dr.response_type, dr.responded_at
         FROM donor_responses dr
-        JOIN blood_requests br ON br.id = dr.request_id
+        LEFT JOIN blood_requests br ON br.id = dr.request_id
         WHERE dr.donor_id = @donorId::uuid
         ORDER BY dr.responded_at DESC
       ''',
@@ -321,8 +321,8 @@ class DonorService {
             ELSE 10
           END AS points_earned
         FROM donations d
-        JOIN blood_requests br ON br.id = d.request_id
-        JOIN users u ON u.id = d.verified_by_hospital_id
+        LEFT JOIN blood_requests br ON br.id = d.request_id
+        LEFT JOIN users u ON u.id = d.verified_by_hospital_id
         WHERE d.donor_id = @donorId::uuid
         ORDER BY d.donation_date DESC
         ''',

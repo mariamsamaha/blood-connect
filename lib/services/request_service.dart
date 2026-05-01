@@ -154,10 +154,10 @@ class RequestService {
 
       final donorCount = donorCountResult.first['donor_count'] as int;
 
-      String requesterLocationSQL;
+      String? requesterLocationSQL;
       if (requesterLat != null && requesterLng != null) {
         requesterLocationSQL =
-            "ST_SetSRID(ST_MakePoint($requesterLng, $requesterLat), 4326)::geography";
+            "ST_SetSRID(ST_MakePoint(@requesterLng::float8, @requesterLat::float8), 4326)::geography";
       } else {
         requesterLocationSQL = "NULL";
       }
@@ -190,7 +190,7 @@ class RequestService {
             @urgencyLevel,
             @hospitalId,
             @hospitalName,
-            ST_SetSRID(ST_MakePoint($hospitalLng, $hospitalLat), 4326)::geography,
+            ST_SetSRID(ST_MakePoint(@hospitalLng::float8, @hospitalLat::float8), 4326)::geography,
             $requesterLocationSQL,
             @patientName,
             @description,
@@ -226,6 +226,10 @@ class RequestService {
           'description': description,
           'contactPhone': contactPhone,
           'donorCount': donorCount,
+          'hospitalLng': hospitalLng,
+          'hospitalLat': hospitalLat,
+          if (requesterLat != null && requesterLng != null)
+            ...{'requesterLng': requesterLng, 'requesterLat': requesterLat},
         },
       );
 
