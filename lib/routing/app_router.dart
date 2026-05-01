@@ -128,7 +128,7 @@ GoRouter buildRouter({
 
       // Hospital admin: dashboard + profile only (MVP RBAC).
       if (profile.accountType == AccountType.hospital) {
-        if (loc == '/profile' || loc.startsWith('/hospital/')) return null;
+        if (loc == '/profile' || loc == '/settings' || loc.startsWith('/hospital/')) return null;
         return '/hospital/dashboard';
       }
 
@@ -154,15 +154,9 @@ GoRouter buildRouter({
 
       if (loc == '/donor/mission' ||
           loc == '/donation-history' ||
-          loc == '/badges') {
+          loc == '/badges' ||
+          loc == '/leaderboard') {
         if (profile.role != UserRole.donor) return homeRouteForProfile(profile);
-        return null;
-      }
-
-      if (loc == '/leaderboard') {
-        if (profile.role != UserRole.donor) {
-          return homeRouteForProfile(profile);
-        }
         return null;
       }
 
