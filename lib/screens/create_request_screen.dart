@@ -8,7 +8,6 @@ import 'package:bloodconnect/widgets/blood_type_chip.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 /// Widget structure:
 /// - Scaffold
@@ -195,14 +194,6 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
                       locationNote: _locationNote,
                       requesterLat: _requesterLat,
                       requesterLng: _requesterLng,
-                      onMapLocationChanged: (lat, lng) {
-                        setState(() {
-                          _requesterLat = lat;
-                          _requesterLng = lng;
-                          _locationNote =
-                              'Pinned location set from map for donor matching';
-                        });
-                      },
                       onRefreshLocation: () async {
                         await _captureLocation();
                         await _loadHospitals();
@@ -313,7 +304,6 @@ class _StepContent extends StatelessWidget {
     required this.requesterLat,
     required this.requesterLng,
     required this.onRefreshLocation,
-    required this.onMapLocationChanged,
   });
   final int step;
   final String bloodType;
@@ -335,7 +325,6 @@ class _StepContent extends StatelessWidget {
   final double? requesterLat;
   final double? requesterLng;
   final Future<void> Function() onRefreshLocation;
-  final void Function(double lat, double lng) onMapLocationChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -394,32 +383,43 @@ class _StepContent extends StatelessWidget {
       if (loadingHospitals) return const Center(child: CircularProgressIndicator());
       return ListView(
         children: [
-          _LocationMapPicker(
-            latitude: requesterLat,
-            longitude: requesterLng,
-            onLocationChanged: onMapLocationChanged,
-          ),
-          const SizedBox(height: 12),
           Container(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: Theme.of(context).cardColor,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.divider),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.my_location_rounded, size: 18),
-                    const SizedBox(width: 8),
+                    const Icon(Icons.location_pin, color: AppColors.primaryRed, size: 28),
+                    const SizedBox(width: 10),
                     Expanded(
-                      child: Text(locationNote ?? 'Location is used to sort hospitals by proximity'),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            locationNote ?? 'Detecting location...',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          if (requesterLat != null && requesterLng != null)
+                            Text(
+                              '${requesterLat!.toStringAsFixed(4)}, ${requesterLng!.toStringAsFixed(4)}',
+                              style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 12,
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                     if (locating)
                       const SizedBox(
-                        height: 16,
-                        width: 16,
+                        width: 20,
+                        height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     else
@@ -429,11 +429,6 @@ class _StepContent extends StatelessWidget {
                       ),
                   ],
                 ),
-                if (requesterLat != null && requesterLng != null)
-                  Text(
-                    'Lat ${requesterLat!.toStringAsFixed(4)}, Lng ${requesterLng!.toStringAsFixed(4)}',
-                    style: const TextStyle(color: AppColors.textSecondary),
-                  ),
               ],
             ),
           ),
@@ -441,7 +436,7 @@ class _StepContent extends StatelessWidget {
           DropdownButtonFormField<Hospital>(
             initialValue: hospital,
             decoration: const InputDecoration(
-              labelText: 'Hospital dropdown (nearest first)',
+              labelText: 'Select Hospital (nearest first)',
             ),
             isExpanded: true,
             items: hospitals
@@ -467,102 +462,6 @@ class _StepContent extends StatelessWidget {
       const SizedBox(height: 16),
       AppTextField(controller: notes, label: 'Notes', hint: 'Optional', maxLines: 4),
     ]);
-  }
-}
-
-class _LocationMapPicker extends StatefulWidget {
-  const _LocationMapPicker({
-    required this.latitude,
-    required this.longitude,
-    required this.onLocationChanged,
-  });
-
-  final double? latitude;
-  final double? longitude;
-  final void Function(double lat, double lng) onLocationChanged;
-
-  @override
-  State<_LocationMapPicker> createState() => _LocationMapPickerState();
-}
-
-class _LocationMapPickerState extends State<_LocationMapPicker> {
-  static const _fallback = LatLng(30.0444, 31.2357);
-  GoogleMapController? _controller;
-  LatLng? _currentTarget;
-
-  @override
-  void initState() {
-    super.initState();
-    _currentTarget = widget.latitude != null && widget.longitude != null
-        ? LatLng(widget.latitude!, widget.longitude!)
-        : _fallback;
-  }
-
-  @override
-  void didUpdateWidget(covariant _LocationMapPicker oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.latitude != oldWidget.latitude ||
-        widget.longitude != oldWidget.longitude) {
-      final updated = widget.latitude != null && widget.longitude != null
-          ? LatLng(widget.latitude!, widget.longitude!)
-          : _fallback;
-      _currentTarget = updated;
-      _controller?.animateCamera(CameraUpdate.newLatLng(updated));
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final target = _currentTarget ?? _fallback;
-    return Container(
-      height: 230,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.divider),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
-        children: [
-          GoogleMap(
-            initialCameraPosition: CameraPosition(target: target, zoom: 14),
-            myLocationEnabled: true,
-            myLocationButtonEnabled: true,
-            zoomControlsEnabled: false,
-            onMapCreated: (c) => _controller = c,
-            onCameraMove: (position) => _currentTarget = position.target,
-            onCameraIdle: () {
-              final current = _currentTarget;
-              if (current == null) return;
-              widget.onLocationChanged(current.latitude, current.longitude);
-            },
-          ),
-          const IgnorePointer(
-            child: Center(
-              child: Icon(
-                Icons.location_pin,
-                size: 40,
-                color: AppColors.primaryRed,
-              ),
-            ),
-          ),
-          Positioned(
-            left: 10,
-            top: 10,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.92),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Text(
-                'Drag map to pin location',
-                style: TextStyle(fontSize: 12),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
 

@@ -22,8 +22,8 @@ class BadgeCard extends StatelessWidget {
     return Opacity(
       opacity: earned ? 1.0 : 0.5,
       child: Container(
-        width: 100,
-        padding: const EdgeInsets.all(12),
+        width: 90,
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: earned
               ? AppColors.primaryRed.withAlpha(20)
@@ -37,31 +37,32 @@ class BadgeCard extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(icon, style: const TextStyle(fontSize: 28)),
-            const SizedBox(height: 6),
+            Text(icon, style: const TextStyle(fontSize: 24)),
+            const SizedBox(height: 4),
             Text(
               name,
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
               textAlign: TextAlign.center,
               maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
             if (!earned) ...[
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
               LinearProgressIndicator(
                 value: progress,
-                minHeight: 4,
+                minHeight: 3,
                 borderRadius: BorderRadius.circular(99),
                 backgroundColor: AppColors.divider,
                 valueColor: const AlwaysStoppedAnimation(AppColors.primaryRed),
               ),
-              const SizedBox(height: 4),
-              Text(
-                progressLabel ?? '',
-                style: const TextStyle(
-                  fontSize: 9,
-                  color: AppColors.textSecondary,
+              if (progressLabel != null)
+                Text(
+                  progressLabel!,
+                  style: const TextStyle(
+                    fontSize: 8,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
-              ),
             ],
           ],
         ),

@@ -30,7 +30,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   List<DonorResponseEntry> _history = const [];
   bool _loading = true;
   bool _notify = true;
-  double _radius = 50;
 
   @override
   void initState() {
@@ -53,7 +52,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       _profile = p;
       _badges = badges;
       _history = history;
-      _radius = p.notificationRadiusKm.toDouble();
       _loading = false;
     });
   }
@@ -65,8 +63,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final profile = _profile;
+    if (profile == null || _loading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          onPressed: () {
+            if (_profile != null) {
+              context.go(_profile!.homeRoute);
+            } else {
+              if (context.canPop()) {
+                context.pop();
+              }
+            }
+          },
+          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+        ),
         actions: [
           IconButton(
             onPressed: () => context.push('/settings'),
@@ -81,60 +95,95 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
                 children: [
-                  _ProfileHead(profile: _profile!),
+                  _ProfileHead(profile: profile),
                   const SizedBox(height: 16),
-                  Row(children: [
-                    Expanded(child: StatCard(title: 'Donations', value: '${_profile!.totalDonations}', icon: Icons.volunteer_activism_rounded)),
-                    const SizedBox(width: 10),
-                    Expanded(child: StatCard(title: 'Points', value: '${_profile!.rewardPoints}', icon: Icons.star_rounded)),
-                    const SizedBox(width: 10),
-                    const Expanded(child: StatCard(title: 'Member', value: '2026', icon: Icons.calendar_month_rounded)),
-                  ]),
-                  const SizedBox(height: 20),
-                  Row(children: [
-                    const Expanded(child: SectionHeader(title: 'Badges')),
-                    TextButton(
-                      onPressed: () => context.push('/badges'),
-                      child: const Text('See All'),
+                  if (profile.role == UserRole.donor) ...[
+                    Row(children: [
+                      Expanded(child: StatCard(title: 'Donations', value: '${profile.totalDonations}', icon: Icons.volunteer_activism_rounded)),
+                      const SizedBox(width: 10),
+                      Expanded(child: StatCard(title: 'Points', value: '${profile.rewardPoints}', icon: Icons.star_rounded)),
+                      const SizedBox(width: 10),
+                      IconButton(
+                        onPressed: () => context.push('/leaderboard'),
+                        icon: const Icon(Icons.leaderboard_rounded),
+                        tooltip: 'Leaderboard',
+                      ),
+                    ]),
+                    const SizedBox(height: 20),
+                    Row(children: [
+                      const Expanded(child: SectionHeader(title: 'Badges')),
+                      TextButton(
+                        onPressed: () => context.push('/badges'),
+                        child: const Text('See All'),
+                      ),
+                    ]),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 110,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemBuilder: (_, i) {
+                          final b = _badges[i];
+                          final earned = b['is_earned'] as bool? ?? false;
+                          return BadgeCard(
+                            icon: '${b['icon'] ?? '🏅'}',
+                            name: '${b['name'] ?? 'Badge'}',
+                            earned: earned,
+                            progress: earned
+                                ? 1.0
+                                : ((b['current_value'] as int? ?? 0) /
+                                    (b['requirement_value'] as int? ?? 1))
+                                        .clamp(0.0, 1.0),
+                            progressLabel: earned
+                                ? 'Earned'
+                                : '${b['current_value']}/${b['requirement_value']}',
+                          );
+                        },
+                        separatorBuilder: (_, __) => const SizedBox(width: 10),
+                        itemCount: _badges.length,
+                      ),
                     ),
-                  ]),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    height: 120,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemBuilder: (_, i) {
-                        final b = _badges[i];
-                        final earned = b['is_earned'] as bool? ?? false;
-                        return BadgeCard(
-                          icon: '${b['icon'] ?? '🏅'}',
-                          name: '${b['name'] ?? 'Badge'}',
-                          earned: earned,
-                          progress: earned
-                              ? 1.0
-                              : ((b['current_value'] as int? ?? 0) /
-                                  (b['requirement_value'] as int? ?? 1))
-                                      .clamp(0.0, 1.0),
-                          progressLabel: earned
-                              ? 'Earned'
-                              : '${b['current_value']}/${b['requirement_value']}',
-                        );
-                      },
-                      separatorBuilder: (_, __) => const SizedBox(width: 10),
-                      itemCount: _badges.length,
-                    ),
-                  ),
-const SizedBox(height: 20),
-                  Row(children: [
-                    Expanded(child: StatCard(title: 'Points', value: '${_profile!.rewardPoints}', icon: Icons.star_rounded)),
-                    const SizedBox(width: 10),
-                    IconButton(
-                      onPressed: () => context.push('/leaderboard'),
-                      icon: const Icon(Icons.leaderboard_rounded),
-                      tooltip: 'Leaderboard',
-                    ),
-                  ]),
-                  const SizedBox(height: 20),
+                    const SizedBox(height: 20),
+                    Row(children: [
+                      const Expanded(child: SectionHeader(title: 'Donation History')),
+                      TextButton(
+                        onPressed: () => context.push('/donation-history'),
+                        child: const Text('See All'),
+                      ),
+                    ]),
+                    const SizedBox(height: 12),
+                    if (_history.isNotEmpty)
+                      ..._history.take(5).map((h) => ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: const CircleAvatar(child: Icon(Icons.bloodtype_rounded)),
+                            title: Text(h.hospitalName),
+                            subtitle: Text('${h.bloodType} • ${h.responseType}'),
+                            trailing: Text(_formatDate(h.respondedAt)),
+                          )),
+                    if (_history.isEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(16)),
+                        child: const Column(children: [Icon(Icons.history_rounded), SizedBox(height: 8), Text('No donation history yet')]),
+                      ),
+                    const SizedBox(height: 20),
+                    Row(children: [
+                      Expanded(child: StatCard(title: 'Member Since', value: '2026', icon: Icons.calendar_month_rounded)),
+                    ]),
+                  ] else if (profile.role == UserRole.recipient) ...[
+                    Row(children: [
+                      Expanded(child: StatCard(title: 'Requests', value: '${profile.totalDonations}', icon: Icons.bloodtype_rounded)),
+                      const SizedBox(width: 10),
+                      Expanded(child: StatCard(title: 'Member Since', value: '2026', icon: Icons.calendar_month_rounded)),
+                    ]),
+                  ] else ...[
+                    Row(children: [
+                      Expanded(child: StatCard(title: 'Verified', value: '${profile.totalDonations}', icon: Icons.verified_rounded)),
+                      const SizedBox(width: 10),
+                      Expanded(child: StatCard(title: 'Member Since', value: '2026', icon: Icons.calendar_month_rounded)),
+                    ]),
+                  ],
+                  const SizedBox(height: 24),
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(16)),
@@ -145,9 +194,6 @@ const SizedBox(height: 20),
                         const Expanded(child: Text('Notifications')),
                         Switch(value: _notify, onChanged: (v) => setState(() => _notify = v)),
                       ]),
-                      const SizedBox(height: 8),
-                      Text('Notification radius: ${_radius.toInt()} km'),
-                      Slider(min: 10, max: 200, value: _radius, onChanged: (v) => setState(() => _radius = v)),
                     ]),
                   ),
                   const SizedBox(height: 20),
@@ -156,6 +202,10 @@ const SizedBox(height: 20),
               ),
             ),
     );
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year}';
   }
 }
 
