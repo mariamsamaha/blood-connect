@@ -1,6 +1,7 @@
 import 'package:bloodconnect/models/blood_request.dart';
 import 'package:bloodconnect/models/hospital_request_match.dart';
 import 'package:bloodconnect/services/database_service.dart';
+import 'package:flutter/foundation.dart';
 
 class HospitalService {
   final DatabaseService _db;
@@ -134,6 +135,75 @@ Future<List<Map<String, dynamic>>> getRecentAuditForRequest(
         params: {'hospitalId': hospitalId},
       );
     } catch (_) {
+      return [];
+    }
+  }
+
+  Future<Map<String, int>> getHospitalStats(String hospitalId) async {
+    try {
+      final result = await _db.query(
+        '''
+        SELECT
+          COUNT(*) FILTER (WHERE status = 'in_progress') AS pending,
+          COUNT(*) FILTER (WHERE status = 'fulfilled' AND DATE(fulfilled_at) = CURRENT_DATE) AS today,
+          COUNT(*) FILTER (WHERE status = 'fulfilled') AS fulfilled_total
+        FROM blood_requests
+        WHERE hospital_id = @hospitalId::uuid
+        ''',
+        params: {'hospitalId': hospitalId},
+      );
+      if (result.isEmpty) return {'pending': 0, 'today': 0, 'fulfilled': 0};
+      final row = result.first;
+      return {
+        'pending': (row['pending'] as int?) ?? 0,
+        'today': (row['today'] as int?) ?? 0,
+        'fulfilled': (row['fulfilled_total'] as int?) ?? 0,
+      };
+    } catch (e) {
+      debugPrint('getHospitalStats failed: $e');
+      return {'pending': 0, 'today': 0, 'fulfilled': 0};
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getPendingRequests(String hospitalId) async {
+    try {
+      return await _db.query(
+        '''
+        SELECT
+          br.id,
+          br.short_id,
+          br.blood_type,
+          br.urgency_level,
+          br.status,
+          br.units_needed,
+          br.created_at,
+           br.expires_at,
+           COALESCE(u_req.name, 'Direct Request')  AS requester_name,
+           u_req.phone AS requester_phone,
+          d.name      AS donor_name,
+          d.blood_type AS donor_blood_type,
+          d.phone     AS donor_phone,
+          RIGHT(br.short_id, 4) AS display_code
+        FROM blood_requests br
+        LEFT JOIN users u_req ON u_req.id = br.requester_id
+        LEFT JOIN donor_responses dr
+          ON dr.request_id = br.id
+          AND dr.response_type = 'accepted'
+        LEFT JOIN users d ON d.id = dr.donor_id
+        WHERE br.hospital_id = @hospitalId::uuid
+          AND br.status IN ('active', 'in_progress')
+        ORDER BY
+          CASE br.urgency_level
+            WHEN 'critical' THEN 1
+            WHEN 'urgent'   THEN 2
+            ELSE 3
+          END,
+          br.created_at DESC
+        ''',
+        params: {'hospitalId': hospitalId},
+      );
+    } catch (e) {
+      debugPrint('getPendingRequests failed: $e');
       return [];
     }
   }
