@@ -2,6 +2,8 @@
 .env.*
 secrets/
 keys/
+**/firebase-adminsdk*.json
+api-backend/firebase-adminsdk.json
 *.key
 *.pem
 *.p12
@@ -50,3 +52,16 @@ android/captures/
 test_data/
 sample_requests.sql
 test_users.sql
+
+# Node
+node_modules/
+notification-backend/node_modules/
+api-backend/node_modules/
+
+# Python
+__pycache__/
+*.py[cod]
+ai-service/__pycache__/
+
+# API local env
+api-backend/.env

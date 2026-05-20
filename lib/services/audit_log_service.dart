@@ -1,34 +1,13 @@
-import 'package:bloodconnect/services/database_service.dart';
 import 'package:flutter/foundation.dart';
 
-/// Minimal audit trail for MVP (requires `request_audit_log` from SQL migration).
+/// Audit events are written by the API BFF when mutations occur.
 class AuditLogService {
-  final DatabaseService _db;
-
-  AuditLogService(this._db);
-
   Future<void> log({
     required String requestId,
     required String eventType,
     String? detail,
     String? actorUserId,
   }) async {
-    try {
-      await _db.query(
-        '''
-        INSERT INTO request_audit_log (request_id, event_type, detail, actor_user_id)
-        VALUES (@requestId::uuid, @eventType, @detail, @actorUserId::uuid)
-        ''',
-        params: {
-          'requestId': requestId,
-          'eventType': eventType,
-          'detail': detail,
-          'actorUserId': actorUserId,
-        },
-      );
-    } catch (e, stack) {
-      debugPrint('AuditLog FAILED [$eventType] request=$requestId: $e');
-      debugPrint('$stack');
-    }
+    debugPrint('Audit [$eventType] request=$requestId (server-side)');
   }
 }

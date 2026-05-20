@@ -7,7 +7,7 @@ import 'package:bloodconnect/routing/app_router.dart';
 import 'package:bloodconnect/routing/router_refresh.dart';
 import 'package:bloodconnect/services/audit_log_service.dart';
 import 'package:bloodconnect/services/user_service.dart';
-import 'package:bloodconnect/services/database_service.dart';
+import 'package:bloodconnect/services/api_client.dart';
 import 'package:bloodconnect/services/auth_service.dart';
 import 'package:bloodconnect/services/request_service.dart';
 import 'package:bloodconnect/services/notification_service.dart';
@@ -15,12 +15,14 @@ import 'package:bloodconnect/services/location_service.dart';
 import 'package:bloodconnect/services/donor_service.dart';
 import 'package:bloodconnect/services/hospital_service.dart';
 import 'package:bloodconnect/theme/app_theme.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:bloodconnect/services/ai_prediction_service.dart';
+import 'package:bloodconnect/config/app_config.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:bloodconnect/firebase_options.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   debugPrint('Background message: ${message.notification?.title}');
 }
 
@@ -29,63 +31,37 @@ final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
 
 final authServiceProvider = Provider<AuthService>((ref) => AuthService());
 
-String _envOrDefault(String key, String fallback) {
-  final value = dotenv.env[key];
-  if (value == null || value.trim().isEmpty) {
-    debugPrint('⚠️  WARNING: $key missing in .env, using fallback "$fallback".');
-    return fallback;
-  }
-  return value;
-}
-
-final databaseServiceProvider = Provider<DatabaseService>((ref) {
-  final host = _envOrDefault('SUPABASE_HOST', '127.0.0.1');
-  final portRaw = _envOrDefault('SUPABASE_PORT', '5432');
-  final database = _envOrDefault('SUPABASE_DATABASE', 'bloodconnect');
-  final username = _envOrDefault('SUPABASE_USERNAME', 'postgres');
-  final password = _envOrDefault('SUPABASE_DB_PASSWORD', 'postgres');
-  final requireSsl =
-      (dotenv.env['SUPABASE_REQUIRE_SSL'] ?? 'false').toLowerCase() == 'true';
-
-  return DatabaseService(
-    host: host,
-    port: int.tryParse(portRaw) ?? 5432,
-    database: database,
-    username: username,
-    password: password,
-    requireSsl: requireSsl,
-  );
-});
+final apiClientProvider = Provider<ApiClient>((ref) => ApiClient());
 
 final userServiceProvider = Provider<UserService>((ref) {
-  final db = ref.watch(databaseServiceProvider);
-  return UserService(db);
+  return UserService(ref.watch(apiClientProvider));
 });
 
 final auditLogServiceProvider = Provider<AuditLogService>((ref) {
-  return AuditLogService(ref.watch(databaseServiceProvider));
+  return AuditLogService();
 });
 
 final notificationServiceProvider = Provider<NotificationService>((ref) {
-  final db = ref.watch(databaseServiceProvider);
-  return NotificationService(db);
+  return NotificationService();
 });
 
 final requestServiceProvider = Provider<RequestService>((ref) {
-  final db = ref.watch(databaseServiceProvider);
-  final notifier = ref.watch(notificationServiceProvider);
-  final audit = ref.watch(auditLogServiceProvider);
-  return RequestService(db, notificationService: notifier, audit: audit);
+  return RequestService(
+    ref.watch(apiClientProvider),
+    notificationService: ref.watch(notificationServiceProvider),
+    audit: ref.watch(auditLogServiceProvider),
+  );
 });
 
 final donorServiceProvider = Provider<DonorService>((ref) {
-  final db = ref.watch(databaseServiceProvider);
-  final audit = ref.watch(auditLogServiceProvider);
-  return DonorService(db, audit: audit);
+  return DonorService(
+    ref.watch(apiClientProvider),
+    audit: ref.watch(auditLogServiceProvider),
+  );
 });
 
 final hospitalServiceProvider = Provider<HospitalService>((ref) {
-  return HospitalService(ref.watch(databaseServiceProvider));
+  return HospitalService(ref.watch(apiClientProvider));
 });
 
 final routerRefreshProvider = Provider<RouterRefreshNotifier>((ref) {
@@ -113,17 +89,21 @@ final fcmProvider = Provider<FirebaseMessaging>((ref) {
   return FirebaseMessaging.instance;
 });
 
+final aiPredictionServiceProvider = Provider<AiPredictionService>((ref) {
+  return const AiPredictionService();
+});
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: ".env");
+  await AppConfig.load();
 
-  // Warn at startup if notification backend is not configured
-  final backendUrl = dotenv.env['NOTIFICATION_BACKEND_URL'] ?? '';
-  if (backendUrl.isEmpty) {
-    debugPrint('⚠️  WARNING: NOTIFICATION_BACKEND_URL is not set in .env — push notifications will not work.');
+  if (AppConfig.notificationBackendUrl.isEmpty) {
+    debugPrint(
+      'WARNING: NOTIFICATION_BACKEND_URL is not set — push notifications require the API BFF.',
+    );
   }
 
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await FirebaseMessaging.instance.requestPermission();
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
@@ -166,8 +146,6 @@ class _BloodConnectAppState extends ConsumerState<BloodConnectApp> {
         final token = await FirebaseMessaging.instance.getToken();
         await userService.updateFcmToken(user.uid, token);
       } catch (e) {
-        // On iOS simulator APNS is unavailable
-        // On real iOS devices this should succeed.
         debugPrint('FCM token error (may be normal on iOS simulator): $e');
       }
     }

@@ -9,6 +9,19 @@ const admin = require('firebase-admin');
 admin.initializeApp();
 
 const app = express();
+const isProduction = process.env.NODE_ENV === 'production';
+
+if (isProduction) {
+  app.set('trust proxy', 1);
+  app.use((req, res, next) => {
+    const proto = req.headers['x-forwarded-proto'];
+    if (proto && proto !== 'https') {
+      return res.status(403).json({ error: 'https_required' });
+    }
+    return next();
+  });
+}
+
 app.use(express.json());
 
 const limiter = rateLimit({
@@ -127,8 +140,29 @@ app.post('/sendNewRequest', requireSecret, async (req, res) => {
   }
 });
 
-// Start HTTP server (for local dev or generic hosting / Cloud Run).
-const port = process.env.PORT || 8080;
-app.listen(port, () => {
-  console.log(`Notification backend listening on port ${port}`);
-});
+const port = parseInt(process.env.PORT || '8080', 10);
+const useTls =
+  isProduction && process.env.TLS_KEY_PATH && process.env.TLS_CERT_PATH;
+
+if (useTls) {
+  const fs = require('fs');
+  const https = require('https');
+  https
+    .createServer(
+      {
+        key: fs.readFileSync(process.env.TLS_KEY_PATH),
+        cert: fs.readFileSync(process.env.TLS_CERT_PATH),
+      },
+      app,
+    )
+    .listen(port, () => {
+      console.log(`Notification backend listening on HTTPS port ${port}`);
+    });
+} else {
+  const http = require('http');
+  http.createServer(app).listen(port, () => {
+    console.log(
+      `Notification backend listening on HTTP port ${port}${isProduction ? ' (terminate TLS at load balancer or set TLS_KEY_PATH/TLS_CERT_PATH)' : ''}`,
+    );
+  });
+}

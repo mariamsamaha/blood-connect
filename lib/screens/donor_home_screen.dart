@@ -179,6 +179,51 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           _GreetingCard(profile: _profile, donations: _donations, points: _points),
+                          const SizedBox(height: 14),
+                          GestureDetector(
+                            onTap: () => context.push('/ai-check'),
+                            child: Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: AppColors.primaryRed.withValues(alpha: 0.2)),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primaryRed.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: const Icon(Icons.auto_awesome_rounded, color: AppColors.primaryRed, size: 22),
+                                  ),
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Know Before You Give \u2764\uFE0F',
+                                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                            fontWeight: FontWeight.w700,
+                                            color: AppColors.primaryRed,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          'Check your eligibility with AI',
+                                          style: TextStyle(fontSize: 12, color: AppColors.textSecondary.withValues(alpha: 0.7)),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Icon(Icons.chevron_right, color: AppColors.textSecondary.withValues(alpha: 0.4)),
+                                ],
+                              ),
+                            ),
+                          ),
                           if (_activeMission != null) ...[
                             const SizedBox(height: 16),
                             GestureDetector(

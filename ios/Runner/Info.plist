@@ -73,6 +73,13 @@
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 
+	<!-- Allow local HTTP only for simulator/device dev (API on localhost). Release uses HTTPS. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

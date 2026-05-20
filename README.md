@@ -31,7 +31,7 @@ BloodConnect provides:
 | Category | Technology |
 |----------|------------|
 | **Mobile** | Flutter (Dart) |
-| **Backend** | Supabase (PostgreSQL + PostGIS) |
+| **Backend** | Supabase (PostgreSQL + PostGIS) + API BFF (`api-backend/`) |
 | **Authentication** | Firebase Auth (Google OAuth) |
 | **Push Notifications** | Firebase Cloud Messaging (FCM) |
 | **State Management** | Riverpod |
@@ -67,7 +67,7 @@ BloodConnect provides:
 ### 4. Core Infrastructure
 - [x] PostGIS location matching (distance-based)
 - [x] Atomic donor acceptance (prevents race conditions)
-- [x] RBAC (Role-Based Access Control)
+- [x] RBAC (app routing + Postgres Row Level Security)
 - [x] Real-time GPS location capture
 
 ---
@@ -147,13 +147,39 @@ BloodConnect provides:
 - Supabase account
 - Firebase project
 
-### Environment Variables (.env)
-```env
-SUPABASE_HOST=your_supabase_host
-SUPABASE_PORT=6543
-SUPABASE_DATABASE=postgres
-SUPABASE_USERNAME=postgres.xxxxxx
-SUPABASE_PASSWORD=your_password
+### Security architecture
+
+- **Flutter** talks only to the **API BFF** with Firebase ID tokens (no database password in the app).
+- **API BFF** holds `SUPABASE_DB_PASSWORD` and enforces authorization server-side.
+- Apply **RLS** via `supabase/migrations/20250519000000_enable_rls.sql`.
+- See `docs/SECURITY.md`, `docs/PRIVACY_POLICY.md`, and `docs/DATA_HANDLING.md`.
+
+### API BFF (`api-backend/`)
+
+```bash
+cd api-backend
+cp .env.example .env   # fill Supabase + Firebase service account path
+npm install
+npm start              # default http://localhost:8090
+```
+
+**Firebase (required for sign-in):** download a service account JSON from Firebase Console (project `bloodconnect-mvp-b605f`) → save as `keys/firebase-adminsdk.json` (gitignored) and set `GOOGLE_APPLICATION_CREDENTIALS=../keys/firebase-adminsdk.json` in `api-backend/.env`. Without this, the API returns `invalid_token`.
+
+### Flutter environment (team dev)
+
+| How you run | API URL |
+|-------------|---------|
+| `flutter run` (debug) | Auto: `10.0.2.2:8090` (Android emulator), `127.0.0.1:8090` (iOS simulator) |
+| Physical phone on Wi‑Fi | Copy `.env_example` → `.env`, set `API_BASE_URL=http://YOUR_PC_LAN_IP:8090` |
+| Store / production APK | `--dart-define=API_BASE_URL=https://api.yourdomain.com` |
+
+Avoid `flutter run --release` for local dev — that mode requires `--dart-define`. Use plain `flutter run`.
+
+**Release / store builds:**
+
+```bash
+flutter build apk --release \
+  --dart-define=API_BASE_URL=https://api.yourdomain.com
 ```
 
 ### Database Setup
@@ -161,6 +187,7 @@ SUPABASE_PASSWORD=your_password
 2. Enable PostGIS extension
 3. Run `database/bloodconnect_schema.sql`
 4. Run `database/mvp_incremental.sql` for stored procedures
+5. Run `supabase/migrations/20250519000000_enable_rls.sql`
 
 ### Firebase Setup
 1. Create Firebase project
@@ -170,6 +197,10 @@ SUPABASE_PASSWORD=your_password
 
 ### Running the App
 ```bash
+# Terminal 1: API BFF
+cd api-backend && npm start
+
+# Terminal 2: Flutter
 flutter pub get
 flutter run
 ```
@@ -194,6 +225,9 @@ See `database/` for SQL test scripts.
 ---
 
 
-## 📄 License
+## 📄 Legal & privacy
 
-MIT License
+- [LICENSE](LICENSE) (MIT)
+- [Privacy Policy](docs/PRIVACY_POLICY.md)
+- [Data handling](docs/DATA_HANDLING.md)
+- [Security & secrets](docs/SECURITY.md)

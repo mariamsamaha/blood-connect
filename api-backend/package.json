@@ -1,0 +1,21 @@
+{
+  "name": "bloodconnect-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BloodConnect BFF — Firebase-authenticated REST API over Postgres",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "firebase-admin": "^13.0.2",
+    "pg": "^8.13.1"
+  }
+}
