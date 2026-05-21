@@ -42,14 +42,30 @@ if (isProduction) {
   });
 }
 
-const apiLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 120,
+// Global limit (unauthenticated traffic, health checks)
+const globalLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 200,
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-app.use('/api/', apiLimiter);
+// Per authenticated user — applied after requireFirebaseAuth
+const userLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 60,                       // 60 requests per user per minute
+  keyGenerator: (req) => req.firebaseUser?.uid || req.ip,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'rate_limit_exceeded' },
+});
+
+app.use(globalLimiter);
+// Apply per-user limiter after auth on all /api/ routes:
+app.use('/api/', (req, res, next) => {
+  if (req.firebaseUser) return userLimiter(req, res, next);
+  return next();
+});
 
 function uid(req) {
   return req.firebaseUser.uid;
