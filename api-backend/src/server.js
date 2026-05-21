@@ -13,7 +13,7 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const morgan = require('morgan');
 const { randomUUID } = require('crypto');
-const { query, testConnection, validateDbConfig } = require('./db');
+const { pool, query, testConnection, validateDbConfig } = require('./db');
 const { requireFirebaseAuth } = require('./auth');
 const { serverError } = require('./errors');
 
@@ -92,12 +92,24 @@ app.get('/health/db', async (_req, res) => {
       hint: 'Copy api-backend/.env.example → api-backend/.env and set Supabase credentials.',
     });
   }
+  const start = Date.now();
   try {
     const ok = await testConnection();
-    return res.status(ok ? 200 : 503).json({ status: ok ? 'ok' : 'failed' });
+    return res.status(ok ? 200 : 503).json({
+      status: ok ? 'ok' : 'failed',
+      latency_ms: Date.now() - start,
+      pool: {
+        total: pool.totalCount,
+        idle: pool.idleCount,
+        waiting: pool.waitingCount,
+      },
+      version: process.env.npm_package_version || '1.0.0',
+      uptime_s: Math.floor(process.uptime()),
+    });
   } catch (err) {
     return res.status(503).json({
       status: 'error',
+      latency_ms: Date.now() - start,
       detail: err.message,
     });
   }
