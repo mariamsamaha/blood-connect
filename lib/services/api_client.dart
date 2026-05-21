@@ -51,6 +51,20 @@ class DeferredEnqueueMutation {
   }
 }
 
+class _TimeoutClient extends http.BaseClient {
+  final http.Client _inner;
+  final Duration timeout;
+
+  _TimeoutClient(this._inner, {this.timeout = const Duration(seconds: 15)});
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) =>
+      _inner.send(request).timeout(
+        timeout,
+        onTimeout: () => throw Exception('Request timed out after ${timeout.inSeconds}s'),
+      );
+}
+
 class ApiClient {
   ApiClient({
     http.Client? httpClient,
@@ -60,7 +74,9 @@ class ApiClient {
     SyncManager? syncManager,
     CacheMetricsService? metrics,
     DeferredEnqueueMutation? enqueueMutation,
-  })  : _http = httpClient ?? http.Client(),
+  })  : _http = httpClient != null
+            ? _TimeoutClient(httpClient)
+            : _TimeoutClient(http.Client()),
         _auth = auth ?? FirebaseAuth.instance,
         _cache = cache,
         _persistentCache = persistentCache,
