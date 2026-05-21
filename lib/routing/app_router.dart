@@ -16,7 +16,6 @@ import 'package:bloodconnect/screens/leaderboard_screen.dart';
 import 'package:bloodconnect/screens/settings_screen.dart';
 import 'package:bloodconnect/screens/create_request_screen.dart';
 import 'package:bloodconnect/screens/profile_screen.dart';
-import 'package:bloodconnect/screens/ai_prediction_screen.dart';
 
 UserProfile? _cachedProfile;
 String? _cachedUid;
@@ -86,7 +85,6 @@ GoRouter buildRouter({
         builder: (ctx, s) => const CreateRequestScreen(),
       ),
       GoRoute(path: '/profile', builder: (ctx, s) => const ProfileScreen()),
-      GoRoute(path: '/ai-check', builder: (ctx, s) => const AiPredictionScreen()),
     ],
     redirect: (context, state) async {
       if (state.matchedLocation == '/signup') {

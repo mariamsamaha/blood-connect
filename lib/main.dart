@@ -15,7 +15,6 @@ import 'package:bloodconnect/services/location_service.dart';
 import 'package:bloodconnect/services/donor_service.dart';
 import 'package:bloodconnect/services/hospital_service.dart';
 import 'package:bloodconnect/theme/app_theme.dart';
-import 'package:bloodconnect/services/ai_prediction_service.dart';
 import 'package:bloodconnect/config/app_config.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:bloodconnect/firebase_options.dart';
@@ -87,10 +86,6 @@ final routerProvider = Provider<GoRouter>((ref) {
 
 final fcmProvider = Provider<FirebaseMessaging>((ref) {
   return FirebaseMessaging.instance;
-});
-
-final aiPredictionServiceProvider = Provider<AiPredictionService>((ref) {
-  return const AiPredictionService();
 });
 
 void main() async {
