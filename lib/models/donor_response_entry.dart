@@ -19,7 +19,7 @@ class DonorResponseEntry {
   factory DonorResponseEntry.fromJson(Map<String, dynamic> json) {
     return DonorResponseEntry(
       requestId: json['request_id'] as String,
-      displayCode: (json['short_id'] as String).toString().split('-').last,
+      displayCode: (json['short_id'] as String).split('-').last,
       hospitalName: json['hospital_name'] as String,
       bloodType: json['blood_type'] as String,
       responseType: json['response_type'] as String,

@@ -17,6 +17,14 @@ class BadgeCard extends StatelessWidget {
   final double progress;
   final String? progressLabel;
 
+  /// Renders the icon as an image if it's a URL, otherwise as emoji text.
+  static Widget _iconWidget(String icon) {
+    if (icon.startsWith('http://') || icon.startsWith('https://')) {
+      return Image.network(icon, width: 24, height: 24, errorBuilder: (_, __, ___) => const Text('\u{1F3C6}', style: TextStyle(fontSize: 24)));
+    }
+    return Text(icon, style: const TextStyle(fontSize: 24));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Opacity(
@@ -37,7 +45,7 @@ class BadgeCard extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(icon, style: const TextStyle(fontSize: 24)),
+            _iconWidget(icon),
             const SizedBox(height: 4),
             Text(
               name,

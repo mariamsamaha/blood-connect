@@ -58,6 +58,15 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     });
   }
 
+  /// Generates a unique hospital code from the hospital name + timestamp.
+  static String _generateHospitalCode(String name) {
+    final clean = name.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
+    final prefix = clean.length >= 3 ? clean.substring(0, 3) : clean.padRight(3, 'X');
+    final suffix = DateTime.now().microsecondsSinceEpoch.toString();
+    final shortSuffix = suffix.substring(suffix.length - 5);
+    return '$prefix$shortSuffix';
+  }
+
   Future<void> _submit() async {
     if (_name.text.trim().isEmpty || _phone.text.trim().isEmpty) return;
     setState(() => _loading = true);
@@ -76,7 +85,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
             latitude: _lat,
             longitude: _lng,
             hospitalName: _hospital ? _name.text.trim() : null,
-            hospitalCode: _hospital ? 'HSP' : null,
+            hospitalCode: _hospital ? _generateHospitalCode(_name.text.trim()) : null,
           );
       if (!mounted) return;
       context.go(profile.homeRoute);

@@ -73,6 +73,9 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _loadingHospitals = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not load hospitals. Check your connection.')),
+      );
     }
   }
 

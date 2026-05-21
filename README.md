@@ -37,6 +37,74 @@ BloodConnect provides:
 | **State Management** | Riverpod |
 | **Navigation** | GoRouter |
 | **Location** | Geolocator |
+| **Persistent Cache** | Isar (embedded NoSQL) |
+
+---
+
+## 🗄️ Caching Architecture
+
+The app uses a **two-tier hybrid cache** for production-grade performance and offline resilience.
+
+```
+┌────────────────────────────────────────────────────┐
+│                   UI Screens                        │
+└──────────────────┬─────────────────────────────────┘
+                   │
+┌──────────────────▼─────────────────────────────────┐
+│         Repository Layer (optional)                 │
+│   cacheFirst<T>() pattern + stale-while-revalidate │
+└──────────────────┬─────────────────────────────────┘
+                   │
+┌──────────────────▼─────────────────────────────────┐
+│  ApiClient (HTTP client)                           │
+│   ┌──────────────────┐   ┌──────────────────────┐  │
+│   │  L1: CacheService │   │ L2: PersistentCache  │  │
+│   │  (in-memory TTL)  │──▶│ (Isar disk, SWR)     │  │
+│   └──────────────────┘   └──────────────────────┘  │
+└──────────────────┬─────────────────────────────────┘
+                   │
+┌──────────────────▼─────────────────────────────────┐
+│            Express API BFF + Supabase               │
+└────────────────────────────────────────────────────┘
+```
+
+### Cache Layers
+
+| Layer | Storage | TTL | Purpose |
+|-------|---------|-----|---------|
+| **L1: CacheService** | In-memory `Map` | 30s–5min (per endpoint) | Hot data for current session |
+| **L2: PersistentCacheService** | Isar (embedded NoSQL) | Fresh TTL × 3 | Cold-start fill + offline fallback |
+
+### Stale-While-Revalidate
+
+When cached data exceeds its fresh TTL but is still within its max TTL:
+1. **Return instantly** with stale data
+2. **Refresh silently** in background
+3. **Update both caches** with fresh response
+
+This eliminates loading spinners for data that was recently fetched.
+
+### Repository Pattern
+
+Optional `lib/repositories/` layer wrapping services with `cacheFirst<T>()`:
+- **Cache-first reads**: memory → Isar → API
+- **Mutation invalidation**: POST/PATCH clears both cache tiers by resource prefix
+- **Force refresh**: `forceRefresh: true` bypasses all caches
+- **Auth logout**: `authStateChanges` listener clears memory + persistent caches
+
+### Endpoint TTL Configuration
+
+| Endpoint | Fresh TTL | Max TTL |
+|----------|-----------|---------|
+| `/api/v1/donor/matches` | 30s | 90s |
+| `/api/v1/donor/mission` | 30s | 90s |
+| `/api/v1/requests/active` | 30s | 90s |
+| `/api/v1/hospital/pending` | 30s | 90s |
+| `/api/v1/donor/stats` | 60s | 180s |
+| `/api/v1/users/me` | 2min | 6min |
+| `/api/v1/donor/leaderboard` | 2min | 6min |
+| `/api/v1/donor/donations` | 2min | 6min |
+| `/api/v1/hospitals` | 5min | 15min |
 
 ---
 

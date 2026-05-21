@@ -13,6 +13,9 @@ function resolveCredentialPath() {
     candidates.push(
       path.isAbsolute(envPath) ? envPath : path.resolve(process.cwd(), envPath),
     );
+    candidates.push(
+      path.isAbsolute(envPath) ? envPath : path.resolve(__dirname, '..', envPath),
+    );
   }
 
   const apiRoot = path.resolve(__dirname, '..');
