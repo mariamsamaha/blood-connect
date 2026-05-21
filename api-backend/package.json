@@ -11,7 +11,9 @@
   },
   "jest": {
     "testEnvironment": "node",
-    "testMatch": ["**/tests/**/*.test.js"]
+    "testMatch": [
+      "**/tests/**/*.test.js"
+    ]
   },
   "engines": {
     "node": ">=18"
@@ -21,6 +23,7 @@
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
     "firebase-admin": "^13.0.2",
+    "morgan": "^1.10.1",
     "pg": "^8.13.1"
   },
   "devDependencies": {

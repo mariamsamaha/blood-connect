@@ -3,7 +3,8 @@ function isDev() {
 }
 
 function serverError(res, err, route) {
-  console.error(`[${route}]`, err.message || err);
+  const rid = res.req?.requestId || '?';
+  console.error(`[${route}] [rid=${rid}]`, err.message || err);
   if (err.stack && isDev()) {
     console.error(err.stack);
   }
@@ -12,6 +13,7 @@ function serverError(res, err, route) {
     ...(isDev() && {
       detail: err.message || String(err),
       route,
+      requestId: rid,
     }),
   });
 }

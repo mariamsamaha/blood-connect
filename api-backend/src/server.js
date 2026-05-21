@@ -11,12 +11,23 @@ require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 
 const express = require('express');
 const rateLimit = require('express-rate-limit');
+const morgan = require('morgan');
+const { randomUUID } = require('crypto');
 const { query, testConnection, validateDbConfig } = require('./db');
 const { requireFirebaseAuth } = require('./auth');
 const { serverError } = require('./errors');
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
+
+app.use((req, _res, next) => {
+  req.requestId = req.headers['x-request-id'] || randomUUID();
+  next();
+});
+
+app.use(
+  morgan('[:date[iso]] :method :url :status :response-time ms - rid=:req[x-request-id]'),
+);
 
 const isProduction = process.env.NODE_ENV === 'production';
 
