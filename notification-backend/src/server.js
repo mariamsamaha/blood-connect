@@ -140,29 +140,33 @@ app.post('/sendNewRequest', requireSecret, async (req, res) => {
   }
 });
 
-const port = parseInt(process.env.PORT || '8080', 10);
-const useTls =
-  isProduction && process.env.TLS_KEY_PATH && process.env.TLS_CERT_PATH;
+if (process.env.NODE_ENV !== 'test') {
+  const port = parseInt(process.env.PORT || '8080', 10);
+  const useTls =
+    isProduction && process.env.TLS_KEY_PATH && process.env.TLS_CERT_PATH;
 
-if (useTls) {
-  const fs = require('fs');
-  const https = require('https');
-  https
-    .createServer(
-      {
-        key: fs.readFileSync(process.env.TLS_KEY_PATH),
-        cert: fs.readFileSync(process.env.TLS_CERT_PATH),
-      },
-      app,
-    )
-    .listen(port, () => {
-      console.log(`Notification backend listening on HTTPS port ${port}`);
+  if (useTls) {
+    const fs = require('fs');
+    const https = require('https');
+    https
+      .createServer(
+        {
+          key: fs.readFileSync(process.env.TLS_KEY_PATH),
+          cert: fs.readFileSync(process.env.TLS_CERT_PATH),
+        },
+        app,
+      )
+      .listen(port, () => {
+        console.log(`Notification backend listening on HTTPS port ${port}`);
+      });
+  } else {
+    const http = require('http');
+    http.createServer(app).listen(port, () => {
+      console.log(
+        `Notification backend listening on HTTP port ${port}${isProduction ? ' (terminate TLS at load balancer or set TLS_KEY_PATH/TLS_CERT_PATH)' : ''}`,
+      );
     });
-} else {
-  const http = require('http');
-  http.createServer(app).listen(port, () => {
-    console.log(
-      `Notification backend listening on HTTP port ${port}${isProduction ? ' (terminate TLS at load balancer or set TLS_KEY_PATH/TLS_CERT_PATH)' : ''}`,
-    );
-  });
+  }
 }
+
+module.exports = app;
