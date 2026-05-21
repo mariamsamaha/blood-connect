@@ -9,11 +9,19 @@ function supabaseSsl() {
 }
 
 function buildPoolConfig() {
+  const timeouts = {
+    max: 10,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 5_000,
+    statement_timeout: 10_000,
+    query_timeout: 12_000,
+  };
+
   if (process.env.DATABASE_URL) {
     return {
       connectionString: process.env.DATABASE_URL,
       ssl: supabaseSsl(),
-      max: 10,
+      ...timeouts,
     };
   }
 
@@ -24,7 +32,7 @@ function buildPoolConfig() {
     user: process.env.SUPABASE_USERNAME,
     password: process.env.SUPABASE_DB_PASSWORD,
     ssl: supabaseSsl(),
-    max: 10,
+    ...timeouts,
   };
 }
 
@@ -45,6 +53,10 @@ function validateDbConfig() {
 }
 
 const pool = new Pool(buildPoolConfig());
+
+pool.on('error', (err) => {
+  console.error('[pool] Unexpected idle client error:', err.message);
+});
 
 async function query(sql, params = []) {
   const result = await pool.query(sql, params);

@@ -199,7 +199,7 @@ app.post('/api/v1/users/me/complete', requireFirebaseAuth, async (req, res) => {
           $1, $2, $3, $4,
           'hospital', $5, $6,
           FALSE, 'unavailable', 'hospital', ${locSql},
-          TRUE, $${hasLoc ? 9 : 7}
+          FALSE, $${hasLoc ? 9 : 7}
         ) RETURNING *,
           ST_Y(location::geometry) as latitude,
           ST_X(location::geometry) as longitude`,
