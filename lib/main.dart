@@ -25,6 +25,7 @@ import 'package:bloodconnect/services/hospital_service.dart';
 import 'package:bloodconnect/services/persistent_cache_service.dart';
 import 'package:bloodconnect/services/sync_manager.dart';
 import 'package:bloodconnect/services/invalidation_service.dart';
+import 'package:bloodconnect/services/ai_prediction_service.dart';
 import 'package:bloodconnect/models/cache_entry.dart';
 import 'package:bloodconnect/repositories/user_repository.dart';
 import 'package:bloodconnect/repositories/donor_repository.dart';
@@ -218,6 +219,10 @@ final routerRefreshProvider = Provider<RouterRefreshNotifier>((ref) {
 
 final locationServiceProvider = Provider<LocationService>((ref) {
   return LocationService();
+});
+
+final aiPredictionServiceProvider = Provider<AiPredictionService>((ref) {
+  return const AiPredictionService();
 });
 
 final routerProvider = Provider<GoRouter>((ref) {
