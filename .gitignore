@@ -64,4 +64,4 @@ __pycache__/
 ai-service/__pycache__/
 
 # API local env
-api-backend/.env
+api-backend/.envsupabase/.temp/
