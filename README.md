@@ -291,7 +291,7 @@ flutter run
 See `database/` for SQL test scripts.
 
 ---
-
+![CI](https://github.com/mariamsamaha/blood-connect/actions/workflows/ci.yml/badge.svg)
 
 ## 📄 Legal & privacy
 
