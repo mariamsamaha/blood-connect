@@ -1,0 +1,9 @@
+title = "BloodConnect Gitleaks config"
+
+[allowlist]
+  description = "Supabase CLI temp files — no credentials, only project ref"
+  paths = [
+    "supabase/.temp/pooler-url",
+    "supabase/.temp/project-ref",
+    "supabase/.temp/linked-project.json",
+  ]

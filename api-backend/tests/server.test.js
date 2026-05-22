@@ -1,22 +1,30 @@
 const request = require('supertest');
 
+jest.mock('firebase-admin', () => ({
+  credential: { cert: jest.fn() },
+  initializeApp: jest.fn(),
+  apps: [],
+  auth: () => ({
+    verifyIdToken: jest.fn().mockResolvedValue({ uid: 'test-uid' }),
+  }),
+}));
+
+jest.mock('../src/db', () => ({
+  query: jest.fn(),
+  testConnection: jest.fn().mockResolvedValue(true),
+  validateDbConfig: jest.fn().mockReturnValue({ ok: true, mode: 'test' }),
+  pool: {
+    totalCount: 0,
+    idleCount: 0,
+    waitingCount: 0,
+    on: jest.fn(),
+  },
+}));
+
 describe('API Backend Server', () => {
   let app;
 
   beforeAll(() => {
-    jest.mock('firebase-admin', () => ({
-      credential: { cert: jest.fn() },
-      initializeApp: jest.fn(),
-      apps: [],
-      auth: () => ({
-        verifyIdToken: jest.fn().mockResolvedValue({ uid: 'test-uid' }),
-      }),
-    }));
-    jest.mock('../src/db', () => ({
-      query: jest.fn(),
-      testConnection: jest.fn().mockResolvedValue(true),
-      validateDbConfig: jest.fn().mockReturnValue({ ok: true, mode: 'test' }),
-    }));
     app = require('../src/server');
   });
 

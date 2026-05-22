@@ -62,7 +62,9 @@ function initializeFirebaseAdmin() {
   console.log(`Firebase Admin ready (project: ${resolvedProject}, key: ${credPath})`);
 }
 
-initializeFirebaseAdmin();
+if (process.env.NODE_ENV !== 'test') {
+  initializeFirebaseAdmin();
+}
 
 async function requireFirebaseAuth(req, res, next) {
   const header = req.headers.authorization || '';
