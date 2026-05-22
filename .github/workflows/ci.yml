@@ -1,0 +1,153 @@
+name: BloodConnect CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+# Cancel in-progress runs on the same branch when a new push arrives
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 1 — Flutter: analyze + test + coverage
+  # ─────────────────────────────────────────────────────────────────────────────
+  flutter:
+    name: Flutter — analyze & test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.32.0"
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # dart fix --dry-run exits non-zero if there are fixable issues
+      - name: Check for fixable issues
+        run: dart fix --dry-run
+
+      # flutter analyze uses analysis_options.yaml (flutter_lints)
+      # --fatal-infos turns info-level hints into failures — keeps code clean
+      - name: Analyze code
+        run: flutter analyze --fatal-infos
+
+      # Run all 42 Flutter tests + 5 widget tests with coverage
+      - name: Run tests
+        run: flutter test --coverage --reporter=github
+
+      # Upload to Codecov — free for public repos, shows coverage % on README
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          file: coverage/lcov.info
+          flags: flutter
+          fail_ci_if_error: false   # don't break build if Codecov is down
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 2 — API BFF: lint + test (Jest + Supertest)
+  # ─────────────────────────────────────────────────────────────────────────────
+  api-backend:
+    name: API backend — test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: api-backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: api-backend/package-lock.json
+
+      # npm ci is faster and more reproducible than npm install
+      - name: Install dependencies
+        run: npm ci
+
+      # Verify server.js is syntactically valid before running tests
+      - name: Syntax check
+        run: node --check src/server.js src/db.js src/auth.js src/errors.js
+
+      # Jest runs db.test.js + errors.test.js + server.test.js
+      # NODE_ENV=test prevents startServer() from actually binding a port
+      - name: Run tests
+        run: npm test
+        env:
+          NODE_ENV: test
+          # Minimal stubs so Firebase Admin init doesn't throw in test env
+          FIREBASE_PROJECT_ID: bloodconnect-mvp-b605f
+          GOOGLE_APPLICATION_CREDENTIALS: ""
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 3 — Notification backend: lint + test
+  # ─────────────────────────────────────────────────────────────────────────────
+  notification-backend:
+    name: Notification backend — test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: notification-backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: notification-backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Syntax check
+        run: node --check src/server.js
+
+      # Runs notification-backend/tests/server.test.js
+      - name: Run tests
+        run: npm test
+        env:
+          NODE_ENV: test
+          INTERNAL_SECRET: ci-test-secret
+          FIREBASE_PROJECT_ID: bloodconnect-mvp-b605f
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 4 — Secret scan (Gitleaks)
+  # Prevents credentials ever sneaking back into the repo
+  # ─────────────────────────────────────────────────────────────────────────────
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full git history — Gitleaks scans every commit
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
