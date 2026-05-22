@@ -7,3 +7,6 @@ title = "BloodConnect Gitleaks config"
     "supabase/.temp/project-ref",
     "supabase/.temp/linked-project.json",
   ]
+
+# Built-in Gitleaks rules will detect Firebase/Google service account keys.
+# The keys/ directory is gitignored — ensure it never gets committed.

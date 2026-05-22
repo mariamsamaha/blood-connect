@@ -23,7 +23,7 @@ class CacheService {
 
   static const Duration _defaultTtl = Duration(seconds: 60);
 
-  Duration _ttl(String key) {
+  Duration ttlForKey(String key) {
     for (final entry in _ttlOverrides.entries) {
       if (key.startsWith(entry.key)) {
         return entry.value;
@@ -34,7 +34,7 @@ class CacheService {
 
   void set(String key, dynamic data, {Duration? ttl}) {
     _evictIfNeeded();
-    _store[key] = CacheEntry(data, DateTime.now().add(ttl ?? _ttl(key)));
+    _store[key] = CacheEntry(data, DateTime.now().add(ttl ?? ttlForKey(key)));
   }
 
   T? get<T>(String key) {

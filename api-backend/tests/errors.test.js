@@ -1,3 +1,14 @@
+const mockLogger = {
+  info: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
+  debug: jest.fn(),
+  child: jest.fn(() => mockLogger),
+  level: 'silent',
+};
+
+jest.mock('../src/logger', () => mockLogger);
+
 const { serverError, isDev } = require('../src/errors');
 
 describe('errors.js', () => {
@@ -24,6 +35,7 @@ describe('errors.js', () => {
       const res = {
         status: jest.fn().mockReturnThis(),
         json: jest.fn(),
+        req: { requestId: 'test-id' },
       };
       serverError(res, new Error('test error'), 'GET /test');
       expect(res.status).toHaveBeenCalledWith(500);
@@ -32,7 +44,8 @@ describe('errors.js', () => {
           error: 'internal_error',
           detail: 'test error',
           route: 'GET /test',
-        })
+          requestId: 'test-id',
+        }),
       );
     });
 
@@ -42,6 +55,7 @@ describe('errors.js', () => {
       const res = {
         status: jest.fn().mockReturnThis(),
         json: jest.fn(),
+        req: { requestId: 'test-id' },
       };
       serverError(res, new Error('test error'), 'GET /test');
       expect(res.json).toHaveBeenCalledWith({

@@ -26,9 +26,8 @@ class _BadgesScreenState extends ConsumerState<BadgesScreen> {
   Future<void> _load() async {
     final auth = ref.read(authServiceProvider).currentUser;
     if (auth == null) return;
-    final profile = await ref
-        .read(userServiceProvider)
-        .getProfileByFirebaseUid(auth.uid);
+    final profile =
+        await ref.read(userServiceProvider).getProfileByFirebaseUid(auth.uid);
     if (profile == null || !mounted) return;
 
     final badges =
@@ -56,10 +55,9 @@ class _BadgesScreenState extends ConsumerState<BadgesScreen> {
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-gradient: const LinearGradient(
-                          colors: [AppColors.primaryRed, AppColors.deepRed],
-                        ),
-                    borderRadius: BorderRadius.circular(16),
+                    gradient: AppGradients.primary,
+                    borderRadius: BorderRadius.circular(AppRadius.lg),
+                    boxShadow: AppShadows.primary,
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -67,20 +65,27 @@ gradient: const LinearGradient(
                       _PointItem(
                         value: '$_totalPoints',
                         label: 'Total Points',
-                        icon: '⭐',
+                        icon: Icons.star_rounded,
                       ),
-                      Container(width: 1, height: 40, color: Colors.white30),
+                      Container(
+                        width: 1,
+                        height: 40,
+                        color: Colors.white30,
+                      ),
                       _PointItem(
                         value: '${earned.length}',
                         label: 'Badges Earned',
-                        icon: '🏅',
+                        icon: Icons.emoji_events_rounded,
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 24),
                 if (earned.isNotEmpty) ...[
-                  const SectionHeader(title: 'Earned'),
+                  SectionHeader(
+                    title: 'Earned',
+                    showDivider: true,
+                  ),
                   const SizedBox(height: 12),
                   GridView.count(
                     crossAxisCount: 3,
@@ -90,17 +95,22 @@ gradient: const LinearGradient(
                     mainAxisSpacing: 12,
                     childAspectRatio: 0.85,
                     children: earned
-                        .map((b) => BadgeCard(
-                              icon: '${b['icon'] ?? '🏅'}',
-                              name: '${b['name']}',
-                              earned: true,
-                            ))
+                        .map(
+                          (b) => BadgeCard(
+                            icon: '${b['icon'] ?? '\u{1F3C6}'}',
+                            name: '${b['name']}',
+                            earned: true,
+                          ),
+                        )
                         .toList(),
                   ),
                   const SizedBox(height: 24),
                 ],
                 if (locked.isNotEmpty) ...[
-                  const SectionHeader(title: 'Locked'),
+                  SectionHeader(
+                    title: 'Locked',
+                    showDivider: true,
+                  ),
                   const SizedBox(height: 12),
                   GridView.count(
                     crossAxisCount: 3,
@@ -110,16 +120,18 @@ gradient: const LinearGradient(
                     mainAxisSpacing: 12,
                     childAspectRatio: 0.85,
                     children: locked
-                        .map((b) => BadgeCard(
-                              icon: '${b['icon'] ?? '🏅'}',
-                              name: '${b['name']}',
-                              earned: false,
-                              progress: ((b['current_value'] as int? ?? 0) /
-                                      (b['requirement_value'] as int? ?? 1))
-                                  .clamp(0.0, 1.0),
-                              progressLabel:
-                                  '${b['current_value']}/${b['requirement_value']}',
-                            ))
+                        .map(
+                          (b) => BadgeCard(
+                            icon: '${b['icon'] ?? '\u{1F3C6}'}',
+                            name: '${b['name']}',
+                            earned: false,
+                            progress: ((b['current_value'] as int? ?? 0) /
+                                    (b['requirement_value'] as int? ?? 1))
+                                .clamp(0.0, 1.0),
+                            progressLabel:
+                                '${b['current_value']}/${b['requirement_value']}',
+                          ),
+                        )
                         .toList(),
                   ),
                 ],
@@ -135,23 +147,37 @@ class _PointItem extends StatelessWidget {
     required this.label,
     required this.icon,
   });
+
   final String value;
   final String label;
-  final String icon;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
-    return Column(children: [
-      Text(icon, style: const TextStyle(fontSize: 24)),
-      Text(
-        value,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 24,
-          fontWeight: FontWeight.bold,
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+          ),
+          child: Icon(icon, color: Colors.white70, size: 22),
         ),
-      ),
-      Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-    ]);
+        const SizedBox(height: 8),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        Text(
+          label,
+          style: const TextStyle(color: Colors.white70, fontSize: 12),
+        ),
+      ],
+    );
   }
 }

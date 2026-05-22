@@ -5,35 +5,48 @@ import 'package:bloodconnect/theme/app_theme.dart';
 void main() {
   group('AppColors', () {
     test('has all required color constants', () {
-      expect(AppColors.primaryRed, const Color(0xFFC0152A));
-      expect(AppColors.deepRed, const Color(0xFF8B0000));
-      expect(AppColors.background, const Color(0xFFF7F8FA));
+      expect(AppColors.primaryRed, const Color(0xFFDC2626));
+      expect(AppColors.deepRed, const Color(0xFF991B1B));
+      expect(AppColors.background, const Color(0xFFF8F9FC));
       expect(AppColors.surface, const Color(0xFFFFFFFF));
       expect(AppColors.darkSurface, const Color(0xFF1C1C1E));
-      expect(AppColors.textPrimary, const Color(0xFF1A1A2E));
+      expect(AppColors.textPrimary, const Color(0xFF111827));
       expect(AppColors.textSecondary, const Color(0xFF6B7280));
-      expect(AppColors.success, const Color(0xFF10B981));
-      expect(AppColors.warning, const Color(0xFFF59E0B));
-      expect(AppColors.error, const Color(0xFFEF4444));
+      expect(AppColors.success, const Color(0xFF059669));
+      expect(AppColors.warning, const Color(0xFFD97706));
+      expect(AppColors.error, const Color(0xFFDC2626));
       expect(AppColors.divider, const Color(0xFFE5E7EB));
     });
   });
 
   group('AppTheme', () {
-    test('page padding is 20 horizontal', () {
-      expect(AppTheme.pagePadding, const EdgeInsets.symmetric(horizontal: 20));
+    testWidgets('light theme is defined', (_) async {
+      expect(AppTheme.light, isA<ThemeData>());
     });
 
-    test('card radius is 16', () {
-      expect(AppTheme.cardRadius, const Radius.circular(16));
+    testWidgets('dark theme is defined', (_) async {
+      expect(AppTheme.dark, isA<ThemeData>());
     });
+  });
 
-    test('button radius is 12', () {
-      expect(AppTheme.buttonRadius, const Radius.circular(12));
+  group('AppRadius', () {
+    test('has radius constants', () {
+      expect(AppRadius.sm, 8.0);
+      expect(AppRadius.md, 12.0);
+      expect(AppRadius.lg, 16.0);
+      expect(AppRadius.xl, 20.0);
+      expect(AppRadius.full, 999.0);
     });
+  });
 
-    test('chip radius is 8', () {
-      expect(AppTheme.chipRadius, const Radius.circular(8));
+  group('AppSpacing', () {
+    test('has spacing constants', () {
+      expect(AppSpacing.xs, 4.0);
+      expect(AppSpacing.sm, 8.0);
+      expect(AppSpacing.md, 12.0);
+      expect(AppSpacing.lg, 16.0);
+      expect(AppSpacing.xl, 20.0);
+      expect(AppSpacing.xxl, 24.0);
     });
   });
 }

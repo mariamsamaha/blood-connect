@@ -1,4 +1,6 @@
 const { Pool } = require('pg');
+const metrics = require('./metrics');
+const logger = require('./logger');
 
 function supabaseSsl() {
   if ((process.env.SUPABASE_REQUIRE_SSL || 'true').toLowerCase() === 'false') {
@@ -55,17 +57,31 @@ function validateDbConfig() {
 const pool = new Pool(buildPoolConfig());
 
 pool.on('error', (err) => {
-  console.error('[pool] Unexpected idle client error:', err.message);
+  logger.error({ err }, 'Unexpected idle client error from pool');
 });
 
 async function query(sql, params = []) {
-  const result = await pool.query(sql, params);
-  return result.rows;
+  const start = Date.now();
+  try {
+    const result = await pool.query(sql, params);
+    metrics.trackDbQuery(sql.split(/\s+/)[0].toUpperCase(), Date.now() - start);
+    return result.rows;
+  } catch (err) {
+    metrics.trackDbQuery('ERROR', Date.now() - start);
+    throw err;
+  }
 }
 
 async function testConnection() {
-  const row = await pool.query('SELECT 1 AS ok');
-  return row.rows[0]?.ok === 1;
+  const start = Date.now();
+  try {
+    const row = await pool.query('SELECT 1 AS ok');
+    metrics.trackDbQuery('TEST', Date.now() - start);
+    return row.rows[0]?.ok === 1;
+  } catch (err) {
+    metrics.trackDbQuery('TEST_ERROR', Date.now() - start);
+    throw err;
+  }
 }
 
 module.exports = { pool, query, testConnection, validateDbConfig };

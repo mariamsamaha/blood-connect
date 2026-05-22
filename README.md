@@ -1,301 +1,289 @@
-# 🩸 BloodConnect
+# BloodConnect
 
 **Connect Donors. Save Lives.**
 
-BloodConnect is a mobile application designed to bridge the critical gap between blood donors and patients in need. It enables fast, reliable, and location-aware blood donation requests—helping save lives when time matters most.
+BloodConnect is a mobile application that bridges the gap between blood donors and patients in need — enabling fast, location-aware blood donation requests with real-time matching and hospital verification.
 
 ---
 
-## 📌 Problem Statement
+## Problem
 
-In emergency situations such as surgeries, accidents, or critical illnesses, finding a compatible blood donor quickly is often a challenge. Currently, many people rely on social media posts, personal contacts, or hospital phone calls to find donors. This approach is:
+In emergencies (surgeries, accidents, critical illnesses), finding a compatible blood donor quickly is a challenge. Current approaches rely on social media, personal contacts, or hospital phone calls — all unreliable, slow, and limited in reach.
 
-- **Unreliable and unstructured** - No standardized system for matching
-- **Time-consuming during emergencies** - Every second counts
-- **Limited in reach and visibility** - Only reaches immediate contacts
-- **Lacking donor eligibility tracking** - No way to verify donor status
+## Solution
 
-## 💡 Solution
-
-BloodConnect provides:
-- **Instant blood requests** with automatic donor matching
-- **Location-based matching** using GPS and PostGIS
-- **Push notifications** to notify nearby eligible donors
-- **Hospital verification** for secure, transparent donations
-- **Role-based access** (Donor, Recipient, Hospital)
+BloodConnect provides instant blood requests with automatic donor matching via PostGIS, push notifications to nearby eligible donors, hospital verification for secure donations, and role-based access (Donor, Recipient, Hospital).
 
 ---
 
-## 🏗️ Tech Stack
+## Architecture
+
+```
+┌──────────────┐     HTTP      ┌──────────────────┐     SQL      ┌──────────────┐
+│  Flutter App  │ ──────────▶  │  api-backend BFF  │ ──────────▶  │   Supabase   │
+│  (Mobile)     │ ◀──────────  │  (Express.js)     │ ◀──────────  │  (PostgreSQL)│
+└──────────────┘              └────────┬─────────┘              └──────────────┘
+                                       │
+                                       │ HTTP (internal secret)
+                                       ▼
+                              ┌──────────────────┐      ┌──────────────────┐
+                              │ notification-     │      │   ai-service     │
+                              │ backend (FCM)     │      │  (FastAPI)       │
+                              └──────────────────┘      └──────────────────┘
+```
+
+| Component | Role | Tech | Port |
+|-----------|------|------|------|
+| **Flutter App** | Mobile UI, offline cache, push registration | Dart / Riverpod | — |
+| **api-backend** | Auth, validation, business logic, metrics, health | Node.js / Express | 8090 |
+| **notification-backend** | FCM push dispatch with circuit breaker | Node.js / Express | 8080 |
+| **ai-service** | Donor deferral prediction (AI) | Python / FastAPI | 8000 |
+| **Supabase** | Data storage, PostGIS, RLS, stored procedures | PostgreSQL | 5432 |
+
+See [Architecture](docs/ARCHITECTURE.md) for design decisions, trade-offs, failure modes, bottlenecks, and transaction handling.
+
+---
+
+## Tech Stack
 
 | Category | Technology |
 |----------|------------|
-| **Mobile** | Flutter (Dart) |
-| **Backend** | Supabase (PostgreSQL + PostGIS) + API BFF (`api-backend/`) |
-| **Authentication** | Firebase Auth (Google OAuth) |
-| **Push Notifications** | Firebase Cloud Messaging (FCM) |
-| **State Management** | Riverpod |
-| **Navigation** | GoRouter |
-| **Location** | Geolocator |
-| **Persistent Cache** | Isar (embedded NoSQL) |
+| **Mobile** | Flutter (Dart), Riverpod, GoRouter |
+| **API Backend** | Node.js, Express, pg, pino, prom-client |
+| **Notification Backend** | Node.js, Express, firebase-admin |
+| **AI Service** | Python, FastAPI, scikit-learn, OpenRouter |
+| **Database** | Supabase (PostgreSQL + PostGIS) |
+| **Auth** | Firebase Auth (Google OAuth) |
+| **Push** | Firebase Cloud Messaging |
+| **Cache** | Isar (embedded NoSQL), in-memory TTL |
+| **Infrastructure** | Docker Compose, GitHub Actions |
 
 ---
 
-## 🗄️ Caching Architecture
+## Features
 
-The app uses a **two-tier hybrid cache** for production-grade performance and offline resilience.
+### Roles
+
+| Role | Capabilities |
+|------|-------------|
+| **Donor** | View nearby requests by blood type + location, accept/decline, active mission with verification code, donation history, leaderboard, reward badges |
+| **Recipient** | Create requests with urgency levels, auto-generated 4-digit code, real-time status tracking, edit/cancel requests |
+| **Hospital** | Admin login via email domain, 4-digit code search, donation verification, audit trail, inventory logging |
+
+### Core flows
 
 ```
-┌────────────────────────────────────────────────────┐
-│                   UI Screens                        │
-└──────────────────┬─────────────────────────────────┘
-                   │
-┌──────────────────▼─────────────────────────────────┐
-│         Repository Layer (optional)                 │
-│   cacheFirst<T>() pattern + stale-while-revalidate │
-└──────────────────┬─────────────────────────────────┘
-                   │
-┌──────────────────▼─────────────────────────────────┐
-│  ApiClient (HTTP client)                           │
-│   ┌──────────────────┐   ┌──────────────────────┐  │
-│   │  L1: CacheService │   │ L2: PersistentCache  │  │
-│   │  (in-memory TTL)  │──▶│ (Isar disk, SWR)     │  │
-│   └──────────────────┘   └──────────────────────┘  │
-└──────────────────┬─────────────────────────────────┘
-                   │
-┌──────────────────▼─────────────────────────────────┐
-│            Express API BFF + Supabase               │
-└────────────────────────────────────────────────────┘
+Onboarding → Sign-in (Google) → Role selection
+  ├── Recipient: Create request → GPS → 4-digit code → Share with donor
+  ├── Donor: Receive push → View nearby → Accept → Verify at hospital
+  └── Hospital: Search by code → Verify donation → Mark fulfilled
 ```
 
-### Cache Layers
-
-| Layer | Storage | TTL | Purpose |
-|-------|---------|-----|---------|
-| **L1: CacheService** | In-memory `Map` | 30s–5min (per endpoint) | Hot data for current session |
-| **L2: PersistentCacheService** | Isar (embedded NoSQL) | Fresh TTL × 3 | Cold-start fill + offline fallback |
-
-### Stale-While-Revalidate
-
-When cached data exceeds its fresh TTL but is still within its max TTL:
-1. **Return instantly** with stale data
-2. **Refresh silently** in background
-3. **Update both caches** with fresh response
-
-This eliminates loading spinners for data that was recently fetched.
-
-### Repository Pattern
-
-Optional `lib/repositories/` layer wrapping services with `cacheFirst<T>()`:
-- **Cache-first reads**: memory → Isar → API
-- **Mutation invalidation**: POST/PATCH clears both cache tiers by resource prefix
-- **Force refresh**: `forceRefresh: true` bypasses all caches
-- **Auth logout**: `authStateChanges` listener clears memory + persistent caches
-
-### Endpoint TTL Configuration
-
-| Endpoint | Fresh TTL | Max TTL |
-|----------|-----------|---------|
-| `/api/v1/donor/matches` | 30s | 90s |
-| `/api/v1/donor/mission` | 30s | 90s |
-| `/api/v1/requests/active` | 30s | 90s |
-| `/api/v1/hospital/pending` | 30s | 90s |
-| `/api/v1/donor/stats` | 60s | 180s |
-| `/api/v1/users/me` | 2min | 6min |
-| `/api/v1/donor/leaderboard` | 2min | 6min |
-| `/api/v1/donor/donations` | 2min | 6min |
-| `/api/v1/hospitals` | 5min | 15min |
+See [User Flow](#user-flow) for the full diagram.
 
 ---
 
-## 🎯 MVP Features
-
-### 1. Recipient Features
-- [x] Google Sign-In authentication
-- [x] Profile creation with blood type, phone, location
-- [x] Create blood requests with urgency levels
-- [x] Auto-generated 4-digit request code
-- [x] Real-time request status tracking
-- [x] Edit and cancel active requests
-
-### 2. Donor Features
-- [x] Blood type + location-based matching
-- [x] Push notifications for nearby requests
-- [x] Accept/Decline requests
-- [x] Active mission display with verification code
-- [x] Donation history and reward points
-
-### 3. Hospital Features
-- [x] Hospital admin login
-- [x] 4-digit code search
-- [x] Donation verification workflow
-- [x] Audit trail
-- [x] Inventory logging
-
-### 4. Core Infrastructure
-- [x] PostGIS location matching (distance-based)
-- [x] Atomic donor acceptance (prevents race conditions)
-- [x] RBAC (app routing + Postgres Row Level Security)
-- [x] Real-time GPS location capture
-
----
-
-## 📱 User Flow
+## Project Structure
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    BLOODCONNECT FLOW                         │
-└─────────────────────────────────────────────────────────────┘
-
-1. ONBOARDING (First Launch)
-
-
-2. LOGIN
-   └── Google Sign-In → Check profile exists
-
-3. SIGNUP (New Users)
-   ├── Enter profile info (name, phone, blood type)
-   ├── Choose role (Donor / Recipient)
-   ├── Capture GPS location
-   └── Hospital: Enter hospital details + location
-
-4. RECIPIENT FLOW
-   ├── Switch to Recipient view
-   ├── Create request → Select blood type, units, urgency, hospital
-   ├── Get GPS location (fresh, for accurate matching)
-   ├── Receive 4-digit code → Share with donor
-   └── Track status: Active → Matching → In Progress → Fulfilled
-
-5. DONOR FLOW
-   ├── Switch to Donor view
-   ├── Receive push notification
-   ├── View nearby requests (filtered by blood type)
-   ├── Accept request → Get hospital address + verification code
-   └── Navigate to hospital → Verify with code
-
-6. HOSPITAL FLOW
-   ├── Login (hospital email detected)
-   ├── Search by 4-digit code
-   ├── Verify donor donation
-   └── Request marked fulfilled
-
+blood-connect/
+├── lib/                    # Flutter app
+│   ├── screens/            # UI screens (donor, recipient, hospital)
+│   ├── services/           # API client, cache, sync, mutation queue
+│   ├── repositories/       # cacheFirst<T> repository layer
+│   ├── models/             # Data models
+│   ├── widgets/            # Reusable widgets
+│   ├── routing/            # GoRouter + role-based routing
+│   └── theme/              # App theme, colors, spacing
+├── api-backend/            # Express API BFF
+│   ├── src/
+│   │   ├── server.js       # Main server (routes, middleware, startup)
+│   │   ├── cluster.js      # Multi-core cluster launcher
+│   │   ├── db.js           # PostgreSQL pool + query with metrics
+│   │   ├── logger.js       # Pino structured logger
+│   │   ├── metrics.js      # Prometheus metrics
+│   │   ├── circuit-breaker.js  # Circuit breaker for FCM
+│   │   ├── swagger.js      # OpenAPI 3.0 spec
+│   │   ├── trace.js        # Distributed tracing middleware
+│   │   ├── slo.js          # SLO monitoring
+│   │   └── auth.js         # Firebase auth middleware
+│   └── tests/              # Jest test suites
+├── notification-backend/   # FCM notification service
+├── ai-service/             # FastAPI AI prediction service
+├── load-tests/             # k6 + Node.js benchmark scripts
+├── database/               # SQL schema, migrations, functions
+├── docs/                   # All documentation
+├── docker-compose.yml      # One-command startup
+└── test/                   # Flutter test files
 ```
 
 ---
 
-## 🗄️ Database Schema
+## Production-Grade Features
 
-### Core Tables
+### Observability
 
-| Table | Purpose |
-|-------|---------|
-| `users` | User profiles with location (PostGIS) |
-| `blood_requests` | Blood donation requests |
-| `donor_responses` | Donor accept/decline actions |
-| `donations` | Completed donation records |
-| `hospital_domains` | Verified hospital email domains |
-| `request_audit_log` | Audit trail for requests |
-| `inventory_delivery_log` | Hospital inventory tracking |
+| Feature | Endpoint / Tool | Description |
+|---------|----------------|-------------|
+| **Metrics** | `GET /metrics` | Prometheus: request count/duration/in-flight, DB query duration, pool size, circuit breaker state |
+| **SLO** | `GET /slo` | Rolling 1h/24h windows: availability, p95/p99 latency, error rate, violation alerts |
+| **Health** | `GET /` and `GET /health/db` | Service status + DB connectivity check |
+| **Logging** | pino (JSON) | Structured logs with `traceId`/`spanId` bindings per request, secret redaction |
+| **Tracing** | `x-trace-id` / `x-span-id` | Trace propagation across services |
+| **API Docs** | `GET /api/docs/` and `GET /api/docs.json` | OpenAPI 3.0 interactive documentation |
 
-### Key Functions
+### Reliability
 
-| Function | Purpose |
-|----------|---------|
-| `find_nearby_donors()` | PostGIS-based donor matching |
-| `verify_request_donation()` | Atomic verification procedure |
-| `generate_short_request_id()` | 4-digit code generation |
+| Feature | Description |
+|---------|-------------|
+| **Circuit breaker** | Trips on repeated FCM failures, falls back to logging, auto-recovers |
+| **Retry with backoff** | 3 retries, exponential backoff + jitter for notification dispatch |
+| **Cluster mode** | Forks one worker per CPU in production, auto-restarts dead workers |
+| **Rate limiting** | 200 req/min global, 60 req/min per authenticated user |
+| **Graceful shutdown** | Drains HTTP connections, closes DB pool on SIGTERM/SIGINT, 10s timeout |
+| **DB timeouts** | Statement 10s, query 12s, connection 5s — prevents hung requests |
+
+### Performance
+
+| Metric | Single worker | Cluster (4 workers, estimated) |
+|--------|---------------|-------------------------------|
+| Health check RPS | 695 | ~2500-2800 |
+| Metrics RPS | 495 | ~2000 |
+| OpenAPI JSON RPS | 1427 | ~5000-6000 |
+| p95 latency (health) | 41ms | — |
+| p99 latency (health) | 46ms | — |
+
+Full benchmark results in [Benchmark](docs/BENCHMARK.md).
+
+### API Versioning
+
+URL path versioning (`/api/v1/`). Backward-compatible changes don't bump versions. Breaking changes get a new path; old versions deprecated for 90+ days. See [API Versioning](docs/API_VERSIONING.md).
 
 ---
 
-## 🔧 Setup Instructions
+## Testing
+
+| Test suite | Count | How to run |
+|-----------|-------|------------|
+| API backend (Jest) | 32 | `cd api-backend && npm test` |
+| Notification backend (Jest) | 8 | `cd notification-backend && npm test` |
+| Flutter (Dart) | 311 | `flutter test` |
+| E2E | 20+ | `cd api-backend && npx jest tests/e2e/` |
+| Edge cases | 14 | `cd api-backend && npx jest tests/edge-cases.test.js` |
+| Load (k6) | — | `k6 run load-tests/health-check.js` |
+| Load (Node) | — | `node load-tests/benchmark.js` |
+
+Coverage includes: unit, integration, E2E, edge cases (large payload, SQL injection, path traversal, malformed JSON, invalid blood types, negative coordinates), failure cases (DB down, FCM down, circuit breaker open), and load/performance.
+
+---
+
+## Setup
 
 ### Prerequisites
-- Flutter SDK (latest)
-- Xcode (for iOS)
-- Supabase account
-- Firebase project
 
-### Security architecture
+- Flutter SDK (latest stable)
+- Node.js 20+
+- Supabase project (free tier)
+- Firebase project (free tier)
+- Docker (optional, for Compose)
 
-- **Flutter** talks only to the **API BFF** with Firebase ID tokens (no database password in the app).
-- **API BFF** holds `SUPABASE_DB_PASSWORD` and enforces authorization server-side.
-- Apply **RLS** via `supabase/migrations/20250519000000_enable_rls.sql`.
-- See `docs/SECURITY.md`, `docs/PRIVACY_POLICY.md`, and `docs/DATA_HANDLING.md`.
-
-### API BFF (`api-backend/`)
+### Quick start (Docker)
 
 ```bash
+cp api-backend/.env.example api-backend/.env
+# fill in SUPABASE_HOST, SUPABASE_USERNAME, SUPABASE_DB_PASSWORD, FIREBASE_PROJECT_ID
+docker compose up --build -d
+```
+
+### Manual start
+
+```bash
+# Terminal 1: API backend
 cd api-backend
-cp .env.example .env   # fill Supabase + Firebase service account path
+cp .env.example .env   # fill in credentials
 npm install
-npm start              # default http://localhost:8090
-```
+npm start               # http://localhost:8090
 
-**Firebase (required for sign-in):** download a service account JSON from Firebase Console (project `bloodconnect-mvp-b605f`) → save as `keys/firebase-adminsdk.json` (gitignored) and set `GOOGLE_APPLICATION_CREDENTIALS=../keys/firebase-adminsdk.json` in `api-backend/.env`. Without this, the API returns `invalid_token`.
+# Terminal 2: Notification backend
+cd notification-backend
+npm install
+npm start               # http://localhost:8080
 
-### Flutter environment (team dev)
-
-| How you run | API URL |
-|-------------|---------|
-| `flutter run` (debug) | Auto: `10.0.2.2:8090` (Android emulator), `127.0.0.1:8090` (iOS simulator) |
-| Physical phone on Wi‑Fi | Copy `.env_example` → `.env`, set `API_BASE_URL=http://YOUR_PC_LAN_IP:8090` |
-| Store / production APK | `--dart-define=API_BASE_URL=https://api.yourdomain.com` |
-
-Avoid `flutter run --release` for local dev — that mode requires `--dart-define`. Use plain `flutter run`.
-
-**Release / store builds:**
-
-```bash
-flutter build apk --release \
-  --dart-define=API_BASE_URL=https://api.yourdomain.com
-```
-
-### Database Setup
-1. Create Supabase project
-2. Enable PostGIS extension
-3. Run `database/bloodconnect_schema.sql`
-4. Run `database/mvp_incremental.sql` for stored procedures
-5. Run `supabase/migrations/20250519000000_enable_rls.sql`
-
-### Firebase Setup
-1. Create Firebase project
-2. Enable Authentication (Google Sign-In)
-3. Enable Cloud Messaging
-4. Download `google-services.json` (Android) and `GoogleService-Info.plist` (iOS)
-
-### Running the App
-```bash
-# Terminal 1: API BFF
-cd api-backend && npm start
-
-# Terminal 2: Flutter
+# Terminal 3: Flutter app
 flutter pub get
 flutter run
 ```
 
----
+See [Deployment](docs/DEPLOYMENT.md) for production deployment and rollback procedures.
 
-## 🧪 Testing
+### Firebase setup
 
-### End-to-End Flow
-```bash
-# 1. Create test recipient
-# 2. Create test donor
-# 3. Recipient creates request
-# 4. Check donor matching (PostGIS)
-# 5. Donor accepts request
-# 6. Hospital verifies by 4-digit code
-# 7. Verify stats updated
-```
+1. Create Firebase project, enable Google Sign-In and Cloud Messaging
+2. Download service account JSON → save as `keys/firebase-adminsdk.json` and set `GOOGLE_APPLICATION_CREDENTIALS` in `.env`
+3. Download `google-services.json` (Android) and `GoogleService-Info.plist` (iOS) into the Flutter project
 
-See `database/` for SQL test scripts.
+### Database setup
+
+1. Create Supabase project, enable PostGIS extension
+2. Run `database/bloodconnect_schema.sql` → `database/mvp_incremental.sql` → `supabase/migrations/20250519000000_enable_rls.sql`
 
 ---
-![CI](https://github.com/mariamsamaha/blood-connect/actions/workflows/ci.yml/badge.svg)
 
-## 📄 Legal & privacy
+## Documentation
 
-- [LICENSE](LICENSE) (MIT)
+| Document | Contents |
+|----------|----------|
+| [Architecture](docs/ARCHITECTURE.md) | Design decisions, trade-offs, component responsibilities, failure modes, bottlenecks, optimizations |
+| [API Versioning](docs/API_VERSIONING.md) | Versioning strategy, deprecation policy, migration guide |
+| [Deployment](docs/DEPLOYMENT.md) | Deployment steps, rollback strategy, configuration table, health check verification |
+| [SLA & Metrics](docs/SLA.md) | Target availability (99.5%), latency SLOs, error budget, incident response, alert thresholds |
+| [Cost Analysis](docs/COST_ANALYSIS.md) | Monthly cost estimates by usage tier ($30–200/mo), most expensive components |
+| [Benchmark](docs/BENCHMARK.md) | Measured RPS, p50/p95/p99 latency per endpoint, scaling estimates |
+| [Security](docs/SECURITY.md) | Secrets management, RLS policies, auth architecture |
+| [Data Handling](docs/DATA_HANDLING.md) | Data inventory, PII fields, retention, third-party data sharing, RLS testing |
+| [Privacy Policy](docs/PRIVACY_POLICY.md) | End-user privacy policy |
+
+---
+
+## CI/CD
+
+GitHub Actions CI runs on every push:
+1. **Flutter**: analyze, codegen check, 311+ tests
+2. **API Backend**: syntax check, 32 tests
+3. **Notification Backend**: syntax check, 8 tests
+4. **AI Service**: pytest unit tests
+5. **Secret scan**: gitleaks full history scan
+
+---
+
+## Cost Awareness
+
+| Tier | Monthly cost | Peak users |
+|------|-------------|------------|
+| Low usage | ~$30/mo | 500 |
+| Medium usage | ~$80/mo | 5,000 |
+| High usage | ~$200/mo | 50,000 |
+
+Most expensive component: AI GPU instance ($50-150/mo). Full breakdown in [Cost Analysis](docs/COST_ANALYSIS.md).
+
+---
+
+## Security
+
+- **Flutter** → **API BFF** only (no database password in the mobile app)
+- **API BFF** holds `SUPABASE_DB_PASSWORD` and enforces authorization server-side
+- Firebase ID tokens verified on every API request via Firebase Admin SDK
+- Row-Level Security (RLS) on all Supabase tables
+- Secrets stored in `.env` files, never committed (gitignored)
+- Internal endpoints protected with shared secret (`NOTIFICATION_BACKEND_SECRET`)
+
+---
+
+## License & Legal
+
+- [MIT License](LICENSE)
 - [Privacy Policy](docs/PRIVACY_POLICY.md)
-- [Data handling](docs/DATA_HANDLING.md)
-- [Security & secrets](docs/SECURITY.md)
+- [Data Handling](docs/DATA_HANDLING.md)
+- [Security & Secrets](docs/SECURITY.md)
+
+[![CI](https://github.com/mariamsamaha/blood-connect/actions/workflows/ci.yml/badge.svg)](https://github.com/mariamsamaha/blood-connect/actions/workflows/ci.yml)

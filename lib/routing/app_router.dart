@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:bloodconnect/services/auth_service.dart';
 import 'package:bloodconnect/services/user_service.dart';
@@ -18,19 +18,35 @@ import 'package:bloodconnect/screens/create_request_screen.dart';
 import 'package:bloodconnect/screens/profile_screen.dart';
 import 'package:bloodconnect/screens/ai_prediction_screen.dart';
 
-UserProfile? _cachedProfile;
-String? _cachedUid;
-bool _isFetchingProfile = false;
+final _inFlightProfileFetches = <String, Future<UserProfile?>>{};
 
 void clearProfileCache() {
-  _cachedProfile = null;
-  _cachedUid = null;
-  _isFetchingProfile = false;
+  _inFlightProfileFetches.clear();
 }
 
-/// Post-login home route for this profile (MVP role routing).
 String homeRouteForProfile(UserProfile profile) {
   return profile.homeRoute;
+}
+
+Page<void> _slideTransition(Widget child) {
+  return CustomTransitionPage<void>(
+    child: child,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      return SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0.03, 0),
+          end: Offset.zero,
+        ).animate(CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        )),
+        child: FadeTransition(
+          opacity: animation,
+          child: child,
+        ),
+      );
+    },
+  );
 }
 
 GoRouter buildRouter({
@@ -42,53 +58,70 @@ GoRouter buildRouter({
     initialLocation: '/onboarding',
     refreshListenable: refreshListenable,
     routes: [
-      GoRoute(path: '/', redirect: (ctx, s) => '/onboarding'),
+      GoRoute(
+        path: '/',
+        redirect: (ctx, s) => '/onboarding',
+      ),
       GoRoute(
         path: '/onboarding',
-        builder: (ctx, s) => const OnboardingScreen(),
+        pageBuilder: (ctx, s) => _slideTransition(const OnboardingScreen()),
       ),
-      GoRoute(path: '/login', builder: (ctx, s) => const LoginScreen()),
-      GoRoute(path: '/signup', builder: (ctx, s) => const SignUpScreen()),
+      GoRoute(
+        path: '/login',
+        pageBuilder: (ctx, s) => _slideTransition(const LoginScreen()),
+      ),
+      GoRoute(
+        path: '/signup',
+        pageBuilder: (ctx, s) => _slideTransition(const SignUpScreen()),
+      ),
       GoRoute(
         path: '/donor/home',
-        builder: (ctx, s) => const DonorHomeScreen(),
+        pageBuilder: (ctx, s) => _slideTransition(const DonorHomeScreen()),
       ),
       GoRoute(
         path: '/recipient/home',
-        builder: (ctx, s) => const RecipientHomeScreen(),
+        pageBuilder: (ctx, s) =>
+            _slideTransition(const RecipientHomeScreen()),
       ),
       GoRoute(
         path: '/hospital/dashboard',
-        builder: (ctx, s) => const HospitalDashboardScreen(),
+        pageBuilder: (ctx, s) =>
+            _slideTransition(const HospitalDashboardScreen()),
       ),
       GoRoute(
         path: '/donor/mission',
-        builder: (ctx, s) => const DonorMissionScreen(),
+        pageBuilder: (ctx, s) => _slideTransition(const DonorMissionScreen()),
       ),
       GoRoute(
         path: '/donation-history',
-        builder: (ctx, s) => const DonationHistoryScreen(),
+        pageBuilder: (ctx, s) =>
+            _slideTransition(const DonationHistoryScreen()),
       ),
       GoRoute(
         path: '/badges',
-        builder: (ctx, s) => const BadgesScreen(),
+        pageBuilder: (ctx, s) => _slideTransition(const BadgesScreen()),
       ),
       GoRoute(
         path: '/leaderboard',
-        builder: (ctx, s) => const LeaderboardScreen(),
+        pageBuilder: (ctx, s) => _slideTransition(const LeaderboardScreen()),
       ),
       GoRoute(
         path: '/settings',
-        builder: (ctx, s) => const SettingsScreen(),
+        pageBuilder: (ctx, s) => _slideTransition(const SettingsScreen()),
       ),
       GoRoute(
         path: '/create-request',
-        builder: (ctx, s) => const CreateRequestScreen(),
+        pageBuilder: (ctx, s) =>
+            _slideTransition(const CreateRequestScreen()),
       ),
-      GoRoute(path: '/profile', builder: (ctx, s) => const ProfileScreen()),
+      GoRoute(
+        path: '/profile',
+        pageBuilder: (ctx, s) => _slideTransition(const ProfileScreen()),
+      ),
       GoRoute(
         path: '/ai-check',
-        builder: (ctx, s) => const AiPredictionScreen(),
+        pageBuilder: (ctx, s) =>
+            _slideTransition(const AiPredictionScreen()),
       ),
     ],
     redirect: (context, state) async {
@@ -99,7 +132,8 @@ GoRouter buildRouter({
 
       final firebaseUser = authService.currentUser;
       if (firebaseUser == null) {
-        if (state.matchedLocation == '/login' || state.matchedLocation == '/') {
+        if (state.matchedLocation == '/login' ||
+            state.matchedLocation == '/') {
           return null;
         }
         return '/login';
@@ -107,33 +141,29 @@ GoRouter buildRouter({
 
       UserProfile? profile;
 
-      if (_cachedProfile != null && _cachedUid == firebaseUser.uid) {
-        profile = _cachedProfile;
+      final inFlight = _inFlightProfileFetches[firebaseUser.uid];
+      if (inFlight != null) {
+        profile = await inFlight;
       } else {
-        if (_isFetchingProfile) return null;
-
-        _isFetchingProfile = true;
-
+        final fetch = userService.getProfileByFirebaseUid(firebaseUser.uid);
+        _inFlightProfileFetches[firebaseUser.uid] = fetch;
         try {
-          profile = await userService.getProfileByFirebaseUid(firebaseUser.uid);
-
-          _cachedProfile = profile;
-          _cachedUid = firebaseUser.uid;
+          profile = await fetch;
         } catch (e) {
+          _inFlightProfileFetches.remove(firebaseUser.uid);
           debugPrint('Profile fetch error: $e');
-          _isFetchingProfile = false;
-          return '/login'; // fallback
+          return '/login';
         }
-
-        _isFetchingProfile = false;
+        _inFlightProfileFetches.remove(firebaseUser.uid);
       }
       if (profile == null) return '/signup';
 
       final loc = state.matchedLocation;
 
-      // Hospital admin: dashboard + profile only (MVP RBAC).
       if (profile.accountType == AccountType.hospital) {
-        if (loc == '/profile' || loc == '/settings' || loc.startsWith('/hospital/')) return null;
+        if (loc == '/profile' ||
+            loc == '/settings' ||
+            loc.startsWith('/hospital/')) return null;
         return '/hospital/dashboard';
       }
 

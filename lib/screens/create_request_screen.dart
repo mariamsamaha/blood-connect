@@ -9,15 +9,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-/// Widget structure:
-/// - Scaffold
-///   - Animated step content (5 steps)
-///   - Fixed bottom bar with step progress and Next/Submit
-///   - Submit loading overlay
 class CreateRequestScreen extends ConsumerStatefulWidget {
   const CreateRequestScreen({super.key});
   @override
-  ConsumerState<CreateRequestScreen> createState() => _CreateRequestScreenState();
+  ConsumerState<CreateRequestScreen> createState() =>
+      _CreateRequestScreenState();
 }
 
 class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
@@ -36,7 +32,9 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
   double? _requesterLat;
   double? _requesterLng;
   String? _locationNote;
-  final _bloodTypes = const ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+  final _bloodTypes = const [
+    'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-',
+  ];
 
   @override
   void initState() {
@@ -53,7 +51,8 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
   Future<void> _prefillPhone() async {
     final auth = ref.read(authServiceProvider).currentUser;
     if (auth == null) return;
-    final profile = await ref.read(userServiceProvider).getProfileByFirebaseUid(auth.uid);
+    final profile =
+        await ref.read(userServiceProvider).getProfileByFirebaseUid(auth.uid);
     if (!mounted || profile == null) return;
     _phone.text = profile.phone;
   }
@@ -74,7 +73,9 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
       if (!mounted) return;
       setState(() => _loadingHospitals = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not load hospitals. Check your connection.')),
+        const SnackBar(
+          content: Text('Could not load hospitals. Check your connection.'),
+        ),
       );
     }
   }
@@ -99,9 +100,10 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
         final profile = await userService.getProfileByFirebaseUid(auth.uid);
         _requesterLat = profile?.latitude;
         _requesterLng = profile?.longitude;
-        _locationNote = (_requesterLat != null && _requesterLng != null)
-            ? 'Using saved profile location'
-            : 'Location unavailable, hospital location will be used';
+        _locationNote =
+            (_requesterLat != null && _requesterLng != null)
+                ? 'Using saved profile location'
+                : 'Location unavailable, hospital location will be used';
       }
     } catch (_) {
       _locationNote = 'Could not detect location, hospital location will be used';
@@ -118,7 +120,8 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
     try {
       final auth = ref.read(authServiceProvider).currentUser;
       if (auth == null) return;
-      final user = await ref.read(userServiceProvider).getProfileByFirebaseUid(auth.uid);
+      final user =
+          await ref.read(userServiceProvider).getProfileByFirebaseUid(auth.uid);
       if (user == null) return;
       await ref.read(requestServiceProvider).createRequest(
             requesterId: user.id,
@@ -130,15 +133,19 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
             hospitalLng: _hospital!.longitude,
             requesterLat: _requesterLat ?? user.latitude,
             requesterLng: _requesterLng ?? user.longitude,
-            patientName: _patient.text.trim().isEmpty ? null : _patient.text.trim(),
-            description: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+            patientName:
+                _patient.text.trim().isEmpty ? null : _patient.text.trim(),
+            description:
+                _notes.text.trim().isEmpty ? null : _notes.text.trim(),
             contactPhone: _phone.text.trim(),
           );
       if (!mounted) return;
       context.go('/recipient/home');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e')),
+      );
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -165,21 +172,98 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  _stepTitle(_step),
-                  style: Theme.of(context).textTheme.titleLarge,
+                Row(
+                  children: List.generate(
+                    5,
+                    (i) => Expanded(
+                      child: AnimatedContainer(
+                        duration: AppAnimations.medium,
+                        height: 4,
+                        margin: const EdgeInsets.symmetric(horizontal: 2),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(2),
+                          gradient: i <= _step ? AppGradients.primary : null,
+                          color: i <= _step ? null : AppColors.divider,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Text(
+                      'Step ${_step + 1} of 5',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const Spacer(),
+                    TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0, end: 1),
+                      duration: AppAnimations.medium,
+                      builder: (context, value, child) {
+                        return Text(
+                          '${(value * 20).round()}%',
+                          style: TextStyle(
+                            color: AppColors.primaryRed,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
                 if (inlineError != null) ...[
                   const SizedBox(height: 8),
-                  Text(
-                    inlineError,
-                    style: const TextStyle(color: AppColors.error),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.error.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                      border: Border.all(
+                        color: AppColors.error.withValues(alpha: 0.2),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          size: 16,
+                          color: AppColors.error,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            inlineError,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.error,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 Expanded(
                   child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
+                    duration: AppAnimations.medium,
+                    transitionBuilder: (child, animation) {
+                      return FadeTransition(
+                        opacity: animation,
+                        child: SlideTransition(
+                          position: Tween<Offset>(
+                            begin: const Offset(0.03, 0),
+                            end: Offset.zero,
+                          ).animate(animation),
+                          child: child,
+                        ),
+                      );
+                    },
                     child: _StepContent(
                       key: ValueKey(_step),
                       step: _step,
@@ -213,31 +297,64 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
           ),
           bottomSheet: SafeArea(
             child: Container(
-              padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
-              decoration: BoxDecoration(color: Theme.of(context).cardColor, border: const Border(top: BorderSide(color: AppColors.divider))),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                LinearProgressIndicator(value: (_step + 1) / 5, minHeight: 8, borderRadius: BorderRadius.circular(999)),
-                const SizedBox(height: 10),
-                AppButton.primary(
-                  label: _step == 4 ? 'Submit Request' : 'Next',
-                  onPressed: !canProceed
-                      ? null
-                      : (_step == 4
-                            ? _submit
-                            : () => setState(() => _step = (_step + 1).clamp(0, 4))),
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                border: const Border(
+                  top: BorderSide(color: AppColors.divider),
                 ),
-              ]),
+              ),
+              child: Row(
+                children: [
+                  if (_step > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 12),
+                      child: AppButton.secondary(
+                        label: 'Back',
+                        onPressed: () =>
+                            setState(() => _step = (_step - 1).clamp(0, 4)),
+                        size: ButtonSize.md,
+                      ),
+                    ),
+                  Expanded(
+                    child: AppButton.primary(
+                      label: _step == 4 ? 'Submit Request' : 'Continue',
+                      onPressed: !canProceed
+                          ? null
+                          : (_step == 4
+                              ? _submit
+                              : () => setState(
+                                    () => _step = (_step + 1).clamp(0, 4),
+                                  )),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
         if (_submitting)
           Container(
-            color: Colors.black26,
-            child: const Center(
+            color: Colors.black38,
+            child: Center(
               child: Card(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                ),
+                elevation: 8,
+                shadowColor: Colors.black26,
                 child: Padding(
-                  padding: EdgeInsets.all(20),
-                  child: Text('Finding nearby donors...'),
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CircularProgressIndicator(
+                        color: AppColors.primaryRed,
+                      ),
+                      const SizedBox(height: 16),
+                      const Text('Finding nearby donors...'),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -249,15 +366,15 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
   String _stepTitle(int step) {
     switch (step) {
       case 0:
-        return 'Select Blood Type';
+        return 'Blood Type';
       case 1:
-        return 'Select Quantity';
+        return 'Quantity';
       case 2:
-        return 'Select Urgency';
+        return 'Urgency';
       case 3:
-        return 'Select Hospital';
+        return 'Hospital';
       default:
-        return 'Patient Details';
+        return 'Details';
     }
   }
 
@@ -308,6 +425,7 @@ class _StepContent extends StatelessWidget {
     required this.requesterLng,
     required this.onRefreshLocation,
   });
+
   final int step;
   final String bloodType;
   final int units;
@@ -336,69 +454,150 @@ class _StepContent extends StatelessWidget {
         crossAxisCount: 4,
         crossAxisSpacing: 10,
         mainAxisSpacing: 10,
-        children: bloodTypes.map((t) => BloodTypeChip(type: t, selected: t == bloodType, onTap: () => onBloodType(t))).toList(),
+        childAspectRatio: 1.3,
+        children: bloodTypes
+            .map(
+              (t) => BloodTypeChip(
+                type: t,
+                selected: t == bloodType,
+                onTap: () => onBloodType(t),
+              ),
+            )
+            .toList(),
       );
     }
     if (step == 1) {
       return Center(
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-          decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(16)),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: AppColors.divider),
+            boxShadow: AppShadows.card,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 '$units ${units == 1 ? 'Unit' : 'Units'}',
-                style: Theme.of(context).textTheme.headlineMedium,
+                style: Theme.of(context).textTheme.displayMedium,
               ),
-              const SizedBox(height: 6),
-              const Text('Choose how many blood units are needed'),
-              const SizedBox(height: 16),
-              Row(mainAxisSize: MainAxisSize.min, children: [
-                IconButton(onPressed: () => onUnits(units - 1), icon: const Icon(Icons.remove_circle_outline), iconSize: 34),
-                const SizedBox(width: 12),
-                Container(
-                  width: 72,
-                  alignment: Alignment.center,
-                  child: Text(
-                    '$units',
-                    style: Theme.of(context).textTheme.displayLarge,
+              const SizedBox(height: 8),
+              const Text(
+                'How many blood units are needed?',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                      onTap: () => onUnits(units - 1),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        child: const Icon(
+                          Icons.remove_circle_outline,
+                          size: 36,
+                          color: AppColors.primaryRed,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                IconButton(onPressed: () => onUnits(units + 1), icon: const Icon(Icons.add_circle_outline), iconSize: 34),
-              ]),
+                  const SizedBox(width: 20),
+                  Container(
+                    width: 80,
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                      border: Border.all(color: AppColors.divider),
+                    ),
+                    child: Text(
+                      '$units',
+                      style: Theme.of(context).textTheme.displayLarge,
+                    ),
+                  ),
+                  const SizedBox(width: 20),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                      onTap: () => onUnits(units + 1),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        child: const Icon(
+                          Icons.add_circle_outline,
+                          size: 36,
+                          color: AppColors.primaryRed,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
       );
     }
     if (step == 2) {
-      return Column(children: [
-        _UrgencyCard(level: UrgencyLevel.critical, selected: urgency == UrgencyLevel.critical, onTap: () => onUrgency(UrgencyLevel.critical)),
-        const SizedBox(height: 12),
-        _UrgencyCard(level: UrgencyLevel.urgent, selected: urgency == UrgencyLevel.urgent, onTap: () => onUrgency(UrgencyLevel.urgent)),
-        const SizedBox(height: 12),
-        _UrgencyCard(level: UrgencyLevel.routine, selected: urgency == UrgencyLevel.routine, onTap: () => onUrgency(UrgencyLevel.routine)),
-      ]);
+      return Column(
+        children: [
+          _UrgencyCard(
+            level: UrgencyLevel.critical,
+            selected: urgency == UrgencyLevel.critical,
+            onTap: () => onUrgency(UrgencyLevel.critical),
+          ),
+          const SizedBox(height: 12),
+          _UrgencyCard(
+            level: UrgencyLevel.urgent,
+            selected: urgency == UrgencyLevel.urgent,
+            onTap: () => onUrgency(UrgencyLevel.urgent),
+          ),
+          const SizedBox(height: 12),
+          _UrgencyCard(
+            level: UrgencyLevel.routine,
+            selected: urgency == UrgencyLevel.routine,
+            onTap: () => onUrgency(UrgencyLevel.routine),
+          ),
+        ],
+      );
     }
     if (step == 3) {
-      if (loadingHospitals) return const Center(child: CircularProgressIndicator());
+      if (loadingHospitals) {
+        return const Center(child: CircularProgressIndicator());
+      }
       return ListView(
         children: [
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: Theme.of(context).cardColor,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(AppRadius.lg),
               border: Border.all(color: AppColors.divider),
+              boxShadow: AppShadows.card,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.location_pin, color: AppColors.primaryRed, size: 28),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryRed.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
+                      ),
+                      child: const Icon(
+                        Icons.location_pin,
+                        color: AppColors.primaryRed,
+                        size: 20,
+                      ),
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
@@ -406,7 +605,7 @@ class _StepContent extends StatelessWidget {
                         children: [
                           Text(
                             locationNote ?? 'Detecting location...',
-                            style: const TextStyle(fontWeight: FontWeight.w600),
+                            style: const TextStyle(fontWeight: FontWeight.w500),
                           ),
                           if (requesterLat != null && requesterLng != null)
                             Text(
@@ -435,7 +634,7 @@ class _StepContent extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           DropdownButtonFormField<Hospital>(
             value: hospital,
             decoration: const InputDecoration(
@@ -447,7 +646,7 @@ class _StepContent extends StatelessWidget {
                   (h) => DropdownMenuItem<Hospital>(
                     value: h,
                     child: Text(
-                      '${h.name} (${h.code}) • ${h.distanceKm?.toStringAsFixed(1) ?? '-'} km',
+                      '${h.name} (${h.code}) \u2022 ${h.distanceKm?.toStringAsFixed(1) ?? '-'} km',
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -458,45 +657,137 @@ class _StepContent extends StatelessWidget {
         ],
       );
     }
-    return ListView(children: [
-      AppTextField(controller: patient, label: 'Patient Name', hint: 'Optional'),
-      const SizedBox(height: 16),
-      AppTextField(controller: phone, label: 'Contact Phone', keyboardType: TextInputType.phone, hint: 'Required'),
-      const SizedBox(height: 16),
-      AppTextField(controller: notes, label: 'Notes', hint: 'Optional', maxLines: 4),
-    ]);
-  }
-}
-
-class _UrgencyCard extends StatelessWidget {
-  const _UrgencyCard({required this.level, required this.selected, required this.onTap});
-  final UrgencyLevel level;
-  final bool selected;
-  final VoidCallback onTap;
-  @override
-  Widget build(BuildContext context) {
-    final (icon, label, desc, color) = switch (level) {
-      UrgencyLevel.critical => (Icons.emergency_rounded, 'Critical', 'Immediate need', AppColors.primaryRed),
-      UrgencyLevel.urgent => (Icons.warning_amber_rounded, 'Urgent', 'Within 24 hours', AppColors.warning),
-      UrgencyLevel.routine => (Icons.schedule_rounded, 'Routine', 'Planned donation', Colors.blue),
-    };
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: selected ? color : AppColors.divider, width: selected ? 1.8 : 1),
+    return ListView(
+      children: [
+        AppTextField(
+          controller: patient,
+          label: 'Patient Name',
+          hint: 'Optional',
+          icon: Icons.person_outline_rounded,
         ),
-        child: Row(children: [
-          Icon(icon, color: color),
-          const SizedBox(width: 10),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label), Text(desc, style: const TextStyle(color: AppColors.textSecondary))])),
-        ]),
-      ),
+        const SizedBox(height: 16),
+        AppTextField(
+          controller: phone,
+          label: 'Contact Phone',
+          hint: 'Required',
+          keyboardType: TextInputType.phone,
+          icon: Icons.phone_outlined,
+        ),
+        const SizedBox(height: 16),
+        AppTextField(
+          controller: notes,
+          label: 'Notes',
+          hint: 'Optional',
+          icon: Icons.notes_rounded,
+          maxLines: 4,
+        ),
+      ],
     );
   }
 }
 
+class _UrgencyCard extends StatelessWidget {
+  const _UrgencyCard({
+    required this.level,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final UrgencyLevel level;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final (icon, label, desc, color) = switch (level) {
+      UrgencyLevel.critical => (
+        Icons.emergency_rounded,
+        'Critical',
+        'Immediate need \u2014 Notify all compatible donors',
+        AppColors.primaryRed,
+      ),
+      UrgencyLevel.urgent => (
+        Icons.warning_amber_rounded,
+        'Urgent',
+        'Within 24 hours',
+        AppColors.warning,
+      ),
+      UrgencyLevel.routine => (
+        Icons.schedule_rounded,
+        'Routine',
+        'Planned donation, no rush',
+        AppColors.info,
+      ),
+    };
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      child: AnimatedContainer(
+        duration: AppAnimations.medium,
+        curve: Curves.easeInOut,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: selected
+              ? color.withValues(alpha: 0.06)
+              : Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(
+            color: selected ? color : AppColors.divider,
+            width: selected ? 1.8 : 1,
+          ),
+          boxShadow: selected
+              ? [BoxShadow(color: color.withValues(alpha: 0.1), blurRadius: 8)]
+              : AppShadows.card,
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(AppRadius.md),
+              ),
+              child: Icon(icon, color: color, size: 24),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: selected ? color : null,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    desc,
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (selected)
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: color,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.check,
+                  color: Colors.white,
+                  size: 14,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}

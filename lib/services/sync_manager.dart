@@ -10,6 +10,7 @@ class SyncManager {
   final StreamController<ConnectivityStatus> _statusController;
   ConnectivityStatus _status;
   Timer? _debounceTimer;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   final VoidCallback? onOnline;
   final VoidCallback? onOffline;
 
@@ -27,7 +28,7 @@ class SyncManager {
   })  : _connectivity = connectivity ?? Connectivity(),
         _status = initialStatus,
         _statusController = StreamController<ConnectivityStatus>.broadcast() {
-    _connectivity.onConnectivityChanged.listen(_onConnectivityChanged);
+    _connectivitySub = _connectivity.onConnectivityChanged.listen(_onConnectivityChanged);
   }
 
   Future<void> checkConnectivity() async {
@@ -58,6 +59,7 @@ class SyncManager {
 
   void dispose() {
     _debounceTimer?.cancel();
+    _connectivitySub?.cancel();
     _statusController.close();
   }
 }

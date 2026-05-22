@@ -1,3 +1,4 @@
+import 'package:bloodconnect/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -14,89 +15,67 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   final PageController _pageController = PageController();
   int _currentPage = 0;
 
-  late AnimationController _scaleController;
-  late AnimationController _rotateController;
-  late AnimationController _slideController;
-  late Animation<double> _scaleAnimation;
-  late Animation<double> _rotateAnimation;
-  late Animation<Offset> _slideAnimation;
+  late AnimationController _iconController;
+  late Animation<double> _iconScale;
+  late Animation<double> _iconRotate;
+
+  late AnimationController _contentController;
+  late Animation<Offset> _contentSlide;
+  late Animation<double> _contentFade;
 
   @override
   void initState() {
     super.initState();
-    _setupAnimations();
-  }
-
-  void _setupAnimations() {
-    _scaleController = AnimationController(
+    _iconController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
     );
-
-    _rotateController = AnimationController(
+    _contentController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
+      duration: const Duration(milliseconds: 500),
     );
 
-    _slideController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
+    _iconScale = Tween<double>(begin: 0.3, end: 1.0).animate(
+      CurvedAnimation(parent: _iconController, curve: Curves.elasticOut),
     );
-
-    _scaleAnimation = Tween<double>(begin: 0.5, end: 1.0).animate(
-      CurvedAnimation(parent: _scaleController, curve: Curves.elasticOut),
+    _iconRotate = Tween<double>(begin: -0.3, end: 0.0).animate(
+      CurvedAnimation(parent: _iconController, curve: Curves.easeOutBack),
     );
-
-    _rotateAnimation = Tween<double>(begin: -0.5, end: 0.0).animate(
-      CurvedAnimation(parent: _rotateController, curve: Curves.easeOutBack),
-    );
-
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.5),
+    _contentSlide = Tween<Offset>(
+      begin: const Offset(0, 0.3),
       end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _slideController, curve: Curves.easeOut));
+    ).animate(CurvedAnimation(parent: _contentController, curve: Curves.easeOutCubic));
+    _contentFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _contentController, curve: Curves.easeOut),
+    );
 
-    _scaleController.forward();
-    _rotateController.forward();
-    _slideController.forward();
+    _iconController.forward();
+    _contentController.forward();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    _iconController.dispose();
+    _contentController.dispose();
+    super.dispose();
   }
 
   void _onPageChanged(int page) {
     setState(() => _currentPage = page);
-    _scaleController.reset();
-    _rotateController.reset();
-    _slideController.reset();
-    _scaleController.forward();
-    _rotateController.forward();
-    _slideController.forward();
+    _iconController.forward(from: 0);
+    _contentController.forward(from: 0);
   }
 
   void _nextPage() {
     if (_currentPage < 2) {
       _pageController.nextPage(
         duration: const Duration(milliseconds: 400),
-        curve: Curves.easeInOut,
+        curve: Curves.easeInOutCubic,
       );
     } else {
-      _goToLogin();
+      context.go('/login');
     }
-  }
-
-  void _skip() {
-    _goToLogin();
-  }
-
-  void _goToLogin() {
-    context.go('/login');
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    _scaleController.dispose();
-    _rotateController.dispose();
-    _slideController.dispose();
-    super.dispose();
   }
 
   @override
@@ -107,21 +86,47 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          gradient: AppGradients.primary,
+                          borderRadius: BorderRadius.circular(AppRadius.sm),
+                          boxShadow: AppShadows.glowRed,
+                        ),
+                        child: const Icon(
+                          Icons.bloodtype_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        'BloodConnect',
+                        style: GoogleFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primaryRed,
+                        ),
+                      ),
+                    ],
+                  ),
                   AnimatedOpacity(
                     opacity: _currentPage < 2 ? 1.0 : 0.0,
                     duration: const Duration(milliseconds: 200),
                     child: TextButton(
-                      onPressed: _currentPage < 2 ? _skip : null,
+                      onPressed: _currentPage < 2 ? () => context.go('/login') : null,
                       child: Text(
                         'Skip',
                         style: GoogleFonts.poppins(
-                          fontSize: 16,
+                          fontSize: 15,
                           fontWeight: FontWeight.w500,
-                          color: Colors.grey[600],
+                          color: AppColors.textSecondary,
                         ),
                       ),
                     ),
@@ -137,30 +142,27 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 children: [
                   _buildPage(
                     icon: Icons.bloodtype_rounded,
-                    iconColor: Colors.red[400]!,
-                    iconBgColor: Colors.red[50]!,
+                    iconColor: AppColors.primaryRed,
+                    iconBgColor: AppColors.softRed,
                     title: 'Request Blood\nInstantly',
                     description:
                         'Create urgent blood requests and get matched with nearby donors in minutes.',
-                    delay: 0,
                   ),
                   _buildPage(
                     icon: Icons.people_rounded,
-                    iconColor: Colors.blue[400]!,
-                    iconBgColor: Colors.blue[50]!,
+                    iconColor: AppColors.info,
+                    iconBgColor: AppColors.softBlue,
                     title: 'Smart Donor\nMatching',
                     description:
                         'Our system finds compatible donors near you and notifies them instantly.',
-                    delay: 200,
                   ),
                   _buildPage(
                     icon: Icons.verified_rounded,
-                    iconColor: Colors.green[400]!,
-                    iconBgColor: Colors.green[50]!,
+                    iconColor: AppColors.success,
+                    iconBgColor: AppColors.softGreen,
                     title: 'Hospital\nVerified',
                     description:
                         'Hospitals verify donations with a simple 4-digit code. Safe and transparent.',
-                    delay: 400,
                   ),
                 ],
               ),
@@ -178,7 +180,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     required Color iconBgColor,
     required String title,
     required String description,
-    required int delay,
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 40),
@@ -186,12 +187,12 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           AnimatedBuilder(
-            animation: Listenable.merge([_scaleAnimation, _rotateAnimation]),
+            animation: Listenable.merge([_iconScale, _iconRotate]),
             builder: (context, child) {
               return Transform.scale(
-                scale: _scaleAnimation.value,
+                scale: _iconScale.value,
                 child: Transform.rotate(
-                  angle: _rotateAnimation.value,
+                  angle: _iconRotate.value,
                   child: child,
                 ),
               );
@@ -200,24 +201,40 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               width: 180,
               height: 180,
               decoration: BoxDecoration(
-                color: iconBgColor,
+                gradient: RadialGradient(
+                  colors: [iconColor.withValues(alpha: 0.08), Colors.transparent],
+                ),
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: iconColor.withOpacity(0.3),
-                    blurRadius: 40,
-                    spreadRadius: 10,
+                    color: iconColor.withValues(alpha: 0.15),
+                    blurRadius: 60,
+                    spreadRadius: 5,
                   ),
                 ],
               ),
-              child: Icon(icon, size: 80, color: iconColor),
+              child: Container(
+                margin: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: iconBgColor,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: iconColor.withValues(alpha: 0.2),
+                      blurRadius: 30,
+                      spreadRadius: 5,
+                    ),
+                  ],
+                ),
+                child: Icon(icon, size: 70, color: iconColor),
+              ),
             ),
           ),
           const SizedBox(height: 60),
           SlideTransition(
-            position: _slideAnimation,
+            position: _contentSlide,
             child: FadeTransition(
-              opacity: _scaleController,
+              opacity: _contentFade,
               child: Column(
                 children: [
                   RichText(
@@ -238,7 +255,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                           style: GoogleFonts.poppins(
                             fontSize: 28,
                             fontWeight: FontWeight.bold,
-                            color: Colors.red[500],
+                            color: AppColors.primaryRed,
                             height: 1.2,
                           ),
                         ),
@@ -251,8 +268,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     textAlign: TextAlign.center,
                     style: GoogleFonts.poppins(
                       fontSize: 16,
-                      color: Colors.grey[600],
-                      height: 1.5,
+                      color: AppColors.textSecondary,
+                      height: 1.6,
                     ),
                   ),
                 ],
@@ -266,12 +283,35 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   Widget _buildBottomSection() {
     return Container(
-      padding: const EdgeInsets.all(32),
+      padding: const EdgeInsets.fromLTRB(32, 16, 32, 32),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           _buildPageIndicator(),
           const SizedBox(height: 32),
-          _buildButtons(),
+          SizedBox(
+            width: double.infinity,
+            height: 56,
+            child: ElevatedButton(
+              onPressed: _nextPage,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryRed,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                ),
+                shadowColor: AppColors.primaryRed.withValues(alpha: 0.5),
+              ),
+              child: Text(
+                _currentPage == 2 ? 'Get Started' : 'Continue',
+                style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -283,39 +323,17 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       children: List.generate(3, (index) {
         final isActive = _currentPage == index;
         return AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          margin: const EdgeInsets.symmetric(horizontal: 4),
-          width: isActive ? 32 : 12,
-          height: 12,
+          duration: AppAnimations.medium,
+          margin: const EdgeInsets.symmetric(horizontal: 5),
+          width: isActive ? 28 : 8,
+          height: 8,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(6),
-            color: isActive ? Colors.red[500] : Colors.grey[300],
+            borderRadius: BorderRadius.circular(4),
+            gradient: isActive ? AppGradients.primary : null,
+            color: isActive ? null : AppColors.divider,
           ),
         );
       }),
-    );
-  }
-
-  Widget _buildButtons() {
-    return SizedBox(
-      width: double.infinity,
-      height: 56,
-      child: ElevatedButton(
-        onPressed: _nextPage,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.red[600],
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(28),
-          ),
-          elevation: 8,
-          shadowColor: Colors.red[300]!.withOpacity(0.5),
-        ),
-        child: Text(
-          _currentPage == 2 ? 'Get Started' : 'Next',
-          style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600),
-        ),
-      ),
     );
   }
 }

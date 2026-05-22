@@ -33,9 +33,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _load() async {
     final auth = ref.read(authServiceProvider).currentUser;
     if (auth == null) return;
-    final profile = await ref
-        .read(userServiceProvider)
-        .getProfileByFirebaseUid(auth.uid);
+    final profile =
+        await ref.read(userServiceProvider).getProfileByFirebaseUid(auth.uid);
     if (profile == null || !mounted) return;
     setState(() {
       _profile = profile;
@@ -84,7 +83,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Could not get location. Enable location in settings.'),
+            content: Text(
+              'Could not get location. Enable location in settings.',
+            ),
           ),
         );
         return;
@@ -114,11 +115,55 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  Future<void> _deleteAccount() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
+        title: const Text('Delete Account?'),
+        content: const Text(
+          'This will permanently delete your account, donation history, and all associated data. This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: AppColors.error),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await ref.read(apiClientProvider).deleteJson('/api/v1/users/me');
+      await ref.read(authServiceProvider).signOut();
+      if (!mounted) return;
+      context.go('/login');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to delete account: $e')),
+      );
+    }
+  }
+
   Future<void> _signOut() async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
         title: const Text('Sign out?'),
+        content: const Text('Are you sure you want to sign out?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -165,103 +210,123 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           : ListView(
               padding: const EdgeInsets.all(20),
               children: [
-                const SectionHeader(title: 'Notifications'),
-                const SizedBox(height: 12),
-                _SettingsTile(
-                  title: 'Push Notifications',
-                  subtitle: 'Receive alerts for new blood requests',
-                  trailing: Switch(
-                    value: _notificationsEnabled,
-                    onChanged: (v) =>
-                        setState(() => _notificationsEnabled = v),
-                    activeTrackColor: AppColors.primaryRed,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                if (_notificationsEnabled) ...[
-                  _SettingsTile(
-                    title: 'Search Radius',
-                    subtitle:
-                        'Notify me for requests within ${_radiusKm.round()} km',
-                    trailing: null,
-                  ),
-                  Slider(
-                    value: _radiusKm,
-                    min: 5,
-                    max: 120,
-                    divisions: 23,
-                    label: '${_radiusKm.round()} km',
-                    activeColor: AppColors.primaryRed,
-                    onChanged: (v) => setState(() => _radiusKm = v),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-
-                if (profile?.role == UserRole.donor) ...[
-                  const SectionHeader(title: 'Donor Status'),
-                  const SizedBox(height: 12),
-                  _SettingsTile(
-                    title: 'Available to Donate',
-                    subtitle: _donorAvailable
-                        ? 'You will appear in donor searches'
-                        : 'You are hidden from donor searches',
-                    trailing: Switch(
-                      value: _donorAvailable,
-                      onChanged: (v) =>
-                          setState(() => _donorAvailable = v),
-                      activeTrackColor: AppColors.primaryRed,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _SettingsTile(
-                    title: 'Matching Location',
-                    subtitle: 'Update where you are available to donate from',
-                    trailing: TextButton(
-                      onPressed: _updatingLocation ? null : _updateLocation,
-                      child: Text(
-                        _updatingLocation ? 'Updating...' : 'Update',
-                        style: const TextStyle(color: AppColors.primaryRed),
+                _SettingsGroup(
+                  title: 'Notifications',
+                  children: [
+                    _SettingsTile(
+                      title: 'Push Notifications',
+                      subtitle: 'Receive alerts for new blood requests',
+                      trailing: Switch(
+                        value: _notificationsEnabled,
+                        onChanged: (v) =>
+                            setState(() => _notificationsEnabled = v),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                ],
-
-                const SectionHeader(title: 'Account'),
-                const SizedBox(height: 12),
-                _SettingsTile(
-                  title: 'Email',
-                  subtitle: profile?.email ?? '—',
-                  trailing: null,
+                    if (_notificationsEnabled) ...[
+                      const SizedBox(height: 12),
+                      const Divider(),
+                      const SizedBox(height: 8),
+                      _SettingsTile(
+                        title: 'Search Radius',
+                        subtitle:
+                            'Notify me for requests within ${_radiusKm.round()} km',
+                        trailing: null,
+                      ),
+                      const SizedBox(height: 4),
+                      Slider(
+                        value: _radiusKm,
+                        min: 5,
+                        max: 120,
+                        divisions: 23,
+                        label: '${_radiusKm.round()} km',
+                        onChanged: (v) => setState(() => _radiusKm = v),
+                      ),
+                    ],
+                  ],
                 ),
-                const SizedBox(height: 8),
-                _SettingsTile(
-                  title: 'Role',
-                  subtitle: profile?.role.name ?? '—',
-                  trailing: null,
+                const SizedBox(height: 16),
+                if (profile?.role == UserRole.donor)
+                  _SettingsGroup(
+                    title: 'Donor Status',
+                    children: [
+                      _SettingsTile(
+                        title: 'Available to Donate',
+                        subtitle: _donorAvailable
+                            ? 'You will appear in donor searches'
+                            : 'You are hidden from donor searches',
+                        trailing: Switch(
+                          value: _donorAvailable,
+                          onChanged: (v) =>
+                              setState(() => _donorAvailable = v),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Divider(),
+                      const SizedBox(height: 8),
+                      _SettingsTile(
+                        title: 'Matching Location',
+                        subtitle:
+                            'Update where you are available to donate from',
+                        trailing: TextButton(
+                          onPressed:
+                              _updatingLocation ? null : _updateLocation,
+                          child: Text(
+                            _updatingLocation ? 'Updating...' : 'Update',
+                            style:
+                                const TextStyle(color: AppColors.primaryRed),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                const SizedBox(height: 16),
+                _SettingsGroup(
+                  title: 'Account',
+                  children: [
+                    _SettingsTile(
+                      title: 'Email',
+                      subtitle: profile?.email ?? '\u2014',
+                      trailing: null,
+                    ),
+                    const SizedBox(height: 8),
+                    _SettingsTile(
+                      title: 'Role',
+                      subtitle: profile?.role.name ?? '\u2014',
+                      trailing: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.info.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(
+                            AppRadius.full,
+                          ),
+                        ),
+                        child: Text(
+                          profile?.role.name ?? '',
+                          style: const TextStyle(
+                            color: AppColors.info,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 32),
-
                 AppButton.secondary(
                   label: 'Sign Out',
                   onPressed: _signOut,
                 ),
                 const SizedBox(height: 12),
-
                 Center(
                   child: TextButton(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Contact support to delete your account',
-                          ),
-                        ),
-                      );
-                    },
+                    onPressed: _deleteAccount,
                     child: const Text(
                       'Delete Account',
-                      style: TextStyle(color: AppColors.textSecondary),
+                      style: TextStyle(color: AppColors.error),
                     ),
                   ),
                 ),
@@ -271,26 +336,52 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 }
 
+class _SettingsGroup extends StatelessWidget {
+  const _SettingsGroup({
+    required this.title,
+    required this.children,
+  });
+
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SectionHeader(title: title),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: AppColors.divider),
+            boxShadow: AppShadows.card,
+          ),
+          child: Column(children: children),
+        ),
+      ],
+    );
+  }
+}
+
 class _SettingsTile extends StatelessWidget {
   const _SettingsTile({
     required this.title,
     required this.subtitle,
-    required this.trailing,
+    this.trailing,
   });
+
   final String title;
   final String subtitle;
   final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.divider),
-      ),
-      child: Row(children: [
+    return Row(
+      children: [
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -311,7 +402,7 @@ class _SettingsTile extends StatelessWidget {
           ),
         ),
         if (trailing != null) trailing!,
-      ]),
+      ],
     );
   }
 }

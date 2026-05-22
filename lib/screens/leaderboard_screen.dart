@@ -9,7 +9,8 @@ class LeaderboardScreen extends ConsumerStatefulWidget {
   const LeaderboardScreen({super.key});
 
   @override
-  ConsumerState<LeaderboardScreen> createState() => _LeaderboardScreenState();
+  ConsumerState<LeaderboardScreen> createState() =>
+      _LeaderboardScreenState();
 }
 
 class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
@@ -29,9 +30,8 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
     try {
       final auth = ref.read(authServiceProvider).currentUser;
       if (auth == null) return;
-      final profile = await ref
-          .read(userServiceProvider)
-          .getProfileByFirebaseUid(auth.uid);
+      final profile =
+          await ref.read(userServiceProvider).getProfileByFirebaseUid(auth.uid);
       if (profile == null || !mounted) return;
 
       final donors = ref.read(donorServiceProvider);
@@ -74,10 +74,9 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [AppColors.primaryRed, AppColors.deepRed],
-                        ),
-                        borderRadius: BorderRadius.circular(16),
+                        gradient: AppGradients.primary,
+                        borderRadius: BorderRadius.circular(AppRadius.lg),
+                        boxShadow: AppShadows.primary,
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -88,7 +87,10 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
                             icon: Icons.emoji_events_rounded,
                           ),
                           Container(
-                              width: 1, height: 40, color: Colors.white30),
+                            width: 1,
+                            height: 40,
+                            color: Colors.white30,
+                          ),
                           _StatItem(
                             value: '$_myPoints',
                             label: 'Your Points',
@@ -100,18 +102,34 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
                     const SizedBox(height: 24),
                   ],
 
-                  const SectionHeader(title: 'Top Donors'),
+                  SectionHeader(
+                    title: 'Top Donors',
+                    showDivider: true,
+                  ),
                   const SizedBox(height: 12),
 
                   if (_leaders.isEmpty)
-                    const Center(
+                    Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.people_outline,
-                              size: 48, color: AppColors.divider),
-                          SizedBox(height: 8),
-                          Text('No donors yet'),
+                          Container(
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: AppColors.textTertiary.withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.people_outline,
+                              size: 40,
+                              color: AppColors.textTertiary,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'No donors yet',
+                            style: TextStyle(color: AppColors.textSecondary),
+                          ),
                         ],
                       ),
                     )
@@ -152,25 +170,38 @@ class _StatItem extends StatelessWidget {
     required this.label,
     required this.icon,
   });
+
   final String value;
   final String label;
   final IconData icon;
 
   @override
   Widget build(BuildContext context) {
-    return Column(children: [
-      Icon(icon, color: Colors.white70, size: 20),
-      const SizedBox(height: 4),
-      Text(
-        value,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 26,
-          fontWeight: FontWeight.bold,
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+          ),
+          child: Icon(icon, color: Colors.white70, size: 20),
         ),
-      ),
-      Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-    ]);
+        const SizedBox(height: 6),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 26,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        Text(
+          label,
+          style: const TextStyle(color: Colors.white70, fontSize: 12),
+        ),
+      ],
+    );
   }
 }
 
@@ -182,6 +213,7 @@ class _LeaderCard extends StatelessWidget {
     required this.donations,
     required this.points,
   });
+
   final int rank;
   final String name;
   final String bloodType;
@@ -190,79 +222,123 @@ class _LeaderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (medal, bg) = switch (rank) {
-      1 => ('🥇', const Color(0xFFFFF8E1)),
-      2 => ('🥈', const Color(0xFFF5F5F5)),
-      3 => ('🥉', const Color(0xFFFBE9E7)),
-      _ => ('', Colors.transparent),
+    final (medal, bg, borderColor, shadow) = switch (rank) {
+      1 => ('\u{1F947}', const Color(0xFFFFF8E1), AppColors.gold, AppShadows.glowGold),
+      2 => ('\u{1F948}', const Color(0xFFF5F5F5), AppColors.textTertiary, null),
+      3 => ('\u{1F949}', const Color(0xFFFBE9E7), AppColors.primaryRed.withValues(alpha: 0.3), null),
+      _ => ('', Colors.transparent, AppColors.divider, null),
     };
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: rank <= 3
-            ? bg
-            : Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: rank <= 3
-              ? AppColors.primaryRed.withAlpha(51)
-              : AppColors.divider,
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: AppAnimations.medium,
+      curve: AppAnimations.smooth,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, 10 * (1 - value)),
+            child: child,
+          ),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: rank <= 3 ? bg : Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          border: Border.all(
+            color: borderColor,
+            width: rank <= 3 ? 1.5 : 1,
+          ),
+          boxShadow: shadow,
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 36,
+              child: rank <= 3
+                  ? Text(
+                      medal,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 22),
+                    )
+                  : Text(
+                      '#$rank',
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+            ),
+            const SizedBox(width: 12),
+            BloodTypeChip(
+              type: bloodType,
+              selected: false,
+              onTap: null,
+              compact: true,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    '$donations donation${donations == 1 ? '' : 's'}',
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                gradient: rank == 1
+                    ? LinearGradient(
+                        colors: [
+                          AppColors.gold.withValues(alpha: 0.15),
+                          AppColors.gold.withValues(alpha: 0.05),
+                        ],
+                      )
+                    : null,
+                color: rank == 1 ? null : AppColors.primaryRed.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(AppRadius.full),
+                border: rank == 1
+                    ? Border.all(color: AppColors.gold.withValues(alpha: 0.3))
+                    : null,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (rank == 1)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 4),
+                      child: Icon(Icons.star_rounded, size: 12, color: AppColors.gold),
+                    ),
+                  Text(
+                    '$points pts',
+                    style: TextStyle(
+                      color: rank == 1 ? AppColors.gold : AppColors.primaryRed,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
-      child: Row(children: [
-        SizedBox(
-          width: 36,
-          child: rank <= 3
-              ? Text(medal, style: const TextStyle(fontSize: 22))
-              : Text(
-                  '#$rank',
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-        ),
-        const SizedBox(width: 12),
-        BloodTypeChip(type: bloodType, selected: false, onTap: null),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                name,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              Text(
-                '$donations donation${donations == 1 ? '' : 's'}',
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            color: AppColors.primaryRed.withAlpha(25),
-            borderRadius: BorderRadius.circular(99),
-          ),
-          child: Text(
-            '$points pts',
-            style: const TextStyle(
-              color: AppColors.primaryRed,
-              fontWeight: FontWeight.bold,
-              fontSize: 12,
-            ),
-          ),
-        ),
-      ]),
     );
   }
 }

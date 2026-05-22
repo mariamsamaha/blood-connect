@@ -10,14 +10,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-/// Widget structure:
-/// - Scaffold + refresh
-/// - Top profile card with blood-type ring
-/// - Stats row
-/// - Badges horizontal list
-/// - Donation history timeline / empty state
-/// - Settings
-/// - Sign out button
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
   @override
@@ -88,151 +80,427 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
         ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _load,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+      body: RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          children: [
+            _ProfileHead(profile: profile),
+            const SizedBox(height: 16),
+            if (profile.role == UserRole.donor) ...[
+              Row(
                 children: [
-                  _ProfileHead(profile: profile),
-                  const SizedBox(height: 16),
-                  if (profile.role == UserRole.donor) ...[
-                    Row(children: [
-                      Expanded(child: StatCard(title: 'Donations', value: '${profile.totalDonations}', icon: Icons.volunteer_activism_rounded)),
-                      const SizedBox(width: 10),
-                      Expanded(child: StatCard(title: 'Points', value: '${profile.rewardPoints}', icon: Icons.star_rounded)),
-                      const SizedBox(width: 10),
-                      IconButton(
-                        onPressed: () => context.push('/leaderboard'),
-                        icon: const Icon(Icons.leaderboard_rounded),
-                        tooltip: 'Leaderboard',
-                      ),
-                    ]),
-                    const SizedBox(height: 20),
-                    Row(children: [
-                      const Expanded(child: SectionHeader(title: 'Badges')),
-                      TextButton(
-                        onPressed: () => context.push('/badges'),
-                        child: const Text('See All'),
-                      ),
-                    ]),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      height: 110,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemBuilder: (_, i) {
-                          final b = _badges[i];
-                          final earned = b['is_earned'] as bool? ?? false;
-                          return BadgeCard(
-                            icon: '${b['icon'] ?? '🏅'}',
-                            name: '${b['name'] ?? 'Badge'}',
-                            earned: earned,
-                            progress: earned
-                                ? 1.0
-                                : ((b['current_value'] as int? ?? 0) /
+                  Expanded(
+                    child: StatCard(
+                      title: 'Donations',
+                      value: '${profile.totalDonations}',
+                      icon: Icons.volunteer_activism_rounded,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: StatCard(
+                      title: 'Points',
+                      value: '${profile.rewardPoints}',
+                      icon: Icons.star_rounded,
+                      color: AppColors.warning,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).cardColor,
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                      border: Border.all(color: AppColors.divider),
+                      boxShadow: AppShadows.card,
+                    ),
+                    child: IconButton(
+                      onPressed: () => context.push('/leaderboard'),
+                      icon: const Icon(Icons.leaderboard_rounded),
+                      tooltip: 'Leaderboard',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  const Expanded(
+                    child: SectionHeader(title: 'Badges'),
+                  ),
+                  if (_badges.isNotEmpty)
+                    TextButton(
+                      onPressed: () => context.push('/badges'),
+                      child: const Text('See All'),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (_badges.isNotEmpty)
+                SizedBox(
+                  height: 120,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemBuilder: (_, i) {
+                      final b = _badges[i];
+                      final earned = b['is_earned'] as bool? ?? false;
+                      return BadgeCard(
+                        icon: '${b['icon'] ?? '\u{1F3C6}'}',
+                        name: '${b['name'] ?? 'Badge'}',
+                        earned: earned,
+                        progress: earned
+                            ? 1.0
+                            : ((b['current_value'] as int? ?? 0) /
                                     (b['requirement_value'] as int? ?? 1))
-                                        .clamp(0.0, 1.0),
-                            progressLabel: earned
-                                ? 'Earned'
-                                : '${b['current_value']}/${b['requirement_value']}',
-                          );
-                        },
-                        separatorBuilder: (_, __) => const SizedBox(width: 10),
-                        itemCount: _badges.length,
+                                .clamp(0.0, 1.0),
+                        progressLabel: earned
+                            ? 'Earned'
+                            : '${b['current_value']}/${b['requirement_value']}',
+                      );
+                    },
+                    separatorBuilder: (_, __) => const SizedBox(width: 10),
+                    itemCount: _badges.length,
+                  ),
+                ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  const Expanded(
+                    child: SectionHeader(title: 'Donation History'),
+                  ),
+                  if (_history.isNotEmpty)
+                    TextButton(
+                      onPressed: () => context.push('/donation-history'),
+                      child: const Text('See All'),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (_history.isNotEmpty)
+                ..._history.take(5).map(
+                      (h) => _HistoryTile(
+                        name: h.hospitalName,
+                        bloodType: h.bloodType,
+                        type: h.responseType,
+                        date: h.respondedAt,
                       ),
                     ),
-                    const SizedBox(height: 20),
-                    Row(children: [
-                      const Expanded(child: SectionHeader(title: 'Donation History')),
-                      TextButton(
-                        onPressed: () => context.push('/donation-history'),
-                        child: const Text('See All'),
-                      ),
-                    ]),
-                    const SizedBox(height: 12),
-                    if (_history.isNotEmpty)
-                      ..._history.take(5).map((h) => ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            leading: const CircleAvatar(child: Icon(Icons.bloodtype_rounded)),
-                            title: Text(h.hospitalName),
-                            subtitle: Text('${h.bloodType} • ${h.responseType}'),
-                            trailing: Text(_formatDate(h.respondedAt)),
-                          )),
-                    if (_history.isEmpty)
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(16)),
-                        child: const Column(children: [Icon(Icons.history_rounded), SizedBox(height: 8), Text('No donation history yet')]),
-                      ),
-                    const SizedBox(height: 20),
-                    Row(children: [
-                      Expanded(child: StatCard(title: 'Member Since', value: '2026', icon: Icons.calendar_month_rounded)),
-                    ]),
-                  ] else if (profile.role == UserRole.recipient) ...[
-                    Row(children: [
-                      Expanded(child: StatCard(title: 'Requests', value: '${profile.totalDonations}', icon: Icons.bloodtype_rounded)),
-                      const SizedBox(width: 10),
-                      Expanded(child: StatCard(title: 'Member Since', value: '2026', icon: Icons.calendar_month_rounded)),
-                    ]),
-                  ] else ...[
-                    Row(children: [
-                      Expanded(child: StatCard(title: 'Verified', value: '${profile.totalDonations}', icon: Icons.verified_rounded)),
-                      const SizedBox(width: 10),
-                      Expanded(child: StatCard(title: 'Member Since', value: '2026', icon: Icons.calendar_month_rounded)),
-                    ]),
-                  ],
-                  const SizedBox(height: 24),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(16)),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      const Text('Settings'),
-                      const SizedBox(height: 12),
-                      Row(children: [
-                        const Expanded(child: Text('Notifications')),
-                        Switch(value: _notify, onChanged: (v) => setState(() => _notify = v)),
-                      ]),
-                    ]),
+              if (_history.isEmpty)
+                _EmptySection(
+                  icon: Icons.history_rounded,
+                  message: 'No donation history yet',
+                ),
+              const SizedBox(height: 20),
+              StatCard(
+                title: 'Member Since',
+                value: '2026',
+                icon: Icons.calendar_month_rounded,
+                color: AppColors.info,
+              ),
+            ] else if (profile.role == UserRole.recipient) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: StatCard(
+                      title: 'Requests',
+                      value: '${profile.totalDonations}',
+                      icon: Icons.bloodtype_rounded,
+                    ),
                   ),
-                  const SizedBox(height: 20),
-                  AppButton.secondary(label: 'Sign Out', onPressed: _signOut),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: StatCard(
+                      title: 'Member Since',
+                      value: '2026',
+                      icon: Icons.calendar_month_rounded,
+                      color: AppColors.info,
+                    ),
+                  ),
+                ],
+              ),
+            ] else ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: StatCard(
+                      title: 'Verified',
+                      value: '${profile.totalDonations}',
+                      icon: Icons.verified_rounded,
+                      color: AppColors.success,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: StatCard(
+                      title: 'Member Since',
+                      value: '2026',
+                      icon: Icons.calendar_month_rounded,
+                      color: AppColors.info,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 24),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(AppRadius.lg),
+                border: Border.all(color: AppColors.divider),
+                boxShadow: AppShadows.card,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryRed.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(AppRadius.sm),
+                        ),
+                        child: const Icon(Icons.tune_rounded, size: 18, color: AppColors.primaryRed),
+                      ),
+                      const SizedBox(width: 10),
+                      const Text(
+                        'Quick Settings',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Notifications',
+                          style: TextStyle(fontSize: 14),
+                        ),
+                      ),
+                      Switch(
+                        value: _notify,
+                        onChanged: (v) => setState(() => _notify = v),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
+            const SizedBox(height: 20),
+            AppButton.secondary(
+              label: 'Sign Out',
+              onPressed: _signOut,
+            ),
+          ],
+        ),
+      ),
     );
   }
+}
 
-  String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year}';
+class _HistoryTile extends StatelessWidget {
+  const _HistoryTile({
+    required this.name,
+    required this.bloodType,
+    required this.type,
+    required this.date,
+  });
+
+  final String name;
+  final String bloodType;
+  final String type;
+  final DateTime date;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.divider),
+        boxShadow: AppShadows.card,
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.primaryRed.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+            ),
+            child: const Icon(
+              Icons.bloodtype_rounded,
+              size: 18,
+              color: AppColors.primaryRed,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+                Text(
+                  '$bloodType \u2022 $type',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '${date.day}/${date.month}/${date.year}',
+            style: const TextStyle(
+              fontSize: 12,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptySection extends StatelessWidget {
+  const _EmptySection({
+    required this.icon,
+    required this.message,
+  });
+
+  final IconData icon;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 32, color: AppColors.textTertiary),
+          const SizedBox(height: 8),
+          Text(
+            message,
+            style: const TextStyle(color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+    );
   }
 }
 
 class _ProfileHead extends StatelessWidget {
   const _ProfileHead({required this.profile});
   final UserProfile profile;
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(16)),
-      child: Column(children: [
-        Container(
-          padding: const EdgeInsets.all(3),
-          decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AppColors.primaryRed, width: 2)),
-          child: CircleAvatar(radius: 36, child: Text(profile.name.isEmpty ? '?' : profile.name[0].toUpperCase())),
-        ),
-        const SizedBox(height: 8),
-        Text(profile.name, style: Theme.of(context).textTheme.titleLarge),
-        Text(profile.email, style: const TextStyle(color: AppColors.textSecondary)),
-        const SizedBox(height: 8),
-        Wrap(spacing: 8, children: [
-          Chip(label: Text(profile.bloodType.isEmpty ? 'Unknown' : profile.bloodType)),
-          Chip(label: Text(profile.role.name)),
-        ]),
-      ]),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.divider),
+        boxShadow: AppShadows.card,
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: AppColors.primaryRed,
+                width: 2.5,
+              ),
+              boxShadow: AppShadows.glowRed,
+            ),
+            child: CircleAvatar(
+              radius: 40,
+              backgroundColor: AppColors.primaryRed.withValues(alpha: 0.1),
+              child: Text(
+                profile.name.isEmpty
+                    ? '?'
+                    : profile.name[0].toUpperCase(),
+                style: Theme.of(context).textTheme.displayMedium?.copyWith(
+                  color: AppColors.primaryRed,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            profile.name,
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            profile.email,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryRed.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(AppRadius.full),
+                ),
+                child: Text(
+                  profile.bloodType.isEmpty ? 'Unknown' : profile.bloodType,
+                  style: const TextStyle(
+                    color: AppColors.primaryRed,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.info.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(AppRadius.full),
+                ),
+                child: Text(
+                  profile.role.name,
+                  style: const TextStyle(
+                    color: AppColors.info,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
-

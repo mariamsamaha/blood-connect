@@ -1,7 +1,7 @@
 # BloodConnect Privacy Policy
 
 **Last updated:** May 2026  
-**Contact:** [your-project contact email]
+**Contact:** privacy@bloodconnect.app
 
 ## Overview
 

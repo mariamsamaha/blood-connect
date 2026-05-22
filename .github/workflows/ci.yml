@@ -35,6 +35,10 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # Regenerate Isar .g.dart files — fails CI if codegen is stale
+      - name: Regenerate Isar codegen
+        run: dart run build_runner build --delete-conflicting-outputs
+
       # dart fix --dry-run exits non-zero if there are fixable issues
       - name: Check for fixable issues
         run: dart fix --dry-run
@@ -44,7 +48,7 @@ jobs:
       - name: Analyze code
         run: flutter analyze --fatal-infos
 
-      # Run all 42 Flutter tests + 5 widget tests with coverage
+      # Run all 42+ Flutter tests + widget tests with coverage
       - name: Run tests
         run: flutter test --coverage --reporter=github
 
@@ -82,11 +86,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Verify server.js is syntactically valid before running tests
+      # Verify all source files are syntactically valid
       - name: Syntax check
-        run: node --check src/server.js src/db.js src/auth.js src/errors.js
+        run: node --check src/server.js src/db.js src/auth.js src/errors.js src/swagger.js src/logger.js
 
-      # Jest runs db.test.js + errors.test.js + server.test.js
+      # Jest runs db.test.js + errors.test.js + server.test.js + edge-cases.test.js
       # NODE_ENV=test prevents startServer() from actually binding a port
       - name: Run tests
         run: npm test
@@ -133,7 +137,35 @@ jobs:
           FIREBASE_PROJECT_ID: bloodconnect-mvp-b605f
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # JOB 4 — Secret scan (Gitleaks)
+  # JOB 4 — AI service: unit tests (pytest)
+  # ─────────────────────────────────────────────────────────────────────────────
+  ai-service:
+    name: AI service — test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: ai-service/requirements.txt
+
+      - name: Install dependencies
+        working-directory: ai-service
+        run: pip install -r requirements.txt
+
+      # Run unit tests (skip model-dependent tests which need GPU or model file)
+      - name: Run tests
+        working-directory: ai-service
+        run: pytest test_main.py -v -k "not test_health and not test_predict" --timeout=30
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 5 — Secret scan (Gitleaks)
   # Prevents credentials ever sneaking back into the repo
   # ─────────────────────────────────────────────────────────────────────────────
   secret-scan:

@@ -138,9 +138,11 @@ class MedicalViT(nn.Module):
 # ── FastAPI app ────────────────────────────────────────────────────────
 app = FastAPI()
 
+ALLOWED_ORIGINS = os.environ.get("CORS_ORIGINS", "").split(",") if os.environ.get("CORS_ORIGINS") else ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )

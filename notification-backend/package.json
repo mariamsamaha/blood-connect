@@ -14,7 +14,10 @@
   "dependencies": {
     "express": "^4.19.2",
     "express-rate-limit": "^7.1.5",
-    "firebase-admin": "^12.5.0"
+    "firebase-admin": "^12.5.0",
+    "pino": "^9.6.0",
+    "pino-pretty": "^13.0.0",
+    "pino-http": "^10.4.0"
   },
   "devDependencies": {
     "jest": "^30.4.2",

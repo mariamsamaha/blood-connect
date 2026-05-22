@@ -95,14 +95,14 @@ void main() {
       expect(find.textContaining('12.5'), findsOneWidget);
     });
 
-    testWidgets('shows distance as dash when null', (tester) async {
+    testWidgets('hides distance when null', (tester) async {
       await tester.pumpWidget(_wrap(RequestCard(
         request: _req(distanceKm: null),
         onAccept: () {},
         onDecline: () {},
       )));
       await tester.pump();
-      expect(find.textContaining('- km'), findsOneWidget);
+      expect(find.textContaining('km'), findsNothing);
     });
 
     testWidgets('shows posted time in minutes', (tester) async {

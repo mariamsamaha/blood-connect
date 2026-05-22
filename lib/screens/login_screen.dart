@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:bloodconnect/main.dart';
 import 'package:bloodconnect/routing/app_router.dart';
+import 'package:bloodconnect/theme/app_theme.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -75,9 +77,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         return;
       }
 
-      final profile = await userService.getProfileByFirebaseUid(
-        cred!.user!.uid,
-      );
+      final profile =
+          await userService.getProfileByFirebaseUid(cred!.user!.uid);
       if (!mounted) return;
 
       if (profile == null) {
@@ -91,7 +92,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Sign in failed: $e'),
-            backgroundColor: Colors.red,
+            backgroundColor: AppColors.error,
           ),
         );
       }
@@ -104,27 +105,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       body: Container(
         width: double.infinity,
         height: double.infinity,
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Colors.red.shade600,
-              Colors.red.shade700,
-              Colors.red.shade800,
+              AppColors.primaryRed,
+              AppColors.deepRed,
+              Color(0xFF7F1D1D),
             ],
           ),
         ),
         child: SafeArea(
           child: Column(
             children: [
-              const Spacer(),
+              const Spacer(flex: 2),
               _buildHeader(),
-              const Spacer(),
+              const Spacer(flex: 2),
               _buildLoginCard(),
               const SizedBox(height: 40),
               _buildFeatures(),
-              const SizedBox(height: 40),
+              const Spacer(flex: 1),
             ],
           ),
         ),
@@ -150,31 +151,35 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
+                  color: Colors.black.withValues(alpha: 0.15),
                   blurRadius: 30,
                   offset: const Offset(0, 10),
                 ),
               ],
             ),
-            child: Icon(Icons.bloodtype, size: 80, color: Colors.red.shade600),
+            child: const Icon(
+              Icons.bloodtype_rounded,
+              size: 72,
+              color: AppColors.primaryRed,
+            ),
           ),
           const SizedBox(height: 24),
-          const Text(
+          Text(
             'BloodConnect',
-            style: TextStyle(
-              fontSize: 36,
+            style: GoogleFonts.poppins(
+              fontSize: 34,
               fontWeight: FontWeight.bold,
               color: Colors.white,
-              letterSpacing: 1.5,
+              letterSpacing: 1.2,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             'Save Lives, One Donation at a Time',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.white.withOpacity(0.9),
-              letterSpacing: 0.5,
+            style: GoogleFonts.inter(
+              fontSize: 15,
+              color: Colors.white.withValues(alpha: 0.85),
+              letterSpacing: 0.3,
             ),
           ),
         ],
@@ -189,13 +194,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         opacity: _fadeAnimation,
         child: Container(
           margin: const EdgeInsets.symmetric(horizontal: 32),
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(28),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(AppRadius.xl),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.15),
+                color: Colors.black.withValues(alpha: 0.12),
                 blurRadius: 30,
                 offset: const Offset(0, 15),
               ),
@@ -203,28 +208,40 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           ),
           child: Column(
             children: [
-              const Text(
+              Text(
                 'Welcome Back',
-                style: TextStyle(
-                  fontSize: 24,
+                style: GoogleFonts.poppins(
+                  fontSize: 22,
                   fontWeight: FontWeight.bold,
-                  color: Colors.black87,
+                  color: AppColors.textPrimary,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Text(
-                'Sign in to continue',
-                style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                'Sign in to continue saving lives',
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  color: AppColors.textSecondary,
+                ),
               ),
               const SizedBox(height: 32),
               _isSigningIn
                   ? Column(
                       children: [
-                        CircularProgressIndicator(color: Colors.red.shade600),
+                        SizedBox(
+                          width: 48,
+                          height: 48,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 3,
+                            color: AppColors.primaryRed,
+                          ),
+                        ),
                         const SizedBox(height: 16),
                         Text(
                           'Connecting...',
-                          style: TextStyle(color: Colors.grey.shade600),
+                          style: GoogleFonts.inter(
+                            color: AppColors.textSecondary,
+                          ),
                         ),
                       ],
                     )
@@ -241,44 +258,44 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       color: Colors.transparent,
       child: InkWell(
         onTap: _handleSignIn,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 16),
           decoration: BoxDecoration(
-            color: Colors.grey.shade100,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.grey.shade300),
+            color: Colors.grey.shade50,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: AppColors.divider),
+            boxShadow: AppShadows.card,
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                width: 24,
-                height: 24,
+                width: 28,
+                height: 28,
+                alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(4),
                   color: Colors.white,
-                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: AppColors.divider),
                 ),
-                child: Center(
-                  child: Text(
-                    'G',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.red.shade600,
-                    ),
+                child: Text(
+                  'G',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primaryRed,
                   ),
                 ),
               ),
               const SizedBox(width: 12),
-              const Text(
+              Text(
                 'Sign in with Google',
-                style: TextStyle(
+                style: GoogleFonts.inter(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
-                  color: Colors.black87,
+                  color: AppColors.textPrimary,
                 ),
               ),
             ],
@@ -296,25 +313,34 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            _buildFeatureItem(icon: Icons.search, label: 'Find Nearby'),
             _buildFeatureItem(
-              icon: Icons.notifications,
+              icon: Icons.search_rounded,
+              label: 'Find Nearby',
+            ),
+            _buildFeatureItem(
+              icon: Icons.notifications_active_rounded,
               label: 'Instant Alert',
             ),
-            _buildFeatureItem(icon: Icons.verified, label: 'Verified'),
+            _buildFeatureItem(
+              icon: Icons.verified_user_rounded,
+              label: 'Verified',
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildFeatureItem({required IconData icon, required String label}) {
+  Widget _buildFeatureItem({
+    required IconData icon,
+    required String label,
+  }) {
     return Column(
       children: [
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.2),
+            color: Colors.white.withValues(alpha: 0.15),
             shape: BoxShape.circle,
           ),
           child: Icon(icon, color: Colors.white, size: 24),
@@ -322,9 +348,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         const SizedBox(height: 8),
         Text(
           label,
-          style: TextStyle(
+          style: GoogleFonts.inter(
             fontSize: 12,
-            color: Colors.white.withOpacity(0.9),
+            color: Colors.white.withValues(alpha: 0.85),
             fontWeight: FontWeight.w500,
           ),
         ),

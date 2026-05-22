@@ -211,17 +211,24 @@ class _AiPredictionScreenState extends ConsumerState<AiPredictionScreen>
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  _serviceConnected ? Icons.check_circle : Icons.error,
-                  color: _serviceConnected ? Colors.green : Colors.orange,
-                  size: 18,
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: (_serviceConnected ? Colors.green : Colors.orange).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                  ),
+                  child: Icon(
+                    _serviceConnected ? Icons.check_circle : Icons.error,
+                    color: _serviceConnected ? Colors.green : Colors.orange,
+                    size: 16,
+                  ),
                 ),
-                const SizedBox(width: 4),
+                const SizedBox(width: 6),
                 Text(
                   _serviceStatus ?? 'Checking...',
                   style: TextStyle(
                     color: _serviceConnected ? Colors.green : Colors.orange,
-                    fontSize: 12,
+                    fontSize: 11,
                   ),
                 ),
               ],
@@ -235,92 +242,204 @@ class _AiPredictionScreenState extends ConsumerState<AiPredictionScreen>
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                _buildHeaderBanner(),
+                const SizedBox(height: 20),
+                _buildImageArea(),
+                const SizedBox(height: 16),
+                _buildActionButtons(),
+                if (_error != null) ...[
+                  const SizedBox(height: 16),
+                  _buildErrorCard(),
+                ],
+                if (_result != null) ...[
+                  const SizedBox(height: 20),
+                  _ResultCard(result: _result!),
+                ],
+                if (_result != null && !_result!.eligible) ...[
+                  const SizedBox(height: 24),
+                  _buildAssistantSection(),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeaderBanner() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.primaryRed.withValues(alpha: 0.1),
+            AppColors.primaryRed.withValues(alpha: 0.02),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.primaryRed.withValues(alpha: 0.15)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              gradient: AppGradients.primary,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              boxShadow: AppShadows.primary,
+            ),
+            child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 28),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Text(
-                  'Know Before You Give \u2764\uFE0F',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  'Know Before You Give',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.bold,
                     color: AppColors.primaryRed,
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 4),
                 Text(
                   'Upload your blood report and let AI check if you\'re ready to donate safely.',
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: AppColors.textSecondary,
                   ),
                 ),
-                const SizedBox(height: 18),
-                _buildImageArea(),
-                const SizedBox(height: 14),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    OutlinedButton.icon(
-                      onPressed: _isLoading ? null : () => _pick(ImageSource.gallery),
-                      icon: const Icon(Icons.photo_library_rounded),
-                      label: const Text('Gallery'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: _isLoading ? null : () => _pick(ImageSource.camera),
-                      icon: const Icon(Icons.camera_alt_rounded),
-                      label: const Text('Camera'),
-                    ),
-                    ElevatedButton.icon(
-                      onPressed: _isLoading ? null : _runPrediction,
-                      icon: const Icon(Icons.auto_awesome_rounded),
-                      label: Text(_isLoading ? 'Analyzing...' : 'Analyze'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primaryRed,
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: _isLoading ? null : _checkService,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Reconnect'),
-                    ),
-                  ],
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 14),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.red.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.red.shade200),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(Icons.error_outline, color: Colors.red.shade700, size: 18),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Analysis Failed',
-                              style: TextStyle(
-                                color: Colors.red.shade700,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(_error!, style: TextStyle(color: Colors.red.shade900)),
-                      ],
-                    ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButtons() {
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        _buildActionChip(
+          icon: Icons.photo_library_rounded,
+          label: 'Gallery',
+          onTap: _isLoading ? null : () => _pick(ImageSource.gallery),
+        ),
+        _buildActionChip(
+          icon: Icons.camera_alt_rounded,
+          label: 'Camera',
+          onTap: _isLoading ? null : () => _pick(ImageSource.camera),
+        ),
+        ElevatedButton.icon(
+          onPressed: _isLoading ? null : _runPrediction,
+          icon: _isLoading
+              ? SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
                   ),
-                ],
-                if (_result != null) ...[
-                  const SizedBox(height: 18),
-                  _ResultCard(result: _result!),
-                ],
-                if (_result != null && !_result!.eligible) ...[
-                  const SizedBox(height: 20),
-                  _buildAssistantSection(),
-                ],
+                )
+              : const Icon(Icons.auto_awesome_rounded),
+          label: Text(_isLoading ? 'Analyzing...' : 'Analyze'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primaryRed,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.md),
+            ),
+          ),
+        ),
+        _buildActionChip(
+          icon: Icons.refresh,
+          label: 'Reconnect',
+          onTap: _isLoading ? null : _checkService,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActionChip({
+    required IconData icon,
+    required String label,
+    VoidCallback? onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border.all(color: AppColors.divider),
+            boxShadow: AppShadows.card,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 18, color: AppColors.textSecondary),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: onTap == null ? AppColors.textTertiary : AppColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.error.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.error.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.error.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+            ),
+            child: const Icon(Icons.error_outline_rounded, color: AppColors.error, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Analysis Failed',
+                  style: TextStyle(
+                    color: AppColors.error,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _error!,
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                ),
               ],
             ),
           ),
@@ -334,68 +453,130 @@ class _AiPredictionScreenState extends ConsumerState<AiPredictionScreen>
       return Container(
         height: 200,
         decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade300),
+          gradient: LinearGradient(
+            colors: [
+              Theme.of(context).cardColor,
+              AppColors.primaryRed.withValues(alpha: 0.03),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(
+            color: AppColors.divider,
+            width: 1.5,
+          ),
+          boxShadow: AppShadows.card,
         ),
-        child: const Center(
+        child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.image_outlined, size: 48, color: AppColors.textSecondary),
-              SizedBox(height: 8),
-              Text('No image selected', style: TextStyle(color: AppColors.textSecondary)),
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppColors.primaryRed.withValues(alpha: 0.08),
+                      AppColors.primaryRed.withValues(alpha: 0.02),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(AppRadius.full),
+                  border: Border.all(
+                    color: AppColors.primaryRed.withValues(alpha: 0.15),
+                    width: 1.5,
+                  ),
+                ),
+                child: Icon(
+                  Icons.image_outlined,
+                  size: 40,
+                  color: AppColors.primaryRed.withValues(alpha: 0.5),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'No image selected',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Tap Gallery or Camera to upload your blood report',
+                style: TextStyle(color: AppColors.textTertiary, fontSize: 12),
+              ),
             ],
           ),
         ),
       );
     }
 
-    return Stack(
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Image.memory(_imageBytes!, height: 220, fit: BoxFit.cover),
-        ),
-        if (_isLoading)
-          Positioned.fill(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: AnimatedBuilder(
-                animation: _scanAnimation,
-                builder: (context, child) {
-                  return Stack(
-                    children: [
-                      Container(
-                        color: Colors.black.withValues(alpha: 0.15),
-                      ),
-                      Positioned(
-                        top: _scanAnimation.value * (220 - 3),
-                        left: 0,
-                        right: 0,
-                        child: Container(
-                          height: 3,
-                          decoration: BoxDecoration(
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.primaryRed.withValues(alpha: 0.8),
-                                blurRadius: 12,
-                                spreadRadius: 4,
-                              ),
-                            ],
-                          ),
-                          child: Container(
-                            color: AppColors.primaryRed.withValues(alpha: 0.9),
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                },
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      child: Stack(
+        children: [
+          Image.memory(_imageBytes!, height: 220, fit: BoxFit.cover, width: double.infinity),
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+              ),
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white, size: 18),
+                onPressed: () => setState(() {
+                  _imageBytes = null;
+                  _result = null;
+                  _error = null;
+                }),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
               ),
             ),
           ),
-      ],
+          if (_isLoading)
+            Positioned.fill(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                child: AnimatedBuilder(
+                  animation: _scanAnimation,
+                  builder: (context, child) {
+                    return Stack(
+                      children: [
+                        Container(color: Colors.black.withValues(alpha: 0.2)),
+                        Positioned(
+                          top: _scanAnimation.value * (220 - 3),
+                          left: 0,
+                          right: 0,
+                          child: Container(
+                            height: 3,
+                            decoration: BoxDecoration(
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.primaryRed.withValues(alpha: 0.8),
+                                  blurRadius: 12,
+                                  spreadRadius: 4,
+                                ),
+                              ],
+                            ),
+                            child: Container(color: AppColors.primaryRed.withValues(alpha: 0.9)),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -408,17 +589,18 @@ class _AiPredictionScreenState extends ConsumerState<AiPredictionScreen>
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: AppColors.primaryRed.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
+                gradient: AppGradients.primary,
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+                boxShadow: AppShadows.glowRed,
               ),
-              child: const Icon(Icons.smart_toy_outlined, color: AppColors.primaryRed, size: 20),
+              child: const Icon(Icons.smart_toy_outlined, color: Colors.white, size: 20),
             ),
             const SizedBox(width: 10),
             Text(
               'AI Assistant',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
-                color: AppColors.primaryRed,
+                color: AppColors.textPrimary,
               ),
             ),
             const Spacer(),
@@ -438,11 +620,12 @@ class _AiPredictionScreenState extends ConsumerState<AiPredictionScreen>
         ),
         const SizedBox(height: 12),
         Container(
-          height: 320,
+          height: 340,
           decoration: BoxDecoration(
             color: Theme.of(context).cardColor,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.shade200),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: AppColors.divider),
+            boxShadow: AppShadows.card,
           ),
           child: Column(
             children: [
@@ -454,17 +637,35 @@ class _AiPredictionScreenState extends ConsumerState<AiPredictionScreen>
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(
-                                Icons.psychology_outlined,
-                                size: 48,
-                                color: AppColors.primaryRed.withValues(alpha: 0.3),
+                              Container(
+                                padding: const EdgeInsets.all(18),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      AppColors.primaryRed.withValues(alpha: 0.08),
+                                      AppColors.primaryRed.withValues(alpha: 0.02),
+                                    ],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                  borderRadius: BorderRadius.circular(AppRadius.full),
+                                  border: Border.all(
+                                    color: AppColors.primaryRed.withValues(alpha: 0.15),
+                                  ),
+                                ),
+                                child: Icon(
+                                  Icons.psychology_outlined,
+                                  size: 40,
+                                  color: AppColors.primaryRed.withValues(alpha: 0.4),
+                                ),
                               ),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 16),
                               Text(
                                 'Ask me anything about your results',
                                 style: TextStyle(
-                                  color: AppColors.textSecondary.withValues(alpha: 0.6),
+                                  color: AppColors.textSecondary,
                                   fontSize: 14,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                               const SizedBox(height: 6),
@@ -472,7 +673,7 @@ class _AiPredictionScreenState extends ConsumerState<AiPredictionScreen>
                                 'I can explain your blood values and give tips to help you get ready for donation.',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  color: AppColors.textSecondary.withValues(alpha: 0.4),
+                                  color: AppColors.textTertiary,
                                   fontSize: 12,
                                 ),
                               ),
@@ -492,17 +693,17 @@ class _AiPredictionScreenState extends ConsumerState<AiPredictionScreen>
                       ),
               ),
               if (_chatLoading)
-                const Padding(
-                  padding: EdgeInsets.only(left: 12, bottom: 8),
+                Padding(
+                  padding: const EdgeInsets.only(left: 12, bottom: 4),
                   child: Row(
                     children: [
                       SizedBox(
-                        width: 16,
-                        height: 16,
+                        width: 14,
+                        height: 14,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       ),
-                      SizedBox(width: 8),
-                      Text('Thinking...', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                      const SizedBox(width: 8),
+                      const Text('Thinking...', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                     ],
                   ),
                 ),
@@ -532,10 +733,6 @@ class _ChatBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final alignment = isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start;
-    final bubbleColor = isUser ? AppColors.primaryRed : AppColors.background;
-    final textColor = isUser ? Colors.white : AppColors.textPrimary;
-
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
@@ -547,15 +744,15 @@ class _ChatBubble extends StatelessWidget {
               margin: const EdgeInsets.only(right: 8, top: 4),
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: AppColors.primaryRed.withValues(alpha: 0.1),
+                gradient: AppGradients.primary,
                 borderRadius: BorderRadius.circular(6),
               ),
-              child: const Icon(Icons.smart_toy_outlined, size: 14, color: AppColors.primaryRed),
+              child: const Icon(Icons.smart_toy_outlined, size: 14, color: Colors.white),
             ),
           ],
           Flexible(
             child: Column(
-              crossAxisAlignment: alignment,
+              crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
               children: [
                 Container(
                   constraints: BoxConstraints(
@@ -563,26 +760,34 @@ class _ChatBubble extends StatelessWidget {
                   ),
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
-                    color: bubbleColor,
+                    gradient: isUser
+                        ? AppGradients.primary
+                        : LinearGradient(
+                            colors: [
+                              AppColors.background,
+                              AppColors.background,
+                            ],
+                          ),
                     borderRadius: BorderRadius.only(
                       topLeft: const Radius.circular(12),
                       topRight: const Radius.circular(12),
                       bottomLeft: Radius.circular(isUser ? 12 : 4),
                       bottomRight: Radius.circular(isUser ? 4 : 12),
                     ),
+                    boxShadow: isUser ? AppShadows.primary : AppShadows.card,
                   ),
                   child: isUser
-                      ? Text(message.content, style: TextStyle(color: textColor, fontSize: 14))
+                      ? Text(message.content, style: const TextStyle(color: Colors.white, fontSize: 14))
                       : MarkdownBody(
                           data: message.content,
                           styleSheet: MarkdownStyleSheet(
-                            p: TextStyle(color: textColor, fontSize: 13.5, height: 1.5),
+                            p: TextStyle(color: AppColors.textPrimary, fontSize: 13.5, height: 1.5),
                             strong: TextStyle(
-                              color: textColor,
+                              color: AppColors.textPrimary,
                               fontWeight: FontWeight.w700,
                               fontSize: 13.5,
                             ),
-                            listBullet: TextStyle(color: textColor, fontSize: 13.5),
+                            listBullet: TextStyle(color: AppColors.textPrimary, fontSize: 13.5),
                             blockquote: TextStyle(
                               color: AppColors.textSecondary,
                               fontSize: 13,
@@ -667,7 +872,7 @@ class _ChatInputBarState extends State<_ChatInputBar> {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
-        border: Border(top: BorderSide(color: Colors.grey.shade200)),
+        border: Border(top: BorderSide(color: AppColors.divider)),
       ),
       child: Row(
         children: [
@@ -693,12 +898,13 @@ class _ChatInputBarState extends State<_ChatInputBar> {
             ),
           ),
           const SizedBox(width: 8),
-          Container(
+          AnimatedContainer(
+            duration: AppAnimations.fast,
             decoration: BoxDecoration(
-              color: canSend
-                  ? AppColors.primaryRed
-                  : AppColors.textSecondary.withValues(alpha: 0.3),
+              gradient: canSend ? AppGradients.primary : null,
+              color: canSend ? null : AppColors.textSecondary.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(20),
+              boxShadow: canSend ? AppShadows.glowRed : null,
             ),
             child: IconButton(
               onPressed: canSend ? widget.onSend : null,
@@ -719,7 +925,7 @@ class _ResultCard extends StatelessWidget {
 
   List<_FlaggedValue> _getFlaggedValues() {
     final flagged = <_FlaggedValue>[];
-    for (final entry in _THRESHOLDS.entries) {
+    for (final entry in _thresholds.entries) {
       final param = entry.key;
       final (minVal, maxVal, unit, label) = entry.value;
       final value = result.regressionDenormalized[param];
@@ -761,153 +967,276 @@ class _ResultCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (isEligible)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.success.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppColors.success,
-                    borderRadius: BorderRadius.circular(50),
-                  ),
-                  child: const Icon(Icons.check, color: Colors.white, size: 28),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Eligible',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.success,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Confidence: ${result.confidence.toStringAsFixed(1)}%',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          )
+          _buildEligibleBanner()
         else
+          _buildDeferredBanner(),
+        if (result.reasons.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _buildReasonsCard(isEligible),
+        ],
+        if (flagged.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          _buildFlaggedSection(context, flagged),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildEligibleBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.success.withValues(alpha: 0.12),
+            AppColors.success.withValues(alpha: 0.04),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
           Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppColors.warning.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppColors.warning,
-                    borderRadius: BorderRadius.circular(50),
-                  ),
-                  child: const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 28),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Donation Temporarily Deferred',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.warning,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Confidence: ${result.confidence.toStringAsFixed(1)}%',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
+              gradient: AppGradients.success,
+              borderRadius: BorderRadius.circular(50),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.success.withValues(alpha: 0.3),
+                  blurRadius: 8,
                 ),
               ],
             ),
+            child: const Icon(Icons.check_circle_outline_rounded, color: Colors.white, size: 28),
           ),
-        if (result.reasons.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: isEligible
-                  ? AppColors.success.withValues(alpha: 0.06)
-                  : AppColors.warning.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(10),
-            ),
+          const SizedBox(width: 16),
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Why?',
+                const Text(
+                  'Eligible to Donate',
                   style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: isEligible ? AppColors.success : AppColors.warning,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.success,
                   ),
                 ),
-                const SizedBox(height: 6),
-                ...result.reasons.map(
-                  (r) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('\u2022 ', style: TextStyle(color: AppColors.textSecondary)),
-                        Expanded(
-                          child: Text(
-                            r,
-                            style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
-                          ),
-                        ),
-                      ],
-                    ),
+                const SizedBox(height: 4),
+                Text(
+                  'Confidence: ${result.confidence.toStringAsFixed(1)}%',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppColors.success.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(AppRadius.full),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.verified_rounded, size: 14, color: AppColors.success),
+                const SizedBox(width: 4),
+                Text(
+                  '${result.confidence.toStringAsFixed(0)}%',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.success,
                   ),
                 ),
               ],
             ),
           ),
         ],
-        if (flagged.isNotEmpty) ...[
-          const SizedBox(height: 14),
-          Text(
-            'Flagged Values',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
+      ),
+    );
+  }
+
+  Widget _buildDeferredBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.warning.withValues(alpha: 0.12),
+            AppColors.warning.withValues(alpha: 0.04),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              gradient: AppGradients.warning,
+              borderRadius: BorderRadius.circular(50),
+            ),
+            child: const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 28),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Donation Temporarily Deferred',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.warning,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Confidence: ${result.confidence.toStringAsFixed(1)}%',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 8),
-          ...flagged.map((f) => _FlaggedValueTile(flagged: f)),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppColors.warning.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(AppRadius.full),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.info_outline_rounded, size: 14, color: AppColors.warning),
+                const SizedBox(width: 4),
+                Text(
+                  '${result.confidence.toStringAsFixed(0)}%',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.warning,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildReasonsCard(bool isEligible) {
+    final accent = isEligible ? AppColors.success : AppColors.warning;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isEligible
+            ? AppColors.success.withValues(alpha: 0.06)
+            : AppColors.warning.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(
+          color: isEligible
+              ? AppColors.success.withValues(alpha: 0.15)
+              : AppColors.warning.withValues(alpha: 0.15),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isEligible ? Icons.check_circle_outline : Icons.info_outline_rounded,
+                size: 18,
+                color: accent,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                isEligible ? 'Assessment Summary' : 'Why?',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: accent,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ...result.reasons.map(
+            (r) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 4),
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.5),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      r,
+                      style: const TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFlaggedSection(BuildContext context, List<_FlaggedValue> flagged) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(AppRadius.xs),
+              ),
+              child: const Icon(Icons.flag_outlined, size: 16, color: AppColors.warning),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'Flagged Values',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        ...flagged.map((f) => _FlaggedValueTile(flagged: f)),
       ],
     );
   }
@@ -929,7 +1258,7 @@ class _FlaggedValue {
   final String status;
 }
 
-const Map<String, (double?, double?, String, String)> _THRESHOLDS = {
+const Map<String, (double?, double?, String, String)> _thresholds = {
   'hemoglobin': (11.0, 18.5, 'g/dL', 'Hemoglobin'),
   'hematocrit': (33.0, 52.0, '%', 'Hematocrit'),
   'rbc': (3.5, 6.5, 'x10(6)/uL', 'RBC'),
@@ -954,29 +1283,37 @@ class _FlaggedValueTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isBelow = flagged.status == 'Below normal';
+    final accent = isBelow ? AppColors.warning : AppColors.error;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.warning.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.warning.withValues(alpha: 0.2)),
+        gradient: LinearGradient(
+          colors: [
+            accent.withValues(alpha: 0.06),
+            accent.withValues(alpha: 0.02),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: accent.withValues(alpha: 0.2)),
       ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(6),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: isBelow ? Colors.amber.withValues(alpha: 0.2) : AppColors.error.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(6),
+              color: accent.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(AppRadius.sm),
             ),
             child: Icon(
               isBelow ? Icons.arrow_downward : Icons.arrow_upward,
-              color: isBelow ? AppColors.warning : AppColors.error,
+              color: accent,
               size: 16,
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1000,12 +1337,18 @@ class _FlaggedValueTile extends StatelessWidget {
                           color: AppColors.textSecondary,
                         ),
                       ),
-                      const TextSpan(text: '  |  Normal: '),
                       TextSpan(
-                        text: '${flagged.range} ${flagged.unit}',
+                        text: '  \u2022  ',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
+                      TextSpan(
+                        text: 'Normal: ${flagged.range} ${flagged.unit}',
                         style: TextStyle(
                           fontSize: 12,
-                          color: AppColors.textSecondary.withValues(alpha: 0.7),
+                          color: AppColors.textTertiary,
                         ),
                       ),
                     ],
@@ -1015,19 +1358,17 @@ class _FlaggedValueTile extends StatelessWidget {
             ),
           ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: isBelow
-                  ? AppColors.warning.withValues(alpha: 0.15)
-                  : AppColors.error.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(6),
+              color: accent.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(AppRadius.full),
             ),
             child: Text(
               flagged.status,
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
-                color: isBelow ? AppColors.warning : AppColors.error,
+                color: accent,
               ),
             ),
           ),

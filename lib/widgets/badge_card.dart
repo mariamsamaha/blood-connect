@@ -17,65 +17,82 @@ class BadgeCard extends StatelessWidget {
   final double progress;
   final String? progressLabel;
 
-  /// Renders the icon as an image if it's a URL, otherwise as emoji text.
   static Widget _iconWidget(String icon) {
     if (icon.startsWith('http://') || icon.startsWith('https://')) {
-      return Image.network(icon, width: 24, height: 24, errorBuilder: (_, __, ___) => const Text('\u{1F3C6}', style: TextStyle(fontSize: 24)));
+      return Image.network(icon, width: 28, height: 28, errorBuilder: (_, __, ___) => const Text('\u{1F3C6}', style: TextStyle(fontSize: 28)));
     }
-    return Text(icon, style: const TextStyle(fontSize: 24));
+    return Text(icon, style: const TextStyle(fontSize: 28));
   }
 
   @override
   Widget build(BuildContext context) {
-    return Opacity(
-      opacity: earned ? 1.0 : 0.5,
-      child: Container(
-        width: 90,
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: earned
+            ? AppColors.softRed
+            : Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(
           color: earned
-              ? AppColors.primaryRed.withAlpha(20)
-              : AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: earned ? AppColors.primaryRed : AppColors.divider,
-            width: earned ? 1.5 : 1,
-          ),
+              ? AppColors.primaryRed.withValues(alpha: 0.3)
+              : AppColors.divider,
+          width: earned ? 1.5 : 1,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _iconWidget(icon),
-            const SizedBox(height: 4),
-            Text(
-              name,
-              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+        boxShadow: earned ? AppShadows.glowRed : null,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0.5, end: 1.0),
+            duration: AppAnimations.medium,
+            curve: AppAnimations.bounce,
+            builder: (context, scale, child) {
+              return Transform.scale(scale: scale, child: child);
+            },
+            child: _iconWidget(icon),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            name,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: earned ? AppColors.textPrimary : AppColors.textSecondary,
             ),
-            if (!earned) ...[
-              const SizedBox(height: 4),
-              LinearProgressIndicator(
-                value: progress,
-                minHeight: 3,
-                borderRadius: BorderRadius.circular(99),
-                backgroundColor: AppColors.divider,
-                valueColor: const AlwaysStoppedAnimation(AppColors.primaryRed),
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          if (!earned) ...[
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadius.full),
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: progress),
+                duration: AppAnimations.slow,
+                curve: Curves.easeOutCubic,
+                builder: (context, value, child) {
+                  return LinearProgressIndicator(
+                    value: value,
+                    minHeight: 4,
+                    backgroundColor: AppColors.divider,
+                    valueColor: const AlwaysStoppedAnimation(AppColors.primaryRed),
+                  );
+                },
               ),
-              if (progressLabel != null)
-                Text(
-                  progressLabel!,
-                  style: const TextStyle(
-                    fontSize: 8,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
+            ),
+            if (progressLabel != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                progressLabel!,
+                style: TextStyle(fontSize: 8, color: AppColors.textSecondary),
+              ),
             ],
           ],
-        ),
+        ],
       ),
     );
   }
 }
-

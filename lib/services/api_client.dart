@@ -103,25 +103,9 @@ class ApiClient {
 
   String get _base => AppConfig.apiBaseUrl;
 
-  static const _defaultFreshTtl = Duration(seconds: 60);
-
-  static final _freshTtlOverrides = <String, Duration>{
-    '/api/v1/donor/matches': const Duration(seconds: 30),
-    '/api/v1/donor/mission': const Duration(seconds: 30),
-    '/api/v1/requests/active': const Duration(seconds: 30),
-    '/api/v1/hospital/pending': const Duration(seconds: 30),
-    '/api/v1/hospitals': const Duration(minutes: 5),
-    '/api/v1/donor/leaderboard': const Duration(minutes: 2),
-    '/api/v1/users/me/badges': const Duration(minutes: 2),
-    '/api/v1/donor/donations': const Duration(minutes: 2),
-    '/api/v1/users/me': const Duration(minutes: 2),
-  };
-
   Duration _freshTtl(String path) {
-    for (final entry in _freshTtlOverrides.entries) {
-      if (path.startsWith(entry.key)) return entry.value;
-    }
-    return _defaultFreshTtl;
+    if (_cache != null) return _cache!.ttlForKey(path);
+    return const Duration(seconds: 60);
   }
 
   Duration _maxTtl(String path) {

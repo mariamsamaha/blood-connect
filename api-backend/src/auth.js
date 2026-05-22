@@ -2,9 +2,6 @@ const fs = require('fs');
 const path = require('path');
 const admin = require('firebase-admin');
 
-/** Must match Flutter `firebase_options.dart` / google-services.json */
-const DEFAULT_PROJECT_ID = 'bloodconnect-mvp-b605f';
-
 function resolveCredentialPath() {
   const envPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
   const candidates = [];
@@ -19,11 +16,8 @@ function resolveCredentialPath() {
   }
 
   const apiRoot = path.resolve(__dirname, '..');
-  const repoRoot = path.resolve(apiRoot, '..');
   candidates.push(
     path.join(apiRoot, 'firebase-adminsdk.json'),
-    path.join(repoRoot, 'keys', 'firebase-adminsdk.json'),
-    path.join(repoRoot, 'secrets', 'firebase-adminsdk.json'),
   );
 
   return candidates.find((p) => p && fs.existsSync(p));
@@ -33,7 +27,10 @@ function initializeFirebaseAdmin() {
   if (admin.apps.length) return;
 
   const credPath = resolveCredentialPath();
-  const projectId = process.env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  if (!projectId) {
+    throw new Error('FIREBASE_PROJECT_ID environment variable is required (set in api-backend/.env)');
+  }
 
   if (!credPath) {
     console.error(`
@@ -97,4 +94,4 @@ async function requireFirebaseAuth(req, res, next) {
   }
 }
 
-module.exports = { admin, requireFirebaseAuth, DEFAULT_PROJECT_ID };
+module.exports = { admin, requireFirebaseAuth };

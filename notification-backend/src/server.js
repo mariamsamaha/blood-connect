@@ -5,6 +5,7 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const admin = require('firebase-admin');
+const logger = require('./logger');
 
 admin.initializeApp();
 
@@ -23,6 +24,21 @@ if (isProduction) {
 }
 
 app.use(express.json());
+
+app.use((req, _res, next) => {
+  req.requestId = req.headers['x-request-id'] || require('crypto').randomUUID();
+  next();
+});
+
+app.use(require('pino-http')({
+  logger,
+  genReqId: (req) => req.requestId,
+  customLogLevel: (res, err) => {
+    if (res.statusCode >= 500) return 'error';
+    if (res.statusCode >= 400) return 'warn';
+    return 'info';
+  },
+}));
 
 const limiter = rateLimit({
   windowMs: 60 * 1000,
@@ -43,7 +59,7 @@ function requireSecret(req, res, next) {
   if (!INTERNAL_SECRET) {
     // Secret not configured on the server — block all requests to avoid
     // running an open relay silently.
-    console.error('INTERNAL_SECRET env var is not set. Refusing request.');
+    logger.error('INTERNAL_SECRET env var is not set. Refusing request.');
     return res.status(500).json({ error: 'server_misconfigured' });
   }
   const provided = req.headers['x-internal-secret'] || '';
@@ -129,10 +145,10 @@ app.post('/sendNewRequest', requireSecret, async (req, res) => {
     }
 
     if (staleTokens.length > 0) {
-      console.warn(`Stale tokens to purge: ${staleTokens.length}`);
+      logger.warn({ count: staleTokens.length }, 'Stale tokens to purge');
     }
 
-    console.log(`Sent ${successCount}/${cleanTokens.length} for request ${request.short_id}`);
+    logger.info({ sent: successCount, total: cleanTokens.length, shortId: request.short_id }, 'Push sent');
     return res.status(200).json({ sent: successCount, failed: failureCount, stale_tokens: staleTokens });
   } catch (err) {
     console.error('Error in /sendNewRequest', err);
@@ -145,10 +161,11 @@ if (process.env.NODE_ENV !== 'test') {
   const useTls =
     isProduction && process.env.TLS_KEY_PATH && process.env.TLS_CERT_PATH;
 
+  let server;
   if (useTls) {
     const fs = require('fs');
     const https = require('https');
-    https
+    server = https
       .createServer(
         {
           key: fs.readFileSync(process.env.TLS_KEY_PATH),
@@ -161,12 +178,27 @@ if (process.env.NODE_ENV !== 'test') {
       });
   } else {
     const http = require('http');
-    http.createServer(app).listen(port, () => {
+    server = http.createServer(app).listen(port, () => {
       console.log(
         `Notification backend listening on HTTP port ${port}${isProduction ? ' (terminate TLS at load balancer or set TLS_KEY_PATH/TLS_CERT_PATH)' : ''}`,
       );
     });
   }
+
+  function shutdown(signal) {
+    console.log(`Shutting down gracefully on ${signal}...`);
+    server.close(() => {
+      console.log('Notification server closed');
+      process.exit(0);
+    });
+    setTimeout(() => {
+      console.error('Forced shutdown after timeout');
+      process.exit(1);
+    }, 10_000).unref();
+  }
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 module.exports = app;

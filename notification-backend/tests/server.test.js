@@ -1,3 +1,30 @@
+const mockLogger = {
+  info: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
+  debug: jest.fn(),
+  child: jest.fn(() => mockLogger),
+  level: 'silent',
+};
+
+jest.mock('../src/logger', () => mockLogger);
+
+jest.mock('pino-http', () => () => (req, _res, next) => {
+  req.log = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
+  next();
+});
+
+jest.mock('firebase-admin', () => ({
+  initializeApp: jest.fn(),
+  messaging: () => ({
+    sendEachForMulticast: jest.fn().mockResolvedValue({
+      successCount: 2,
+      failureCount: 0,
+      responses: [],
+    }),
+  }),
+}));
+
 const request = require('supertest');
 
 describe('Notification Backend', () => {
@@ -6,22 +33,11 @@ describe('Notification Backend', () => {
 
   beforeAll(() => {
     process.env.INTERNAL_SECRET = 'test-secret';
-    jest.mock('firebase-admin', () => ({
-      initializeApp: jest.fn(),
-      messaging: () => ({
-        sendEachForMulticast: jest.fn().mockResolvedValue({
-          successCount: 2,
-          failureCount: 0,
-          responses: [],
-        }),
-      }),
-    }));
     app = require('../src/server');
   });
 
   afterAll(() => {
     process.env = { ...origEnv };
-    jest.unmock('firebase-admin');
   });
 
   describe('GET /', () => {

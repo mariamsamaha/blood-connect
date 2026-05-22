@@ -69,7 +69,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Welcome Back'), findsOneWidget);
-      expect(find.text('Sign in to continue'), findsOneWidget);
+      expect(find.text('Sign in to continue saving lives'), findsOneWidget);
     });
 
     testWidgets('renders sign in with Google button', (tester) async {

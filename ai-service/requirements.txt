@@ -7,3 +7,7 @@ pillow
 python-multipart
 requests
 python-dotenv
+pytest
+httpx
+pytest-asyncio
+pytest-timeout

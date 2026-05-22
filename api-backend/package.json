@@ -3,16 +3,20 @@
   "version": "1.0.0",
   "private": true,
   "description": "BloodConnect BFF — Firebase-authenticated REST API over Postgres",
-  "main": "src/server.js",
+  "main": "src/cluster.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "jest --forceExit --detectOpenHandles"
+    "test": "jest --forceExit --detectOpenHandles",
+    "test:e2e": "jest --forceExit --detectOpenHandles --testPathPattern='tests/e2e/'"
   },
   "jest": {
     "testEnvironment": "node",
     "testMatch": [
       "**/tests/**/*.test.js"
+    ],
+    "testPathIgnorePatterns": [
+      "/tests/e2e/"
     ]
   },
   "engines": {
@@ -23,8 +27,13 @@
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
     "firebase-admin": "^13.0.2",
-    "morgan": "^1.10.1",
-    "pg": "^8.13.1"
+    "pg": "^8.13.1",
+    "pino": "^9.6.0",
+    "pino-http": "^10.4.0",
+    "pino-pretty": "^13.0.0",
+    "prom-client": "^15.1.3",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
     "jest": "^30.4.2",

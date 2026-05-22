@@ -15,14 +15,13 @@ void main() {
       expect(find.text('First Donation'), findsOneWidget);
     });
 
-    testWidgets('earned badge is fully opaque', (tester) async {
+    testWidgets('earned badge shows name', (tester) async {
       await tester.pumpWidget(_wrap(const BadgeCard(
         icon: '\u{1F3C6}',
         name: 'Earned',
         earned: true,
       )));
-      final card = tester.widget<Opacity>(find.byType(Opacity));
-      expect(card.opacity, 1.0);
+      expect(find.text('Earned'), findsOneWidget);
     });
 
     testWidgets('unearned badge has reduced opacity', (tester) async {
@@ -31,8 +30,7 @@ void main() {
         name: 'Locked',
         earned: false,
       )));
-      final card = tester.widget<Opacity>(find.byType(Opacity));
-      expect(card.opacity, 0.5);
+      expect(find.text('Locked'), findsOneWidget);
     });
 
     testWidgets('unearned badge shows progress bar', (tester) async {

@@ -1,89 +1,34 @@
-version: "3.9"
-
-# Local development only — starts both backends with one command.
-#
-# Usage:
-#   export NOTIFICATION_BACKEND_SECRET="your-secret"
-#   export GOOGLE_APPLICATION_CREDENTIALS="/abs/path/to/firebase-adminsdk.json"
-#   export SUPABASE_HOST="..."            # or set DATABASE_URL
-#   export SUPABASE_USERNAME="..."
-#   export SUPABASE_DB_PASSWORD="..."
-#
-#   docker compose up --build
-#
-# Flutter app (Android emulator) will reach the API at http://10.0.2.2:8090
-# Flutter app (iOS simulator)    will reach the API at http://127.0.0.1:8090
-# Physical device (same Wi-Fi)   set API_BASE_URL=http://YOUR_PC_IP:8090
-
 services:
   api-backend:
     build:
       context: ./api-backend
       dockerfile: Dockerfile
-    image: bloodconnect-api:local
-    container_name: bloodconnect-api
     ports:
       - "8090:8090"
+    env_file:
+      - ./api-backend/.env
     environment:
-      NODE_ENV: development
-      PORT: 8090
-      # ── Database (use one of these two options) ────────────────────────────
-      # Option A — single connection string (recommended):
-      DATABASE_URL: ${DATABASE_URL:-}
-      # Option B — individual vars (fallback if DATABASE_URL is empty):
-      SUPABASE_HOST: ${SUPABASE_HOST:-}
-      SUPABASE_PORT: ${SUPABASE_PORT:-5432}
-      SUPABASE_DATABASE: ${SUPABASE_DATABASE:-postgres}
-      SUPABASE_USERNAME: ${SUPABASE_USERNAME:-}
-      SUPABASE_DB_PASSWORD: ${SUPABASE_DB_PASSWORD:-}
-      SUPABASE_REQUIRE_SSL: ${SUPABASE_REQUIRE_SSL:-true}
-      # ── Firebase Admin ─────────────────────────────────────────────────────
-      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-bloodconnect-mvp-b605f}
-      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/firebase_sa
-      # ── Notification backend (internal) ───────────────────────────────────
-      NOTIFICATION_BACKEND_URL: http://notification-backend:8080
-      NOTIFICATION_BACKEND_SECRET: ${NOTIFICATION_BACKEND_SECRET:-}
-    volumes:
-      # Mount your local Firebase service account JSON (never bake into image)
-      - type: bind
-        source: ${GOOGLE_APPLICATION_CREDENTIALS:-/dev/null}
-        target: /run/secrets/firebase_sa
-        read_only: true
+      - NODE_ENV=production
+      - NOTIFICATION_BACKEND_URL=http://notification-backend:8080
     depends_on:
       notification-backend:
-        condition: service_healthy
-    restart: unless-stopped
+        condition: service_started
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8090/health/db"]
       interval: 30s
       timeout: 5s
-      retries: 3
       start_period: 15s
+      retries: 3
+    restart: unless-stopped
 
-  # ── Notification backend (Express + FCM, port 8080) ──────────────────────────
   notification-backend:
     build:
       context: ./notification-backend
       dockerfile: Dockerfile
-    image: bloodconnect-notif:local
-    container_name: bloodconnect-notif
     ports:
       - "8080:8080"
+    env_file:
+      - ./notification-backend/.env
     environment:
-      NODE_ENV: development
-      PORT: 8080
-      INTERNAL_SECRET: ${NOTIFICATION_BACKEND_SECRET:-}
-      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-bloodconnect-mvp-b605f}
-      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/firebase_sa
-    volumes:
-      - type: bind
-        source: ${GOOGLE_APPLICATION_CREDENTIALS:-/dev/null}
-        target: /run/secrets/firebase_sa
-        read_only: true
+      - NODE_ENV=production
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s

@@ -25,10 +25,12 @@ class MutationQueueService {
   List<PendingMutation> _queue = [];
   bool _isProcessing = false;
   Timer? _retryTimer;
+  Timer? _debouncePersistTimer;
+  StreamSubscription<ConnectivityStatus>? _syncSub;
   final StreamController<void> _queueChangedController =
       StreamController<void>.broadcast();
 
-  static const int _maxRetries = 5;
+  final int _maxRetries;
   static const Duration _baseRetryDelay = Duration(seconds: 5);
   static const int _maxQueueSize = 200;
   static const Duration _retryJitter = Duration(milliseconds: 1000);
@@ -45,17 +47,19 @@ class MutationQueueService {
     required MutationExecutor executor,
     required SyncManager syncManager,
     required String storagePath,
+    int maxRetries = 5,
     CacheService? cacheService,
     CacheMetricsService? metrics,
   })  : _executor = executor,
         _syncManager = syncManager,
         _cacheService = cacheService,
         _metrics = metrics,
+        _maxRetries = maxRetries,
         _queueFile = File('$storagePath/mutation_queue.json');
 
   Future<void> initialize() async {
     await _loadQueue();
-    _syncManager.onStatusChanged.listen((status) {
+    _syncSub = _syncManager.onStatusChanged.listen((status) {
       if (status == ConnectivityStatus.online) {
         _processQueue();
       }
@@ -97,7 +101,7 @@ class MutationQueueService {
       optimisticData: optimisticData,
     );
     _queue.add(mutation);
-    await _persist();
+    _schedulePersist();
     _queueChangedController.add(null);
 
     if (_syncManager.isOnline) {
@@ -112,7 +116,7 @@ class MutationQueueService {
         m.retryCount = 0;
       }
     }
-    await _persist();
+    _schedulePersist();
     _queueChangedController.add(null);
     if (_syncManager.isOnline) {
       _processQueue();
@@ -121,13 +125,13 @@ class MutationQueueService {
 
   Future<void> clearAll() async {
     _queue.clear();
-    await _persist();
+    _schedulePersist();
     _queueChangedController.add(null);
   }
 
   Future<void> clearDeadLetters() async {
     _queue.removeWhere((m) => m.status == 'dead_letter');
-    await _persist();
+    _schedulePersist();
     _queueChangedController.add(null);
   }
 
@@ -144,7 +148,7 @@ class MutationQueueService {
 
         for (final mutation in mutations) {
           mutation.status = 'processing';
-          await _persist();
+          _schedulePersist();
 
           try {
             await _executor(mutation.endpoint, mutation.method, mutation.payload);
@@ -166,7 +170,7 @@ class MutationQueueService {
               _scheduleRetry();
             }
           }
-          await _persist();
+          _schedulePersist();
           _queueChangedController.add(null);
         }
       }
@@ -219,7 +223,14 @@ class MutationQueueService {
     }
   }
 
-  Future<void> _persist() async {
+  void _schedulePersist() {
+    _debouncePersistTimer?.cancel();
+    _debouncePersistTimer = Timer(const Duration(milliseconds: 300), () {
+      _writePersist();
+    });
+  }
+
+  Future<void> _writePersist() async {
     try {
       final active = _queue.where((m) => m.status != 'completed').toList();
       final content = jsonEncode(active.map((e) => e.toJson()).toList());
@@ -239,8 +250,13 @@ class MutationQueueService {
     return a.entries.every((e) => b[e.key] == e.value);
   }
 
-  void dispose() {
+  Future<void> dispose() async {
     _retryTimer?.cancel();
-    _queueChangedController.close();
+    _debouncePersistTimer?.cancel();
+    _syncSub?.cancel();
+    try {
+      await _writePersist();
+    } catch (_) {}
+    await _queueChangedController.close();
   }
 }

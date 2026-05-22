@@ -16,13 +16,13 @@ Widget _wrapTestApp() {
 
 void main() {
   group('OnboardingScreen', () {
-    testWidgets('renders Skip and Next buttons', (tester) async {
+    testWidgets('renders Skip and Continue buttons', (tester) async {
       await tester.binding.setSurfaceSize(const Size(800, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(_wrapTestApp());
       await tester.pump();
       expect(find.text('Skip'), findsOneWidget);
-      expect(find.text('Next'), findsOneWidget);
+      expect(find.text('Continue'), findsOneWidget);
     });
 
     testWidgets('shows first page title', (tester) async {
@@ -33,16 +33,16 @@ void main() {
       expect(find.byType(PageView), findsOneWidget);
     });
 
-    testWidgets('tapping Next shows page 2', (tester) async {
+    testWidgets('tapping Continue shows page 2', (tester) async {
       await tester.binding.setSurfaceSize(const Size(800, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(_wrapTestApp());
       await tester.pump();
-      await tester.tap(find.text('Next'));
+      await tester.tap(find.text('Continue'));
       await tester.pump();
       await tester.pump(const Duration(seconds: 1));
       expect(find.text('Get Started'), findsNothing);
-      expect(find.text('Next'), findsOneWidget);
+      expect(find.text('Continue'), findsOneWidget);
     });
 
     testWidgets('page 3 shows Get Started', (tester) async {
@@ -50,9 +50,9 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(_wrapTestApp());
       await tester.pump();
-      await tester.tap(find.text('Next'));
+      await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Next'));
+      await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
       expect(find.text('Get Started'), findsOneWidget);
     });

@@ -6,13 +6,17 @@
 
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
-// Legacy: Flutter used to load Supabase creds from repo-root .env
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 
 const express = require('express');
 const rateLimit = require('express-rate-limit');
-const morgan = require('morgan');
 const { randomUUID } = require('crypto');
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpec = require('./swagger');
+const logger = require('./logger');
+const metrics = require('./metrics');
+const { CircuitBreaker } = require('./circuit-breaker');
+const { traceMiddleware } = require('./trace');
 const { pool, query, testConnection, validateDbConfig } = require('./db');
 const { requireFirebaseAuth } = require('./auth');
 const { serverError } = require('./errors');
@@ -20,14 +24,24 @@ const { serverError } = require('./errors');
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 
-app.use((req, _res, next) => {
-  req.requestId = req.headers['x-request-id'] || randomUUID();
-  next();
-});
+app.use(traceMiddleware);
+app.use(metrics.metricsMiddleware);
 
-app.use(
-  morgan('[:date[iso]] :method :url :status :response-time ms - rid=:req[x-request-id]'),
-);
+app.use(require('pino-http')({
+  logger,
+  genReqId: (req) => req.requestId || randomUUID(),
+  customLogLevel: (res, err) => {
+    if (res.statusCode >= 500) return 'error';
+    if (res.statusCode >= 400) return 'warn';
+    return 'info';
+  },
+}));
+
+const notificationCircuitBreaker = new CircuitBreaker('notification-backend', {
+  failureThreshold: 5,
+  successThreshold: 2,
+  timeoutMs: 30000,
+});
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -45,7 +59,7 @@ if (isProduction) {
 // Global limit (unauthenticated traffic, health checks)
 const globalLimiter = rateLimit({
   windowMs: 60_000,
-  max: 200,
+  max: process.env.DISABLE_RATE_LIMIT === 'true' ? 100_000 : 200,
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -71,12 +85,41 @@ function uid(req) {
   return req.firebaseUser.uid;
 }
 
+const VALID_BLOOD_TYPES = new Set(['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-']);
+const VALID_URGENCY = new Set(['routine', 'urgent', 'critical']);
+
+function requireFields(body, fields) {
+  const missing = fields.filter((f) => body[f] == null || String(body[f]).trim() === '');
+  if (missing.length > 0) {
+    return { ok: false, error: `missing_fields: ${missing.join(', ')}` };
+  }
+  return { ok: true };
+}
+
 function profileSelect() {
   return `SELECT *,
     ST_Y(location::geometry) as latitude,
     ST_X(location::geometry) as longitude
     FROM users`;
 }
+
+// ─── Metrics (Prometheus) ─────────────────────────────────────────────────────
+app.get('/metrics', metrics.metricsHandler);
+
+// ─── SLO Report ───────────────────────────────────────────────────────────────
+const { sloReportHandler } = require('./slo');
+app.get('/slo', sloReportHandler);
+
+// ─── API Docs (Swagger) ───────────────────────────────────────────────────────
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'BloodConnect API Docs',
+}));
+
+app.get('/api/docs.json', (_req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.json(swaggerSpec);
+});
 
 // ─── Health ───────────────────────────────────────────────────────────────────
 app.get('/', (_req, res) => {
@@ -95,9 +138,12 @@ app.get('/health/db', async (_req, res) => {
   const start = Date.now();
   try {
     const ok = await testConnection();
+    const elapsed = Date.now() - start;
+    metrics.updatePoolStats(pool.totalCount, pool.idleCount, pool.waitingCount);
+    metrics.trackDbQuery('health', elapsed);
     return res.status(ok ? 200 : 503).json({
       status: ok ? 'ok' : 'failed',
-      latency_ms: Date.now() - start,
+      latency_ms: elapsed,
       pool: {
         total: pool.totalCount,
         idle: pool.idleCount,
@@ -105,6 +151,9 @@ app.get('/health/db', async (_req, res) => {
       },
       version: process.env.npm_package_version || '1.0.0',
       uptime_s: Math.floor(process.uptime()),
+      circuit_breakers: {
+        notification_backend: notificationCircuitBreaker.getStateName(),
+      },
     });
   } catch (err) {
     return res.status(503).json({
@@ -157,7 +206,7 @@ app.post('/api/v1/users/me/bootstrap', requireFirebaseAuth, async (req, res) => 
     );
     return res.status(201).json(inserted[0]);
   } catch (err) {
-    console.error('POST /users/me/bootstrap', err);
+    logger.error({ err, route: 'POST /users/me/bootstrap' }, 'Bootstrap failed');
     return res.status(500).json({ error: 'internal_error' });
   }
 });
@@ -289,7 +338,7 @@ app.post('/api/v1/users/me/complete', requireFirebaseAuth, async (req, res) => {
     );
     return res.status(201).json(row[0]);
   } catch (err) {
-    console.error('POST /users/me/complete', err);
+    logger.error({ err, route: 'POST /users/me/complete' }, 'Profile complete failed');
     return res.status(500).json({ error: 'internal_error' });
   }
 });
@@ -300,17 +349,25 @@ app.patch('/api/v1/users/me', requireFirebaseAuth, async (req, res) => {
     if (!updates || typeof updates !== 'object' || Object.keys(updates).length === 0) {
       return res.status(400).json({ error: 'invalid_payload' });
     }
-    const allowed = new Set([
-      'name',
-      'phone',
-      'blood_type',
-      'donor_status',
-      'notification_enabled',
-      'notification_radius_km',
-      'is_recipient',
-      'city_area',
+    const allowed = new Map([
+      ['name', 'string'],
+      ['phone', 'string'],
+      ['blood_type', 'string'],
+      ['donor_status', 'string'],
+      ['notification_enabled', 'boolean'],
+      ['notification_radius_km', 'number'],
+      ['is_recipient', 'boolean'],
+      ['city_area', 'string'],
     ]);
-    const keys = Object.keys(updates).filter((k) => allowed.has(k));
+    const keys = Object.keys(updates).filter((k) => {
+      if (!allowed.has(k)) return false;
+      const expected = allowed.get(k);
+      const val = updates[k];
+      if (expected === 'string') return typeof val === 'string' || val === null;
+      if (expected === 'boolean') return typeof val === 'boolean';
+      if (expected === 'number') return typeof val === 'number' && !Number.isNaN(val);
+      return true;
+    });
     if (keys.length === 0) return res.status(400).json({ error: 'no_allowed_fields' });
 
     const sets = keys.map((k, i) => `${k} = $${i + 2}`).join(', ');
@@ -321,7 +378,7 @@ app.patch('/api/v1/users/me', requireFirebaseAuth, async (req, res) => {
     );
     return res.status(204).send();
   } catch (err) {
-    console.error('PATCH /users/me', err);
+    logger.error({ err, route: 'PATCH /users/me' }, 'Profile update failed');
     return res.status(500).json({ error: 'internal_error' });
   }
 });
@@ -339,7 +396,7 @@ app.patch('/api/v1/users/me/location', requireFirebaseAuth, async (req, res) => 
     );
     return res.status(204).send();
   } catch (err) {
-    console.error('PATCH /users/me/location', err);
+    logger.error({ err, route: 'PATCH /users/me/location' }, 'Location update failed');
     return res.status(500).json({ error: 'internal_error' });
   }
 });
@@ -355,6 +412,33 @@ app.patch('/api/v1/users/me/fcm-token', requireFirebaseAuth, async (req, res) =>
     return res.status(204).send();
   } catch (err) {
     return serverError(res, err, 'PATCH /users/me/fcm-token');
+  }
+});
+
+app.delete('/api/v1/users/me', requireFirebaseAuth, async (req, res) => {
+  try {
+    const fbUid = uid(req);
+    const user = await query('SELECT id FROM users WHERE firebase_uid = $1', [fbUid]);
+    if (user.length === 0) return res.status(404).json({ error: 'not_found' });
+
+    const userId = user[0].id;
+    await query('DELETE FROM user_badges WHERE user_id = $1::uuid', [userId]);
+    await query('DELETE FROM donor_responses WHERE donor_id = $1::uuid', [userId]);
+    await query('DELETE FROM medical_records WHERE user_id = $1::uuid', [userId]);
+    await query('UPDATE blood_requests SET requester_id = NULL WHERE requester_id = $1::uuid', [userId]);
+    await query('DELETE FROM donations WHERE donor_id = $1::uuid', [userId]);
+    await query('DELETE FROM users WHERE id = $1::uuid', [userId]);
+
+    try {
+      const firebaseAdmin = require('firebase-admin');
+      await firebaseAdmin.auth().deleteUser(fbUid);
+    } catch (fbErr) {
+      logger.warn({ err: fbErr }, 'Firebase user deletion failed (may already be deleted)');
+    }
+
+    return res.status(204).send();
+  } catch (err) {
+    return serverError(res, err, 'DELETE /users/me');
   }
 });
 
@@ -374,8 +458,7 @@ app.get('/api/v1/users/me/badges', requireFirebaseAuth, async (req, res) => {
     );
     return res.json(rows);
   } catch (err) {
-    console.error('GET /users/me/badges', err);
-    return res.json([]);
+    return serverError(res, err, 'GET /users/me/badges');
   }
 });
 
@@ -401,8 +484,7 @@ app.get('/api/v1/users/me/badges/progress', requireFirebaseAuth, async (req, res
     );
     return res.json(rows);
   } catch (err) {
-    console.error('GET /users/me/badges/progress', err);
-    return res.json([]);
+    return serverError(res, err, 'GET /users/me/badges/progress');
   }
 });
 
@@ -440,7 +522,7 @@ app.get('/api/v1/hospitals', requireFirebaseAuth, async (req, res) => {
     );
     return res.json(rows);
   } catch (err) {
-    console.error('GET /hospitals', err);
+    logger.error({ err, route: 'GET /hospitals' }, 'Failed to fetch hospitals');
     return res.status(500).json({ error: 'internal_error' });
   }
 });
@@ -449,6 +531,13 @@ app.get('/api/v1/hospitals', requireFirebaseAuth, async (req, res) => {
 app.post('/api/v1/requests', requireFirebaseAuth, async (req, res) => {
   try {
     const b = req.body || {};
+
+    const validation = requireFields(b, ['requesterId', 'bloodType', 'unitsNeeded', 'urgencyLevel', 'hospitalId', 'hospitalLat', 'hospitalLng']);
+    if (!validation.ok) return res.status(400).json({ error: validation.error });
+    if (!VALID_BLOOD_TYPES.has(b.bloodType)) return res.status(400).json({ error: 'invalid_blood_type' });
+    if (!VALID_URGENCY.has(b.urgencyLevel)) return res.status(400).json({ error: 'invalid_urgency_level' });
+    if (!Number.isInteger(b.unitsNeeded) || b.unitsNeeded < 1) return res.status(400).json({ error: 'unitsNeeded must be a positive integer' });
+
     const hospitalResult = await query(
       `SELECT hospital_code, hospital_name FROM users
        WHERE id = $1::uuid AND account_type = 'hospital'`,
@@ -546,16 +635,16 @@ app.post('/api/v1/requests', requireFirebaseAuth, async (req, res) => {
         ],
       );
     } catch (auditErr) {
-      console.warn('Audit log failed:', auditErr.message);
+      logger.warn({ err: auditErr }, 'Audit log write failed');
     }
 
     notifyNewRequest(created).catch((e) =>
-      console.warn('Push notification failed:', e.message),
+      logger.warn({ err: e }, 'Push notification dispatch failed'),
     );
 
     return res.status(201).json(created);
   } catch (err) {
-    console.error('POST /requests', err);
+    logger.error({ err, route: 'POST /requests' }, 'Failed to create request');
     return res.status(500).json({ error: 'internal_error' });
   }
 });
@@ -578,7 +667,7 @@ app.get('/api/v1/requests/active', requireFirebaseAuth, async (req, res) => {
     );
     return res.json(rows[0] ?? null);
   } catch (err) {
-    console.error('GET /requests/active', err);
+    logger.error({ err, route: 'GET /requests/active' }, 'Failed to fetch active request');
     return res.status(500).json({ error: 'internal_error' });
   }
 });
@@ -597,7 +686,7 @@ app.get('/api/v1/requests/mine', requireFirebaseAuth, async (req, res) => {
     );
     return res.json(rows);
   } catch (err) {
-    console.error('GET /requests/mine', err);
+    logger.error({ err, route: 'GET /requests/mine' }, 'Failed to fetch requests');
     return res.status(500).json({ error: 'internal_error' });
   }
 });
@@ -644,7 +733,7 @@ app.patch('/api/v1/requests/:id', requireFirebaseAuth, async (req, res) => {
     ).catch(() => {});
     return res.status(204).send();
   } catch (err) {
-    console.error('PATCH /requests/:id', err);
+    logger.error({ err, route: 'PATCH /requests/:id' }, 'Failed to update request');
     return res.status(500).json({ error: 'internal_error' });
   }
 });
@@ -673,7 +762,7 @@ app.post('/api/v1/requests/:id/cancel', requireFirebaseAuth, async (req, res) =>
     }
     return res.json({ ok: result.length > 0 });
   } catch (err) {
-    console.error('POST /requests/:id/cancel', err);
+    logger.error({ err, route: 'POST /requests/:id/cancel' }, 'Failed to cancel request');
     return res.status(500).json({ error: 'internal_error' });
   }
 });
@@ -711,7 +800,7 @@ app.get('/api/v1/donor/matches', requireFirebaseAuth, async (req, res) => {
     );
     return res.json(rows);
   } catch (err) {
-    console.error('GET /donor/matches', err);
+    logger.error({ err, route: 'GET /donor/matches' }, 'Failed to find matches');
     return res.status(500).json({ error: 'internal_error' });
   }
 });
@@ -764,7 +853,7 @@ app.post('/api/v1/donor/responses/accept', requireFirebaseAuth, async (req, res)
     if (msg.includes('23505') || msg.includes('unique')) {
       return res.status(409).json({ error: 'already_accepted' });
     }
-    console.error('POST /donor/responses/accept', err);
+    logger.error({ err, route: 'POST /donor/responses/accept' }, 'Failed to accept');
     return res.status(500).json({ error: 'internal_error' });
   }
 });
@@ -781,7 +870,7 @@ app.post('/api/v1/donor/responses/decline', requireFirebaseAuth, async (req, res
     );
     return res.status(204).send();
   } catch (err) {
-    console.error('POST /donor/responses/decline', err);
+    logger.error({ err, route: 'POST /donor/responses/decline' }, 'Failed to decline');
     return res.status(500).json({ error: 'internal_error' });
   }
 });
@@ -810,7 +899,7 @@ app.post('/api/v1/donor/responses/withdraw', requireFirebaseAuth, async (req, re
     ).catch(() => {});
     return res.status(204).send();
   } catch (err) {
-    console.error('POST /donor/responses/withdraw', err);
+    logger.error({ err, route: 'POST /donor/responses/withdraw' }, 'Failed to withdraw');
     return res.status(500).json({ error: 'internal_error' });
   }
 });
@@ -835,7 +924,7 @@ app.get('/api/v1/donor/mission', requireFirebaseAuth, async (req, res) => {
     );
     return res.json(rows[0] ?? null);
   } catch (err) {
-    console.error('GET /donor/mission', err);
+    logger.error({ err, route: 'GET /donor/mission' }, 'Failed to get mission');
     return res.status(500).json({ error: 'internal_error' });
   }
 });
@@ -853,7 +942,7 @@ app.get('/api/v1/donor/responses/history', requireFirebaseAuth, async (req, res)
     );
     return res.json(rows);
   } catch (err) {
-    return res.json([]);
+    return serverError(res, err, 'GET /donor/responses/history');
   }
 });
 
@@ -872,7 +961,7 @@ app.get('/api/v1/donor/stats', requireFirebaseAuth, async (req, res) => {
       rewardPoints: rows[0].reward_points ?? 0,
     });
   } catch (err) {
-    return res.json({ totalDonations: 0, rewardPoints: 0 });
+    return serverError(res, err, 'GET /donor/stats');
   }
 });
 
@@ -891,7 +980,7 @@ app.get('/api/v1/donor/donations', requireFirebaseAuth, async (req, res) => {
     );
     return res.json(rows);
   } catch (err) {
-    return res.json([]);
+    return serverError(res, err, 'GET /donor/donations');
   }
 });
 
@@ -907,7 +996,7 @@ app.get('/api/v1/donor/leaderboard', requireFirebaseAuth, async (req, res) => {
     );
     return res.json(rows);
   } catch (err) {
-    return res.json([]);
+    return serverError(res, err, 'GET /donor/leaderboard');
   }
 });
 
@@ -923,7 +1012,7 @@ app.get('/api/v1/donor/rank', requireFirebaseAuth, async (req, res) => {
     );
     return res.json({ rank: rows[0]?.rank ?? null });
   } catch (err) {
-    return res.json({ rank: null });
+    return serverError(res, err, 'GET /donor/rank');
   }
 });
 
@@ -965,7 +1054,7 @@ app.get('/api/v1/hospital/search', requireFirebaseAuth, async (req, res) => {
       })),
     );
   } catch (err) {
-    console.error('GET /hospital/search', err);
+    logger.error({ err, route: 'GET /hospital/search' }, 'Failed to search hospital');
     return res.status(500).json({ error: 'internal_error' });
   }
 });
@@ -986,7 +1075,7 @@ app.post('/api/v1/hospital/verify', requireFirebaseAuth, async (req, res) => {
     if (rows[0].success === true) return res.json({ error: null });
     return res.json({ error: rows[0].error_message || 'Verification failed' });
   } catch (err) {
-    console.error('POST /hospital/verify', err);
+    logger.error({ err, route: 'POST /hospital/verify' }, 'Failed to verify donation');
     return res.status(500).json({ error: 'internal_error' });
   }
 });
@@ -1000,7 +1089,7 @@ app.get('/api/v1/hospital/requests/:id/audit', requireFirebaseAuth, async (req, 
     );
     return res.json(rows);
   } catch (err) {
-    return res.json([]);
+    return serverError(res, err, 'GET /hospital/requests/:id/audit');
   }
 });
 
@@ -1015,7 +1104,7 @@ app.get('/api/v1/hospital/inventory', requireFirebaseAuth, async (req, res) => {
     );
     return res.json(rows);
   } catch (err) {
-    return res.json([]);
+    return serverError(res, err, 'GET /hospital/inventory');
   }
 });
 
@@ -1039,7 +1128,7 @@ app.get('/api/v1/hospital/stats', requireFirebaseAuth, async (req, res) => {
       fulfilled: rows[0].fulfilled_total ?? 0,
     });
   } catch (err) {
-    return res.json({ pending: 0, today: 0, fulfilled: 0 });
+    return serverError(res, err, 'GET /hospital/stats');
   }
 });
 
@@ -1064,9 +1153,28 @@ app.get('/api/v1/hospital/pending', requireFirebaseAuth, async (req, res) => {
     );
     return res.json(rows);
   } catch (err) {
-    return res.json([]);
+    return serverError(res, err, 'GET /hospital/pending');
   }
 });
+
+// ─── Retry helper for notification dispatch ───────────────────────────────────
+async function withRetry(fn, { maxRetries = 3, baseDelayMs = 500, label = 'operation' } = {}) {
+  let lastError;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      logger.warn({ err, attempt, maxRetries, label }, 'Retryable operation failed');
+      if (attempt < maxRetries) {
+        const delay = baseDelayMs * Math.pow(2, attempt - 1) + Math.random() * 200;
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+  }
+  logger.error({ err: lastError, label, maxRetries }, 'All retries exhausted');
+  throw lastError;
+}
 
 // ─── Push notifications (server-side donor query) ─────────────────────────────
 const DONOR_TYPES_MAP = {
@@ -1083,7 +1191,10 @@ const DONOR_TYPES_MAP = {
 async function notifyNewRequest(request) {
   const backendUrl = process.env.NOTIFICATION_BACKEND_URL;
   const secret = process.env.NOTIFICATION_BACKEND_SECRET;
-  if (!backendUrl || !secret) return;
+  if (!backendUrl || !secret) {
+    logger.warn('Notification backend not configured — skipping push');
+    return;
+  }
 
   const bloodType = request.blood_type;
   const donorTypes = DONOR_TYPES_MAP[bloodType] || [bloodType];
@@ -1108,37 +1219,63 @@ async function notifyNewRequest(request) {
   const tokens = donors
     .map((r) => r.fcm_token)
     .filter((t) => t && String(t).length > 0);
-  if (tokens.length === 0) return;
-
-  const url = new URL('/sendNewRequest', backendUrl.replace(/\/$/, ''));
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-internal-secret': secret,
-    },
-    body: JSON.stringify({
-      request: {
-        id: request.id,
-        short_id: request.short_id,
-        blood_type: request.blood_type,
-        units_needed: request.units_needed,
-        hospital_name: request.hospital_name,
-      },
-      tokens,
-    }),
-  });
-
-  if (response.ok) {
-    const body = await response.json();
-    const stale = body.stale_tokens;
-    if (Array.isArray(stale) && stale.length > 0) {
-      await query(
-        'UPDATE users SET fcm_token = NULL WHERE fcm_token = ANY($1::text[])',
-        [stale],
-      );
-    }
+  if (tokens.length === 0) {
+    logger.debug('No eligible donors with FCM tokens found');
+    return;
   }
+
+  logger.info({ count: tokens.length, shortId: request.short_id }, 'Dispatching push notifications');
+
+  const dispatchStart = Date.now();
+
+  await notificationCircuitBreaker.call(
+    async () => {
+      await withRetry(async () => {
+        const url = new URL('/sendNewRequest', backendUrl.replace(/\/$/, ''));
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-internal-secret': secret,
+          },
+          body: JSON.stringify({
+            request: {
+              id: request.id,
+              short_id: request.short_id,
+              blood_type: request.blood_type,
+              units_needed: request.units_needed,
+              hospital_name: request.hospital_name,
+            },
+            tokens,
+          }),
+          signal: AbortSignal.timeout(10000),
+        });
+
+        if (!response.ok) {
+          const body = await response.text();
+          throw new Error(`Notification backend returned ${response.status}: ${body}`);
+        }
+
+        const body = await response.json();
+        const stale = body.stale_tokens;
+        if (Array.isArray(stale) && stale.length > 0) {
+          logger.info({ count: stale.length }, 'Cleaning up stale FCM tokens');
+          await query(
+            'UPDATE users SET fcm_token = NULL WHERE fcm_token = ANY($1::text[])',
+            [stale],
+          );
+        }
+        logger.info({ sent: body.sent, failed: body.failed }, 'Push notification result');
+        metrics.notificationDispatchTotal.inc({ status: 'success' });
+      }, { maxRetries: 3, baseDelayMs: 500, label: 'notifyNewRequest' });
+    },
+    () => {
+      logger.warn({ shortId: request.short_id }, 'Notification circuit breaker open — using fallback');
+      metrics.notificationDispatchTotal.inc({ status: 'circuit_breaker_fallback' });
+    },
+  );
+
+  metrics.notificationDispatchDuration.observe(Date.now() - dispatchStart);
 }
 
 // ─── Start server ─────────────────────────────────────────────────────────────
@@ -1160,9 +1297,9 @@ Missing: ${dbConfig.missing.join(', ')}
 
   try {
     await testConnection();
-    console.log(`Database connected (${dbConfig.mode})`);
+    logger.info({ mode: dbConfig.mode }, 'Database connected');
   } catch (err) {
-    console.error('Database connection failed:', err.message);
+    logger.error({ err }, 'Database connection failed');
     console.error(
       'Check Supabase host/port (pooler: port 5432 or 6543), password, and SSL settings.',
     );
@@ -1175,6 +1312,7 @@ Missing: ${dbConfig.missing.join(', ')}
     process.env.TLS_KEY_PATH &&
     process.env.TLS_CERT_PATH;
 
+  let server;
   if (useTls) {
   const fs = require('fs');
   const https = require('https');
@@ -1182,17 +1320,34 @@ Missing: ${dbConfig.missing.join(', ')}
     key: fs.readFileSync(process.env.TLS_KEY_PATH),
     cert: fs.readFileSync(process.env.TLS_CERT_PATH),
   };
-    https.createServer(options, app).listen(port, '0.0.0.0', () => {
-      console.log(`BloodConnect API listening on HTTPS port ${port} (0.0.0.0)`);
+    server = https.createServer(options, app).listen(port, '0.0.0.0', () => {
+      logger.info({ port, tls: true }, 'Server started');
     });
   } else {
     const http = require('http');
-    http.createServer(app).listen(port, '0.0.0.0', () => {
+    server = http.createServer(app).listen(port, '0.0.0.0', () => {
       console.log(
         `BloodConnect API listening on HTTP port ${port} (0.0.0.0 — reachable from emulators/LAN)${isProduction ? ' (set TLS_KEY_PATH/TLS_CERT_PATH or terminate TLS at proxy)' : ''}`,
       );
     });
   }
+
+  function shutdown(signal) {
+    logger.info({ signal }, 'Shutting down gracefully...');
+    server.close(() => {
+      pool.end(() => {
+        logger.info('Server and pool closed');
+        process.exit(0);
+      });
+    });
+    setTimeout(() => {
+      logger.error('Forced shutdown after timeout');
+      process.exit(1);
+    }, 10_000).unref();
+  }
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 if (process.env.NODE_ENV !== 'test') {
