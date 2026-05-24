@@ -1342,6 +1342,49 @@ app.post('/api/v1/stories/:id/like', requireFirebaseAuth, async (req, res) => {
   } catch (err) { return serverError(res, err, 'POST /stories/:id/like'); }
 });
 
+// ── Coupons ───────────────────────────────────────────────────────────────────
+app.get('/api/v1/coupons', requireFirebaseAuth, async (req, res) => {
+  try {
+    const rows = await query(
+      `SELECT id, title, description, partner_name, partner_logo_url,
+              discount_pct, points_cost, total_available, total_redeemed, valid_until, is_active
+       FROM coupons
+       WHERE is_active = TRUE AND (valid_until IS NULL OR valid_until > NOW())
+       ORDER BY discount_pct DESC`,
+    );
+    return res.json(rows);
+  } catch (err) { return serverError(res, err, 'GET /coupons'); }
+});
+
+app.get('/api/v1/coupons/mine', requireFirebaseAuth, async (req, res) => {
+  try {
+    const userId = await getUserIdFromToken(req);
+    const rows = await query(
+      `SELECT uc.id, uc.coupon_id, uc.coupon_code, uc.redeemed_at,
+              uc.used_at, uc.expires_at, uc.points_spent,
+              c.partner_name, c.title, c.discount_pct
+       FROM user_coupons uc
+       JOIN coupons c ON c.id = uc.coupon_id
+       WHERE uc.user_id = $1
+       ORDER BY uc.redeemed_at DESC`,
+      [userId],
+    );
+    return res.json(rows);
+  } catch (err) { return serverError(res, err, 'GET /coupons/mine'); }
+});
+
+app.post('/api/v1/coupons/redeem', requireFirebaseAuth, async (req, res) => {
+  try {
+    const userId = await getUserIdFromToken(req);
+    const { couponId } = req.body;
+    if (!couponId) return res.status(400).json({ error: 'coupon_id_required' });
+    const rows = await query('SELECT redeem_coupon($1, $2) AS result', [userId, couponId]);
+    const result = rows[0].result;
+    if (result.error) return res.status(400).json(result);
+    return res.json(result);
+  } catch (err) { return serverError(res, err, 'POST /coupons/redeem'); }
+});
+
 // ─── Start server ─────────────────────────────────────────────────────────────
 async function startServer() {
   const dbConfig = validateDbConfig();

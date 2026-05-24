@@ -18,6 +18,7 @@ import 'package:bloodconnect/screens/create_request_screen.dart';
 import 'package:bloodconnect/screens/profile_screen.dart';
 import 'package:bloodconnect/screens/ai_prediction_screen.dart';
 import 'package:bloodconnect/screens/stories_screen.dart';
+import 'package:bloodconnect/screens/coupons_screen.dart';
 
 final _inFlightProfileFetches = <String, Future<UserProfile?>>{};
 
@@ -129,6 +130,11 @@ GoRouter buildRouter({
         pageBuilder: (ctx, s) =>
             _slideTransition(const StoriesScreen()),
       ),
+      GoRoute(
+        path: '/coupons',
+        pageBuilder: (ctx, s) =>
+            _slideTransition(const CouponsScreen()),
+      ),
     ],
     redirect: (context, state) async {
       if (state.matchedLocation == '/signup') {
@@ -205,7 +211,7 @@ GoRouter buildRouter({
         return homeRouteForProfile(profile);
       }
 
-      if (loc == '/ai-check' || loc == '/stories') return null;
+      if (loc == '/ai-check' || loc == '/stories' || loc == '/coupons') return null;
 
       return null;
     },

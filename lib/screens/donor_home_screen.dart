@@ -179,6 +179,8 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
                           _buildAiCard(),
                           const SizedBox(height: 14),
                           _buildStoriesCard(),
+                          const SizedBox(height: 14),
+                          _buildCouponsCard(),
                           if (_activeMission != null) ...[
                             const SizedBox(height: 14),
                             _ActiveMissionBanner(
@@ -424,6 +426,73 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
               child: const Icon(
                 Icons.chevron_right_rounded,
                 color: AppColors.primaryRed,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCouponsCard() {
+    return GestureDetector(
+      onTap: () => context.push('/coupons'),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(
+            color: AppColors.warning.withValues(alpha: 0.15),
+          ),
+          boxShadow: AppShadows.card,
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(AppRadius.md),
+              ),
+              child: const Icon(
+                Icons.local_offer_rounded,
+                color: AppColors.warning,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Rewards Shop',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.warning,
+                        ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Redeem points for exciting coupons & discounts',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary.withValues(alpha: 0.7),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+              ),
+              child: const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.warning,
               ),
             ),
           ],

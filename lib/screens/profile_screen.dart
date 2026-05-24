@@ -99,11 +99,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: StatCard(
-                      title: 'Points',
-                      value: '${profile.rewardPoints}',
-                      icon: Icons.star_rounded,
-                      color: AppColors.warning,
+                    child: GestureDetector(
+                      onTap: () => context.push('/coupons'),
+                      child: StatCard(
+                        title: 'Points',
+                        value: '${profile.rewardPoints}',
+                        icon: Icons.star_rounded,
+                        color: AppColors.warning,
+                        trailing: const Icon(
+                          Icons.chevron_right_rounded,
+                          size: 16,
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 10),
