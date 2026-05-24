@@ -1278,6 +1278,70 @@ async function notifyNewRequest(request) {
   metrics.notificationDispatchDuration.observe(Date.now() - dispatchStart);
 }
 
+// ── Helper: get UUID from Firebase UID ──────────────────────────────────────
+async function getUserIdFromToken(req) {
+  const rows = await query(
+    'SELECT id FROM users WHERE firebase_uid = $1',
+    [req.firebaseUser?.uid],
+  );
+  if (rows.length === 0) throw new Error('User not found');
+  return rows[0].id;
+}
+
+// ── Stories ──────────────────────────────────────────────────────────────────
+app.get('/api/v1/stories', requireFirebaseAuth, async (req, res) => {
+  try {
+    const { role, limit = '20', offset = '0' } = req.query;
+    const userId = await getUserIdFromToken(req);
+    const rows = await query(
+      `SELECT s.id, s.author_id, s.role, s.title, s.body, s.blood_type,
+              s.likes_count, s.is_featured, s.created_at,
+              u.name AS author_name, u.blood_type AS author_blood_type,
+              EXISTS (
+                SELECT 1 FROM story_likes sl
+                WHERE sl.story_id = s.id AND sl.user_id = $3
+              ) AS is_liked_by_me
+       FROM user_stories s
+       JOIN users u ON u.id = s.author_id
+       WHERE s.is_approved = TRUE ${role ? 'AND s.role = $4' : ''}
+       ORDER BY s.is_featured DESC, s.likes_count DESC, s.created_at DESC
+       LIMIT $1 OFFSET $2`,
+      role ? [+limit, +offset, userId, role] : [+limit, +offset, userId],
+    );
+    return res.json(rows);
+  } catch (err) { return serverError(res, err, 'GET /stories'); }
+});
+
+app.post('/api/v1/stories', requireFirebaseAuth, async (req, res) => {
+  try {
+    const userId = await getUserIdFromToken(req);
+    const { title, body, role, blood_type } = req.body;
+    if (!title || title.trim().length < 5)
+      return res.status(400).json({ error: 'title_too_short' });
+    if (!body || body.trim().length < 50)
+      return res.status(400).json({ error: 'body_too_short' });
+    if (!['donor', 'recipient'].includes(role))
+      return res.status(400).json({ error: 'invalid_role' });
+    const rows = await query(
+      `INSERT INTO user_stories (author_id, role, title, body, blood_type, is_approved)
+       VALUES ($1, $2, $3, $4, $5, FALSE) RETURNING *`,
+      [userId, role, title.trim(), body.trim(), blood_type || null],
+    );
+    return res.status(201).json(rows[0]);
+  } catch (err) { return serverError(res, err, 'POST /stories'); }
+});
+
+app.post('/api/v1/stories/:id/like', requireFirebaseAuth, async (req, res) => {
+  try {
+    const userId = await getUserIdFromToken(req);
+    const rows = await query(
+      'SELECT toggle_story_like($1, $2) AS result',
+      [req.params.id, userId],
+    );
+    return res.json(rows[0].result);
+  } catch (err) { return serverError(res, err, 'POST /stories/:id/like'); }
+});
+
 // ─── Start server ─────────────────────────────────────────────────────────────
 async function startServer() {
   const dbConfig = validateDbConfig();
