@@ -107,6 +107,8 @@ class _RecipientHomeScreenState extends ConsumerState<RecipientHomeScreen> {
                     ),
                   ],
                   const SizedBox(height: 24),
+                  _buildStoriesCard(),
+                  const SizedBox(height: 24),
                   const SectionHeader(title: 'Request History'),
                   const SizedBox(height: 12),
                   if (_history.isEmpty)
@@ -157,6 +159,73 @@ class _RecipientHomeScreenState extends ConsumerState<RecipientHomeScreen> {
           ),
         )),
       ],
+    );
+  }
+
+  Widget _buildStoriesCard() {
+    return GestureDetector(
+      onTap: () => context.push('/stories'),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(
+            color: AppColors.primaryRed.withValues(alpha: 0.15),
+          ),
+          boxShadow: AppShadows.card,
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.primaryRed.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(AppRadius.md),
+              ),
+              child: const Icon(
+                Icons.auto_stories_rounded,
+                color: AppColors.primaryRed,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Donor Stories',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primaryRed,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Read inspiring stories from our community',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary.withValues(alpha: 0.7),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: AppColors.primaryRed.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+              ),
+              child: const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.primaryRed,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

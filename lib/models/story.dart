@@ -37,7 +37,9 @@ class Story {
       title: json['title'] as String,
       body: json['body'] as String,
       bloodType: json['blood_type'] as String?,
-      likesCount: json['likes_count'] as int? ?? 0,
+      likesCount: json['likes_count'] is int
+          ? json['likes_count'] as int
+          : int.tryParse(json['likes_count']?.toString() ?? '') ?? 0,
       isFeatured: json['is_featured'] as bool? ?? false,
       isLikedByMe: json['is_liked_by_me'] as bool? ?? false,
       createdAt: DateTime.tryParse(

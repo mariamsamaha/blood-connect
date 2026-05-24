@@ -211,7 +211,7 @@ class ApiClient {
             if (result.isStale) {
               _metrics?.recordStaleHit();
               if (!_isOffline) {
-                _scheduleBackgroundRefresh(path, query, cacheKey);
+                _scheduleBackgroundRefresh(path, query, cacheKey, isList: true);
               }
             } else {
               _metrics?.recordPersistentHit();
@@ -420,10 +420,12 @@ class ApiClient {
   void _scheduleBackgroundRefresh(
     String path,
     Map<String, String>? query,
-    String cacheKey,
-  ) {
+    String cacheKey, {
+    bool isList = false,
+  }) {
     if (_refreshInFlight.containsKey(cacheKey)) return;
-    _refreshInFlight[cacheKey] = _backgroundRefresh(path, query, cacheKey);
+    _refreshInFlight[cacheKey] =
+        _backgroundRefresh(path, query, cacheKey, isList: isList);
     _refreshInFlight[cacheKey]!.then((_) {
       _refreshInFlight.remove(cacheKey);
     }).catchError((_) {
@@ -434,22 +436,41 @@ class ApiClient {
   Future<void> _backgroundRefresh(
     String path,
     Map<String, String>? query,
-    String cacheKey,
-  ) async {
+    String cacheKey, {
+    bool isList = false,
+  }) async {
     try {
       if (_isOffline) return;
       final start = DateTime.now();
       final uri = Uri.parse('$_base$path').replace(queryParameters: query);
       final response = await _http.get(uri, headers: await _headers());
-      final decoded = _decode(response);
-      if (decoded != null) {
-        _cache?.set(cacheKey, decoded);
-        await _persistentCache?.save(
-          cacheKey,
-          decoded,
-          freshTtl: _freshTtl(path),
-          maxTtl: _maxTtl(path),
-        );
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final body = jsonDecode(response.body);
+        if (isList) {
+          if (body is List) {
+            final result =
+                body.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+            _cache?.set(cacheKey, result);
+            final asMap = {'_list': result};
+            await _persistentCache?.save(
+              cacheKey,
+              asMap,
+              freshTtl: _freshTtl(path),
+              maxTtl: _maxTtl(path),
+            );
+          }
+        } else {
+          if (body is Map) {
+            final decoded = Map<String, dynamic>.from(body);
+            _cache?.set(cacheKey, decoded);
+            await _persistentCache?.save(
+              cacheKey,
+              decoded,
+              freshTtl: _freshTtl(path),
+              maxTtl: _maxTtl(path),
+            );
+          }
+        }
       }
       _metrics?.recordSyncDuration(
         'BG $path',

@@ -67,8 +67,12 @@ class BloodRequest {
       requesterLat: (json['requester_lat'] as num?)?.toDouble(),
       requesterLng: (json['requester_lng'] as num?)?.toDouble(),
       status: RequestStatus.values.byName((json['status'] ?? 'active').toString()),
-      nearbyDonorsCount: (json['nearby_donors_count'] as int?) ?? 0,
-      totalEligibleCount: (json['total_eligible_count'] as int?) ?? 0,
+      nearbyDonorsCount: json['nearby_donors_count'] is int
+          ? json['nearby_donors_count'] as int
+          : int.tryParse(json['nearby_donors_count']?.toString() ?? '') ?? 0,
+      totalEligibleCount: json['total_eligible_count'] is int
+          ? json['total_eligible_count'] as int
+          : int.tryParse(json['total_eligible_count']?.toString() ?? '') ?? 0,
       createdAt: json['created_at'] is DateTime
           ? json['created_at'] as DateTime
           : DateTime.tryParse(json['created_at']?.toString() ?? '') ?? DateTime.now(),

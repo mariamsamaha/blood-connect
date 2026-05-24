@@ -80,21 +80,12 @@ final connectivityStatusProvider = StreamProvider<ConnectivityStatus>((ref) {
   return syncManager.onStatusChanged;
 });
 
-final isarProvider = FutureProvider<Isar>((ref) async {
-  final dir = await getApplicationDocumentsDirectory();
-  return Isar.open(
-    [CacheEntrySchema],
-    directory: dir.path,
-    inspector: false,
-  );
+final isarProvider = Provider<Isar>((ref) {
+  throw UnimplementedError('isarProvider must be overridden');
 });
 
 final persistentCacheServiceProvider = Provider<PersistentCacheService>((ref) {
-  final isarAsync = ref.watch(isarProvider);
-  final isar = isarAsync.value;
-  if (isar == null) {
-    throw StateError('Isar not initialized');
-  }
+  final isar = ref.watch(isarProvider);
   return PersistentCacheService(isar);
 });
 
@@ -317,7 +308,21 @@ void main() async {
     sound: true,
   );
 
-  runApp(const ProviderScope(child: BloodConnectApp()));
+  final dir = await getApplicationDocumentsDirectory();
+  final isar = await Isar.open(
+    [CacheEntrySchema],
+    directory: dir.path,
+    inspector: false,
+  );
+
+  runApp(
+    ProviderScope(
+      overrides: [
+        isarProvider.overrideWithValue(isar),
+      ],
+      child: const BloodConnectApp(),
+    ),
+  );
 }
 
 class BloodConnectApp extends ConsumerStatefulWidget {
