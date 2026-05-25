@@ -11,6 +11,7 @@ import 'package:bloodconnect/widgets/shimmer_loading.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:bloodconnect/screens/ai_eligibility_gate.dart';
 import 'package:go_router/go_router.dart';
 
 class DonorHomeScreen extends ConsumerStatefulWidget {
@@ -118,6 +119,12 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
 
     try {
       if (accept) {
+        // ── AI eligibility gate ───────────────────────────────────────────
+        if (!mounted) return;
+        final allowed = await showAiEligibilityGate(context, ref, profile);
+        if (!mounted) return;
+        if (!allowed) return;
+        // ── proceed with accept ───────────────────────────────────────────
         final pos = await locationService.getCurrentPosition();
         var lat = pos?.latitude ?? profile.latitude;
         var lng = pos?.longitude ?? profile.longitude;

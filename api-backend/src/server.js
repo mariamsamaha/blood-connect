@@ -1385,6 +1385,139 @@ app.post('/api/v1/coupons/redeem', requireFirebaseAuth, async (req, res) => {
   } catch (err) { return serverError(res, err, 'POST /coupons/redeem'); }
 });
 
+// ── AI Eligibility ────────────────────────────────────────────────────────────
+app.post('/api/v1/ai/eligibility', requireFirebaseAuth, async (req, res) => {
+  try {
+    const { donorId, bloodType, feelingWell, recentIllness } = req.body;
+
+    if (!donorId || !bloodType) {
+      return res.status(400).json({ error: 'donor_id_and_blood_type_required' });
+    }
+
+    const aiUrl = process.env.AI_SERVICE_URL;
+
+    // If AI model URL is not configured → rule-based fallback (works for demo)
+    if (!aiUrl) {
+      return res.json(_ruleBasedCheck({ feelingWell, recentIllness }));
+    }
+
+    // Proxy to Flask AI model
+    try {
+      const payload = JSON.stringify({
+        blood_type: bloodType,
+        feeling_well: feelingWell,
+        recent_illness: recentIllness,
+      });
+      const aiResult = await _callAiModel(aiUrl, payload);
+      const score = parseFloat(aiResult.probability ?? aiResult.score ?? 0.5);
+      const status =
+        score >= 0.75 ? 'eligible' : score >= 0.5 ? 'uncertain' : 'not_eligible';
+
+      // Write audit column on the most recent pending donor_response
+      query(
+        `UPDATE donor_responses
+         SET ai_eligibility_score = $1,
+             ai_eligibility_passed = $2,
+             ai_checked_at = NOW()
+         WHERE donor_id = $3
+           AND status = 'pending'
+           AND created_at > NOW() - INTERVAL '10 minutes'`,
+        [score, status === 'eligible', donorId],
+      ).catch(() => {}); // non-critical
+
+      return res.json({
+        status,
+        score,
+        warnings: aiResult.warnings || [],
+        tips: aiResult.tips || _defaultTips(score),
+        message: aiResult.message || '',
+      });
+    } catch (aiErr) {
+      // AI model unreachable → degrade gracefully
+      console.error('[ai/eligibility] model error, using fallback:', aiErr.message);
+      return res.json(_ruleBasedCheck({ feelingWell, recentIllness }));
+    }
+  } catch (err) {
+    return serverError(res, err, 'POST /ai/eligibility');
+  }
+});
+
+function _ruleBasedCheck({ feelingWell, recentIllness }) {
+  let score = 0.8;
+  const warnings = [];
+  const tips = [];
+
+  if (feelingWell === false) {
+    score -= 0.4;
+    warnings.push('You reported not feeling well.');
+  }
+  if (recentIllness === true) {
+    score -= 0.3;
+    warnings.push('Recent illness or medication detected.');
+  }
+  if (feelingWell && !recentIllness) {
+    tips.push('Great — you appear to be in good health for donation.');
+  }
+
+  tips.push(..._defaultTips(score));
+
+  const status =
+    score >= 0.75 ? 'eligible' : score >= 0.45 ? 'uncertain' : 'not_eligible';
+
+  return {
+    status,
+    score: Math.max(0, Math.min(1, score)),
+    warnings,
+    tips,
+    message: '',
+  };
+}
+
+function _defaultTips(score) {
+  const t = [
+    'Drink at least 500ml of water before donating.',
+    'Have a light meal 2–3 hours beforehand.',
+  ];
+  if (score < 0.75) {
+    t.push('Rest well and try again tomorrow if you feel better.');
+  }
+  return t;
+}
+
+function _callAiModel(baseUrl, payload) {
+  return new Promise((resolve, reject) => {
+    const { request } = baseUrl.startsWith('https') 
+      ? require('https') 
+      : require('http');
+    const url = new URL('/predict', baseUrl);
+    const req = request(
+      {
+        hostname: url.hostname,
+        port: url.port || (baseUrl.startsWith('https') ? 443 : 80),
+        path: url.pathname,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
+        },
+        timeout: 8000,
+      },
+      (res2) => {
+        let data = '';
+        res2.on('data', (chunk) => { data += chunk; });
+        res2.on('end', () => {
+          try { resolve(JSON.parse(data)); }
+          catch { reject(new Error('Invalid AI response')); }
+        });
+      },
+    );
+    req.on('timeout', () => { req.destroy(); reject(new Error('AI timeout')); });
+    req.on('error', reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
 // ─── Start server ─────────────────────────────────────────────────────────────
 async function startServer() {
   const dbConfig = validateDbConfig();

@@ -131,4 +131,88 @@ describe('API Backend Server', () => {
       expect(res.status).toBe(200);
     });
   });
+
+  describe('POST /api/v1/ai/eligibility', () => {
+    test('returns 401 without token', async () => {
+      const res = await request(app).post('/api/v1/ai/eligibility').send({
+        donorId: 'd-1',
+        bloodType: 'O+',
+      });
+      expect(res.status).toBe(401);
+    });
+
+    test('returns 400 when donorId or bloodType is missing', async () => {
+      const res = await request(app)
+        .post('/api/v1/ai/eligibility')
+        .set('Authorization', 'Bearer test-token')
+        .send({
+          donorId: 'd-1',
+        });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('donor_id_and_blood_type_required');
+    });
+
+    test('returns eligible status for fully healthy rule check', async () => {
+      const res = await request(app)
+        .post('/api/v1/ai/eligibility')
+        .set('Authorization', 'Bearer test-token')
+        .send({
+          donorId: 'd-1',
+          bloodType: 'O+',
+          feelingWell: true,
+          recentIllness: false,
+        });
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('eligible');
+      expect(res.body.score).toBeCloseTo(0.8);
+      expect(res.body.warnings).toHaveLength(0);
+      expect(res.body.tips).toContain('Great — you appear to be in good health for donation.');
+    });
+
+    test('returns uncertain status when having recent illness but feeling well', async () => {
+      const res = await request(app)
+        .post('/api/v1/ai/eligibility')
+        .set('Authorization', 'Bearer test-token')
+        .send({
+          donorId: 'd-1',
+          bloodType: 'O+',
+          feelingWell: true,
+          recentIllness: true,
+        });
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('uncertain');
+      expect(res.body.score).toBeCloseTo(0.5);
+    });
+
+    test('returns not_eligible status when feeling unwell', async () => {
+      const res = await request(app)
+        .post('/api/v1/ai/eligibility')
+        .set('Authorization', 'Bearer test-token')
+        .send({
+          donorId: 'd-1',
+          bloodType: 'O+',
+          feelingWell: false,
+          recentIllness: false,
+        });
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('not_eligible');
+      expect(res.body.score).toBeCloseTo(0.4);
+    });
+
+    test('returns not_eligible when feeling unwell and has recent illness', async () => {
+      const res = await request(app)
+        .post('/api/v1/ai/eligibility')
+        .set('Authorization', 'Bearer test-token')
+        .send({
+          donorId: 'd-1',
+          bloodType: 'O+',
+          feelingWell: false,
+          recentIllness: true,
+        });
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('not_eligible');
+      expect(res.body.score).toBeCloseTo(0.1);
+    });
+  });
 });
+

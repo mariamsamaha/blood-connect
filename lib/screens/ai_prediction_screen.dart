@@ -9,10 +9,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:http/http.dart' as http;
+import 'package:bloodconnect/widgets/app_button.dart';
 import 'package:image_picker/image_picker.dart';
 
 class AiPredictionScreen extends ConsumerStatefulWidget {
-  const AiPredictionScreen({super.key});
+  const AiPredictionScreen({super.key, this.gateMode = false});
+  final bool gateMode;
 
   @override
   ConsumerState<AiPredictionScreen> createState() => _AiPredictionScreenState();
@@ -254,6 +256,20 @@ class _AiPredictionScreenState extends ConsumerState<AiPredictionScreen>
                 if (_result != null) ...[
                   const SizedBox(height: 20),
                   _ResultCard(result: _result!),
+                  if (widget.gateMode) ...[
+                    const SizedBox(height: 24),
+                    _result!.eligible
+                        ? AppButton.primary(
+                            label: 'Accept Request',
+                            icon: Icons.check_circle_outline_rounded,
+                            onPressed: () => Navigator.pop(context, true),
+                          )
+                        : AppButton.danger(
+                            label: 'Accept anyway (clinical override)',
+                            icon: Icons.warning_rounded,
+                            onPressed: () => Navigator.pop(context, true),
+                          ),
+                  ],
                 ],
                 if (_result != null && !_result!.eligible) ...[
                   const SizedBox(height: 24),

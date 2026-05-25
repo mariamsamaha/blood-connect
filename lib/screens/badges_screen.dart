@@ -125,8 +125,8 @@ class _BadgesScreenState extends ConsumerState<BadgesScreen> {
                             icon: '${b['icon'] ?? '\u{1F3C6}'}',
                             name: '${b['name']}',
                             earned: false,
-                            progress: ((b['current_value'] as int? ?? 0) /
-                                    (b['requirement_value'] as int? ?? 1))
+                            progress: (_parseInt(b['current_value']) /
+                                    _parseInt(b['requirement_value'], fallback: 1))
                                 .clamp(0.0, 1.0),
                             progressLabel:
                                 '${b['current_value']}/${b['requirement_value']}',
@@ -180,4 +180,12 @@ class _PointItem extends StatelessWidget {
       ],
     );
   }
+}
+
+int _parseInt(dynamic value, {int fallback = 0}) {
+  if (value == null) return fallback;
+  if (value is int) return value;
+  if (value is double) return value.toInt();
+  if (value is String) return int.tryParse(value) ?? fallback;
+  return fallback;
 }

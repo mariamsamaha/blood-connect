@@ -90,10 +90,16 @@ class HospitalService {
         query: {'hospitalId': hospitalId},
       );
       if (row == null) return {'pending': 0, 'today': 0, 'fulfilled': 0};
+      int parseInt(dynamic v) {
+        if (v == null) return 0;
+        if (v is int) return v;
+        if (v is double) return v.toInt();
+        return int.tryParse(v.toString()) ?? 0;
+      }
       return {
-        'pending': (row['pending'] as int?) ?? 0,
-        'today': (row['today'] as int?) ?? 0,
-        'fulfilled': (row['fulfilled'] as int?) ?? 0,
+        'pending': parseInt(row['pending']),
+        'today': parseInt(row['today']),
+        'fulfilled': parseInt(row['fulfilled']),
       };
     } catch (e) {
       debugPrint('getHospitalStats failed: $e');

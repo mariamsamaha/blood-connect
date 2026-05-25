@@ -154,18 +154,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     itemBuilder: (_, i) {
                       final b = _badges[i];
                       final earned = b['is_earned'] as bool? ?? false;
-                      return BadgeCard(
-                        icon: '${b['icon'] ?? '\u{1F3C6}'}',
-                        name: '${b['name'] ?? 'Badge'}',
-                        earned: earned,
-                        progress: earned
-                            ? 1.0
-                            : ((b['current_value'] as int? ?? 0) /
-                                    (b['requirement_value'] as int? ?? 1))
-                                .clamp(0.0, 1.0),
-                        progressLabel: earned
-                            ? 'Earned'
-                            : '${b['current_value']}/${b['requirement_value']}',
+                      return SizedBox(
+                        width: 90,
+                        child: BadgeCard(
+                          icon: '${b['icon'] ?? '🏆'}',
+                          name: '${b['name'] ?? 'Badge'}',
+                          earned: earned,
+                          progress: earned
+                              ? 1.0
+                              : (_parseInt(b['current_value']) /
+                                      _parseInt(b['requirement_value'], fallback: 1))
+                                  .clamp(0.0, 1.0),
+                          progressLabel: earned
+                              ? 'Earned'
+                              : '${b['current_value']}/${b['requirement_value']}',
+                        ),
                       );
                     },
                     separatorBuilder: (_, __) => const SizedBox(width: 10),
@@ -512,3 +515,12 @@ class _ProfileHead extends StatelessWidget {
     );
   }
 }
+
+int _parseInt(dynamic value, {int fallback = 0}) {
+  if (value == null) return fallback;
+  if (value is int) return value;
+  if (value is double) return value.toInt();
+  if (value is String) return int.tryParse(value) ?? fallback;
+  return fallback;
+}
+

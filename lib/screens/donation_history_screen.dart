@@ -45,7 +45,13 @@ class _DonationHistoryScreenState
   Widget build(BuildContext context) {
     final totalPoints = _history.fold<int>(
       0,
-      (sum, h) => sum + (h['points_earned'] as int? ?? 0),
+      (sum, h) {
+        final val = h['points_earned'];
+        final pts = val is int
+            ? val
+            : int.tryParse(val?.toString() ?? '') ?? 0;
+        return sum + pts;
+      },
     );
 
     return Scaffold(
@@ -112,7 +118,10 @@ class _DonationHistoryScreenState
                                 DateTime.parse(h['donation_date'].toString()),
                               )
                           : 'Unknown date';
-                      final points = h['points_earned'] as int? ?? 10;
+                      final rawPoints = h['points_earned'];
+                      final points = rawPoints is int
+                          ? rawPoints
+                          : int.tryParse(rawPoints?.toString() ?? '') ?? 10;
                       final urgency =
                           h['urgency_level'] as String? ?? 'routine';
 

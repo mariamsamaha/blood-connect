@@ -137,13 +137,27 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
                     ..._leaders.asMap().entries.map((entry) {
                       final index = entry.key;
                       final d = entry.value;
-                      final rank = d['rank'] as int? ?? index + 1;
+                      final rawRank = d['rank'];
+                      final rank = rawRank is int
+                          ? rawRank
+                          : int.tryParse(rawRank?.toString() ?? '') ?? (index + 1);
+
+                      final rawDonations = d['total_donations'];
+                      final donations = rawDonations is int
+                          ? rawDonations
+                          : int.tryParse(rawDonations?.toString() ?? '') ?? 0;
+
+                      final rawPoints = d['reward_points'];
+                      final points = rawPoints is int
+                          ? rawPoints
+                          : int.tryParse(rawPoints?.toString() ?? '') ?? 0;
+
                       return _LeaderCard(
                         rank: rank,
                         name: '${d['name']}',
                         bloodType: '${d['blood_type']}',
-                        donations: d['total_donations'] as int? ?? 0,
-                        points: d['reward_points'] as int? ?? 0,
+                        donations: donations,
+                        points: points,
                       );
                     }),
 

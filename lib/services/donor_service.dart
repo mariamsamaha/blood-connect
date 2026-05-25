@@ -123,9 +123,15 @@ class DonorService {
         query: {'donorId': donorId},
       );
       if (row == null) return {'totalDonations': 0, 'rewardPoints': 0};
+      int parseInt(dynamic v) {
+        if (v == null) return 0;
+        if (v is int) return v;
+        if (v is double) return v.toInt();
+        return int.tryParse(v.toString()) ?? 0;
+      }
       return {
-        'totalDonations': row['totalDonations'] as int? ?? 0,
-        'rewardPoints': row['rewardPoints'] as int? ?? 0,
+        'totalDonations': parseInt(row['totalDonations']),
+        'rewardPoints': parseInt(row['rewardPoints']),
       };
     } catch (e) {
       return {'totalDonations': 0, 'rewardPoints': 0};
@@ -180,7 +186,11 @@ class DonorService {
         '/api/v1/donor/rank',
         query: {'userId': userId},
       );
-      return row?['rank'] as int?;
+      final val = row?['rank'];
+      if (val == null) return null;
+      if (val is int) return val;
+      if (val is double) return val.toInt();
+      return int.tryParse(val.toString());
     } catch (_) {
       return null;
     }
