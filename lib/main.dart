@@ -33,6 +33,7 @@ import 'package:bloodconnect/repositories/user_repository.dart';
 import 'package:bloodconnect/repositories/donor_repository.dart';
 import 'package:bloodconnect/repositories/request_repository.dart';
 import 'package:bloodconnect/repositories/hospital_repository.dart';
+import 'package:bloodconnect/providers/theme_mode_provider.dart';
 import 'package:bloodconnect/theme/app_theme.dart';
 import 'package:bloodconnect/config/app_config.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -460,7 +461,7 @@ class _BloodConnectAppState extends ConsumerState<BloodConnectApp> {
       title: 'BloodConnect',
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
-      themeMode: ThemeMode.system,
+      themeMode: ref.watch(themeModeProvider),
       routerConfig: router,
     );
   }

@@ -1,8 +1,10 @@
 import 'package:bloodconnect/main.dart';
 import 'package:bloodconnect/models/user_profile.dart';
+import 'package:bloodconnect/providers/theme_mode_provider.dart';
 import 'package:bloodconnect/theme/app_theme.dart';
 import 'package:bloodconnect/widgets/app_button.dart';
 import 'package:bloodconnect/widgets/section_header.dart';
+import 'package:bloodconnect/widgets/theme_toggle_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -20,7 +22,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _saving = false;
 
   bool _notificationsEnabled = true;
-  double _radiusKm = 25;
   bool _donorAvailable = true;
   bool _updatingLocation = false;
 
@@ -39,7 +40,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     setState(() {
       _profile = profile;
       _notificationsEnabled = profile.notificationEnabled;
-      _radiusKm = profile.notificationRadiusKm.toDouble();
       _donorAvailable = profile.donorStatus == DonorStatus.available;
       _loading = false;
     });
@@ -54,7 +54,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         firebaseUid: profile.firebaseUid,
         updates: {
           'notification_enabled': _notificationsEnabled,
-          'notification_radius_km': _radiusKm.round(),
           'donor_status': _donorAvailable ? 'available' : 'unavailable',
         },
       );
@@ -225,22 +224,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     if (_notificationsEnabled) ...[
                       const SizedBox(height: 12),
                       const Divider(),
-                      const SizedBox(height: 8),
-                      _SettingsTile(
-                        title: 'Search Radius',
-                        subtitle:
-                            'Notify me for requests within ${_radiusKm.round()} km',
-                        trailing: null,
-                      ),
-                      const SizedBox(height: 4),
-                      Slider(
-                        value: _radiusKm,
-                        min: 5,
-                        max: 120,
-                        divisions: 23,
-                        label: '${_radiusKm.round()} km',
-                        onChanged: (v) => setState(() => _radiusKm = v),
-                      ),
                     ],
                   ],
                 ),
@@ -315,6 +298,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 16),
+                ThemeToggleCard(
+                  key: const ValueKey('theme_toggle'),
+                ),
                 const SizedBox(height: 32),
                 AppButton.secondary(
                   label: 'Sign Out',
@@ -357,7 +344,7 @@ class _SettingsGroup extends StatelessWidget {
           decoration: BoxDecoration(
             color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(AppRadius.lg),
-            border: Border.all(color: AppColors.divider),
+            border: Border.all(color: Theme.of(context).dividerColor),
             boxShadow: AppShadows.card,
           ),
           child: Column(children: children),
@@ -393,8 +380,8 @@ class _SettingsTile extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
+                style: TextStyle(
+                  color: Theme.of(context).textTheme.bodySmall?.color ?? AppColors.textSecondary,
                   fontSize: 13,
                 ),
               ),

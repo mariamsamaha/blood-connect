@@ -1,7 +1,6 @@
 import 'package:bloodconnect/models/blood_request.dart';
 import 'package:bloodconnect/theme/app_theme.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class UrgencyBadge extends StatefulWidget {
   const UrgencyBadge({super.key, required this.level, this.size = BadgeSize.md});
@@ -16,21 +15,76 @@ class UrgencyBadge extends StatefulWidget {
 class _UrgencyBadgeState extends State<UrgencyBadge>
     with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
+  late Animation<double> _scaleAnimation;
 
   @override
   void initState() {
     super.initState();
-    if (widget.level == UrgencyLevel.critical) {
-      _pulseController = AnimationController(
-        vsync: this,
-        duration: const Duration(milliseconds: 1200),
-      )..repeat(reverse: true);
-    } else {
-      _pulseController = AnimationController(
-        vsync: this,
-        value: 1,
-      );
+    _createAnimation();
+    _maybeStartAfterFirstFrame();
+  }
+
+  @override
+  void didUpdateWidget(covariant UrgencyBadge oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.level != widget.level) {
+      _pulseController.dispose();
+      _createAnimation();
+      _maybeStartAfterFirstFrame();
     }
+  }
+
+  void _createAnimation() {
+    switch (widget.level) {
+      case UrgencyLevel.critical:
+        _pulseController = AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 600),
+        );
+        _scaleAnimation = TweenSequence([
+          TweenSequenceItem(
+            tween: Tween(begin: 1.0, end: 1.25)
+                .chain(CurveTween(curve: Curves.easeOut)),
+            weight: 20,
+          ),
+          TweenSequenceItem(
+            tween: Tween(begin: 1.25, end: 1.0)
+                .chain(CurveTween(curve: Curves.easeInOut)),
+            weight: 80,
+          ),
+        ]).animate(_pulseController);
+      case UrgencyLevel.urgent:
+        _pulseController = AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 1400),
+        );
+        _scaleAnimation = TweenSequence([
+          TweenSequenceItem(
+            tween: Tween(begin: 1.0, end: 1.15)
+                .chain(CurveTween(curve: Curves.easeOut)),
+            weight: 20,
+          ),
+          TweenSequenceItem(
+            tween: Tween(begin: 1.15, end: 1.0)
+                .chain(CurveTween(curve: Curves.easeInOut)),
+            weight: 80,
+          ),
+        ]).animate(_pulseController);
+      case UrgencyLevel.routine:
+        _pulseController = AnimationController(
+          vsync: this,
+          value: 1,
+        );
+        _scaleAnimation = AlwaysStoppedAnimation(1.0);
+    }
+  }
+
+  void _maybeStartAfterFirstFrame() {
+    if (widget.level == UrgencyLevel.routine) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _pulseController.repeat();
+    });
   }
 
   @override
@@ -50,54 +104,30 @@ class _UrgencyBadgeState extends State<UrgencyBadge>
     }
   }
 
-  IconData get _icon {
-    switch (widget.level) {
-      case UrgencyLevel.critical:
-        return Icons.emergency_rounded;
-      case UrgencyLevel.urgent:
-        return Icons.warning_amber_rounded;
-      case UrgencyLevel.routine:
-        return Icons.schedule_rounded;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final hPad = widget.size == BadgeSize.sm ? 8.0 : 10.0;
-    final vPad = widget.size == BadgeSize.sm ? 4.0 : 5.0;
-    final fontSize = widget.size == BadgeSize.sm ? 10.0 : 11.0;
-    final iconSize = widget.size == BadgeSize.sm ? 12.0 : 14.0;
+    final iconSize = widget.size == BadgeSize.sm ? 14.0 : 18.0;
+    final containerSize = widget.size == BadgeSize.sm ? 28.0 : 36.0;
 
-    return AnimatedBuilder(
-      animation: _pulseController,
-      builder: (context, child) {
-        final pulse = _pulseController.value;
-        return Container(
-          padding: EdgeInsets.symmetric(horizontal: hPad, vertical: vPad),
-          decoration: BoxDecoration(
-            color: _color.withValues(alpha: 0.12 + (pulse * 0.05)),
-            borderRadius: BorderRadius.circular(AppRadius.sm),
-            border: Border.all(
-              color: _color.withValues(alpha: 0.2 + (pulse * 0.15)),
-            ),
+    return ScaleTransition(
+      scale: _scaleAnimation,
+      child: Container(
+        width: containerSize,
+        height: containerSize,
+        decoration: BoxDecoration(
+          color: _color.withValues(alpha: 0.12),
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: _color.withValues(alpha: 0.3),
+            width: 1.5,
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(_icon, size: iconSize, color: _color),
-              const SizedBox(width: 4),
-              Text(
-                widget.level.name.toUpperCase(),
-                style: GoogleFonts.inter(
-                  fontSize: fontSize,
-                  fontWeight: FontWeight.w700,
-                  color: _color,
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+        ),
+        child: Icon(
+          Icons.favorite,
+          size: iconSize,
+          color: _color,
+        ),
+      ),
     );
   }
 }

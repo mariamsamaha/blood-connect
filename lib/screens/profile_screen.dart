@@ -3,6 +3,7 @@ import 'package:bloodconnect/models/donor_response_entry.dart';
 import 'package:bloodconnect/models/user_profile.dart';
 import 'package:bloodconnect/theme/app_theme.dart';
 import 'package:bloodconnect/widgets/app_button.dart';
+import 'package:bloodconnect/widgets/blood_type_wheel.dart';
 import 'package:bloodconnect/widgets/badge_card.dart';
 import 'package:bloodconnect/widgets/section_header.dart';
 import 'package:bloodconnect/widgets/stat_card.dart';
@@ -86,6 +87,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
           children: [
             _ProfileHead(profile: profile),
+            const SizedBox(height: 16),
+            if (profile.bloodType.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).cardColor,
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                  border: Border.all(color: AppColors.divider),
+                  boxShadow: AppShadows.card,
+                ),
+                child: Center(
+                  child: BloodTypeWheel(
+                    selectedType: profile.bloodType,
+                    size: 220,
+                    direction: CompatibilityDirection.selectedCanDonateTo,
+                    label: '${profile.bloodType} can donate to',
+                  ),
+                ),
+              ),
             const SizedBox(height: 16),
             if (profile.role == UserRole.donor) ...[
               Row(
