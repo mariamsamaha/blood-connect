@@ -313,7 +313,7 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(AppRadius.lg),
           border: Border.all(
             color: AppColors.primaryRed.withValues(alpha: 0.15),
@@ -380,7 +380,7 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(AppRadius.lg),
           border: Border.all(
             color: AppColors.primaryRed.withValues(alpha: 0.15),
@@ -447,7 +447,7 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(AppRadius.lg),
           border: Border.all(
             color: AppColors.warning.withValues(alpha: 0.15),
@@ -614,10 +614,12 @@ class _ActiveMissionBanner extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [
-              const Color(0xFFFFF7ED),
-              const Color(0xFFFFF7ED).withValues(alpha: 0.8),
-            ],
+            colors: Theme.of(context).brightness == Brightness.dark
+                ? [AppColors.darkSurfaceCard, AppColors.darkBackground]
+                : [
+                    const Color(0xFFFFF7ED),
+                    const Color(0xFFFFF7ED).withValues(alpha: 0.8),
+                  ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -718,7 +720,9 @@ class _LocationBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.softAmber,
+        color: Theme.of(context).brightness == Brightness.dark
+            ? AppColors.darkSurfaceCard
+            : AppColors.softAmber,
         borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(
           color: AppColors.warning.withValues(alpha: 0.5),
@@ -823,7 +827,7 @@ class _FilterChip extends StatelessWidget {
         side: BorderSide(
           color: selected
               ? AppColors.primaryRed.withValues(alpha: 0.3)
-              : AppColors.divider,
+              : Theme.of(context).dividerColor,
         ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.sm),
@@ -870,7 +874,7 @@ class _EmptyRequests extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: AppColors.divider),
+        border: Border.all(color: Theme.of(context).dividerColor),
         boxShadow: AppShadows.card,
       ),
       child: Column(
@@ -888,17 +892,19 @@ class _EmptyRequests extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'No requests in your area right now',
             style: TextStyle(
               fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
+              color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'Check back soon.',
-            style: TextStyle(color: AppColors.textSecondary),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
           ),
         ],
       ),

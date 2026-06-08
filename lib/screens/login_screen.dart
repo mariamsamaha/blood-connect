@@ -147,7 +147,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.surface,
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
@@ -196,7 +196,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           margin: const EdgeInsets.symmetric(horizontal: 32),
           padding: const EdgeInsets.all(28),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(AppRadius.xl),
             boxShadow: [
               BoxShadow(
@@ -263,7 +263,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 16),
           decoration: BoxDecoration(
-            color: Colors.grey.shade50,
+            color: Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(AppRadius.lg),
             border: Border.all(color: AppColors.divider),
             boxShadow: AppShadows.card,
@@ -276,7 +276,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 height: 28,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(color: AppColors.divider),
                 ),

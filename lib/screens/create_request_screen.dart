@@ -5,6 +5,7 @@ import 'package:bloodconnect/theme/app_theme.dart';
 import 'package:bloodconnect/widgets/app_button.dart';
 import 'package:bloodconnect/widgets/app_text_field.dart';
 import 'package:bloodconnect/widgets/blood_type_chip.dart';
+import 'package:bloodconnect/widgets/blood_type_wheel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -450,20 +451,32 @@ class _StepContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (step == 0) {
-      return GridView.count(
-        crossAxisCount: 4,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-        childAspectRatio: 1.3,
-        children: bloodTypes
-            .map(
-              (t) => BloodTypeChip(
-                type: t,
-                selected: t == bloodType,
-                onTap: () => onBloodType(t),
-              ),
-            )
-            .toList(),
+      return SingleChildScrollView(
+        child: Column(
+          children: [
+            GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: 4,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              childAspectRatio: 1.3,
+              children: bloodTypes
+                  .map(
+                    (t) => BloodTypeChip(
+                      type: t,
+                      selected: t == bloodType,
+                      onTap: () => onBloodType(t),
+                    ),
+                  )
+                  .toList(),
+            ),
+            const SizedBox(height: 20),
+            Center(
+              child: BloodTypeWheel(selectedType: bloodType, size: 220),
+            ),
+          ],
+        ),
       );
     }
     if (step == 1) {

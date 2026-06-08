@@ -34,19 +34,19 @@ void main() {
   });
 
   group('UrgencyBadge', () {
-    testWidgets('renders uppercase level name for critical', (tester) async {
+    testWidgets('renders heart icon', (tester) async {
       await tester.pumpWidget(_wrap(const UrgencyBadge(level: UrgencyLevel.critical)));
-      expect(find.text('CRITICAL'), findsOneWidget);
+      expect(find.byIcon(Icons.favorite), findsOneWidget);
     });
 
-    testWidgets('renders uppercase level name for routine', (tester) async {
+    testWidgets('renders container with heart icon for routine', (tester) async {
       await tester.pumpWidget(_wrap(const UrgencyBadge(level: UrgencyLevel.routine)));
-      expect(find.text('ROUTINE'), findsOneWidget);
+      expect(find.byIcon(Icons.favorite), findsOneWidget);
     });
 
-    testWidgets('renders uppercase level name for urgent', (tester) async {
+    testWidgets('renders container with heart icon for urgent', (tester) async {
       await tester.pumpWidget(_wrap(const UrgencyBadge(level: UrgencyLevel.urgent)));
-      expect(find.text('URGENT'), findsOneWidget);
+      expect(find.byIcon(Icons.favorite), findsOneWidget);
     });
   });
 

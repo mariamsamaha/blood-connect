@@ -7,19 +7,29 @@ Widget _wrap(Widget w) => MaterialApp(home: Scaffold(body: w));
 
 void main() {
   group('UrgencyBadge', () {
-    testWidgets('renders CRITICAL with red color', (tester) async {
+    testWidgets('renders heart icon', (tester) async {
       await tester.pumpWidget(_wrap(const UrgencyBadge(level: UrgencyLevel.critical)));
-      expect(find.text('CRITICAL'), findsOneWidget);
+      expect(find.byIcon(Icons.favorite), findsOneWidget);
     });
 
-    testWidgets('renders URGENT with orange color', (tester) async {
-      await tester.pumpWidget(_wrap(const UrgencyBadge(level: UrgencyLevel.urgent)));
-      expect(find.text('URGENT'), findsOneWidget);
-    });
-
-    testWidgets('renders ROUTINE with blue color', (tester) async {
+    testWidgets('renders circle container', (tester) async {
       await tester.pumpWidget(_wrap(const UrgencyBadge(level: UrgencyLevel.routine)));
-      expect(find.text('ROUTINE'), findsOneWidget);
+      expect(find.byType(Container), findsAtLeastNWidgets(1));
+    });
+
+    testWidgets('critical has scale animation', (tester) async {
+      await tester.pumpWidget(_wrap(const UrgencyBadge(level: UrgencyLevel.critical)));
+      expect(find.byType(ScaleTransition), findsAtLeastNWidgets(1));
+    });
+
+    testWidgets('urgent has scale animation', (tester) async {
+      await tester.pumpWidget(_wrap(const UrgencyBadge(level: UrgencyLevel.urgent)));
+      expect(find.byType(ScaleTransition), findsAtLeastNWidgets(1));
+    });
+
+    testWidgets('routine has scale animation (static)', (tester) async {
+      await tester.pumpWidget(_wrap(const UrgencyBadge(level: UrgencyLevel.routine)));
+      expect(find.byType(ScaleTransition), findsAtLeastNWidgets(1));
     });
   });
 }

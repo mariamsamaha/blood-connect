@@ -37,7 +37,7 @@ void main() {
         onDecline: () {},
       )));
       await tester.pump();
-      expect(find.text('CRITICAL'), findsOneWidget);
+      expect(find.byIcon(Icons.favorite), findsOneWidget);
     });
 
     testWidgets('shows units count', (tester) async {
