@@ -1,0 +1,432 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "SLO Overview",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red",   "value": null },
+              { "color": "yellow","value": 99   },
+              { "color": "green", "value": 99.5 }
+            ]
+          },
+          "unit": "percent",
+          "min": 98, "max": 100
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "id": 1,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background" },
+      "title": "Availability (1h)",
+      "type": "stat",
+      "targets": [{
+        "datasource": "Prometheus",
+        "expr": "100 * (1 - (sum(rate(bloodconnect_http_requests_total{status_code=~\"5..\"}[5m])) or vector(0)) / sum(rate(bloodconnect_http_requests_total[5m])))",
+        "legendFormat": "availability"
+      }]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow","value": 500  },
+              { "color": "red",   "value": 2000 }
+            ]
+          },
+          "unit": "ms"
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "id": 2,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "title": "p95 Latency",
+      "type": "stat",
+      "targets": [{
+        "datasource": "Prometheus",
+        "expr": "histogram_quantile(0.95, sum(rate(bloodconnect_http_request_duration_ms_bucket[5m])) by (le))",
+        "legendFormat": "p95"
+      }]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow","value": 1000 },
+              { "color": "red",   "value": 5000 }
+            ]
+          },
+          "unit": "ms"
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "id": 3,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "title": "p99 Latency",
+      "type": "stat",
+      "targets": [{
+        "datasource": "Prometheus",
+        "expr": "histogram_quantile(0.99, sum(rate(bloodconnect_http_request_duration_ms_bucket[5m])) by (le))",
+        "legendFormat": "p99"
+      }]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow","value": 1    },
+              { "color": "red",   "value": 5    }
+            ]
+          },
+          "unit": "percent"
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "id": 4,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "title": "Error Rate",
+      "type": "stat",
+      "targets": [{
+        "datasource": "Prometheus",
+        "expr": "100 * (sum(rate(bloodconnect_http_requests_total{status_code=~\"5..\"}[5m])) or vector(0)) / sum(rate(bloodconnect_http_requests_total[5m]))",
+        "legendFormat": "error rate"
+      }]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow","value": 50   },
+              { "color": "red",   "value": 100  }
+            ]
+          },
+          "unit": "reqps"
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "id": 5,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "title": "Requests / sec",
+      "type": "stat",
+      "targets": [{
+        "datasource": "Prometheus",
+        "expr": "sum(rate(bloodconnect_http_requests_total[1m]))",
+        "legendFormat": "rps"
+      }]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow","value": 1    },
+              { "color": "red",   "value": 2    }
+            ]
+          }
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "id": 6,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "title": "In-flight Requests",
+      "type": "stat",
+      "targets": [{
+        "datasource": "Prometheus",
+        "expr": "bloodconnect_http_requests_in_flight",
+        "legendFormat": "in-flight"
+      }]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 101,
+      "title": "Request Throughput & Latency",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "lineWidth": 2 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "5xx errors" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "4xx errors" }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "id": 10,
+      "options": { "tooltip": { "mode": "multi" } },
+      "title": "Request Rate by Status",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "sum(rate(bloodconnect_http_requests_total{status_code=~\"2..\"}[1m]))",
+          "legendFormat": "2xx success"
+        },
+        {
+          "datasource": "Prometheus",
+          "expr": "sum(rate(bloodconnect_http_requests_total{status_code=~\"4..\"}[1m]))",
+          "legendFormat": "4xx errors"
+        },
+        {
+          "datasource": "Prometheus",
+          "expr": "sum(rate(bloodconnect_http_requests_total{status_code=~\"5..\"}[1m]))",
+          "legendFormat": "5xx errors"
+        }
+      ]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "lineWidth": 2 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "p99" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "p95" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "p50" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "id": 11,
+      "title": "Response Time Percentiles",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "histogram_quantile(0.50, sum(rate(bloodconnect_http_request_duration_ms_bucket[5m])) by (le))",
+          "legendFormat": "p50"
+        },
+        {
+          "datasource": "Prometheus",
+          "expr": "histogram_quantile(0.95, sum(rate(bloodconnect_http_request_duration_ms_bucket[5m])) by (le))",
+          "legendFormat": "p95"
+        },
+        {
+          "datasource": "Prometheus",
+          "expr": "histogram_quantile(0.99, sum(rate(bloodconnect_http_request_duration_ms_bucket[5m])) by (le))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "id": 102,
+      "title": "Database",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "lineWidth": 2 } } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "id": 20,
+      "title": "DB Query Duration by Operation",
+      "type": "timeseries",
+      "targets": [{
+        "datasource": "Prometheus",
+        "expr": "histogram_quantile(0.95, sum(rate(bloodconnect_db_query_duration_ms_bucket[5m])) by (le, operation))",
+        "legendFormat": "p95 {{operation}}"
+      }]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": { "custom": { "lineWidth": 2 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "waiting" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "id": 21,
+      "title": "DB Connection Pool",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "bloodconnect_db_pool_size{state=\"total\"}",
+          "legendFormat": "total"
+        },
+        {
+          "datasource": "Prometheus",
+          "expr": "bloodconnect_db_pool_size{state=\"idle\"}",
+          "legendFormat": "idle"
+        },
+        {
+          "datasource": "Prometheus",
+          "expr": "bloodconnect_db_pool_size{state=\"waiting\"}",
+          "legendFormat": "waiting"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "id": 103,
+      "title": "Circuit Breaker & Notifications",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green",  "value": null },
+              { "color": "yellow", "value": 1    },
+              { "color": "red",    "value": 2    }
+            ]
+          },
+          "mappings": [
+            { "options": { "0": { "text": "CLOSED" },  "1": { "text": "OPEN" }, "2": { "text": "HALF-OPEN" } }, "type": "value" }
+          ]
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 24 },
+      "id": 30,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "title": "Circuit Breaker State (FCM)",
+      "type": "stat",
+      "targets": [{
+        "datasource": "Prometheus",
+        "expr": "bloodconnect_circuit_breaker_state{service=\"fcm\"}",
+        "legendFormat": "FCM"
+      }]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2 } } },
+      "gridPos": { "h": 8, "w": 9, "x": 6, "y": 24 },
+      "id": 31,
+      "title": "Notification Dispatches",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "rate(bloodconnect_notification_dispatches_total{status=\"success\"}[5m])",
+          "legendFormat": "success"
+        },
+        {
+          "datasource": "Prometheus",
+          "expr": "rate(bloodconnect_notification_dispatches_total{status=\"failure\"}[5m])",
+          "legendFormat": "failure"
+        }
+      ]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "lineWidth": 2 } } },
+      "gridPos": { "h": 8, "w": 9, "x": 15, "y": 24 },
+      "id": 32,
+      "title": "Notification Dispatch Duration",
+      "type": "timeseries",
+      "targets": [{
+        "datasource": "Prometheus",
+        "expr": "histogram_quantile(0.95, sum(rate(bloodconnect_notification_dispatch_duration_ms_bucket[5m])) by (le))",
+        "legendFormat": "p95"
+      }]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 },
+      "id": 104,
+      "title": "System Resources",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "lineWidth": 2 } } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 33 },
+      "id": 40,
+      "title": "Node.js Memory Usage",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "bloodconnect_nodejs_heap_size_used_bytes",
+          "legendFormat": "heap used"
+        },
+        {
+          "datasource": "Prometheus",
+          "expr": "bloodconnect_nodejs_heap_size_total_bytes",
+          "legendFormat": "heap total"
+        },
+        {
+          "datasource": "Prometheus",
+          "expr": "bloodconnect_process_resident_memory_bytes",
+          "legendFormat": "RSS"
+        }
+      ]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2 } } },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 33 },
+      "id": 41,
+      "title": "Event Loop & Active Handles",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "bloodconnect_nodejs_active_handles_total",
+          "legendFormat": "active handles"
+        },
+        {
+          "datasource": "Prometheus",
+          "expr": "bloodconnect_nodejs_active_requests_total",
+          "legendFormat": "active requests"
+        }
+      ]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["bloodconnect"],
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "BloodConnect API",
+  "uid": "bloodconnect-api",
+  "version": 1
+}
