@@ -19,6 +19,6 @@ ENV PORT=8090
 ENV NODE_ENV=production
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD wget -qO- http://localhost:8090/health/db | grep -q '"status":"ok"' || exit 1
+  CMD wget -qO- http://127.0.0.1:8090/health/db | grep -q '"status":"ok"' || exit 1
 
 CMD ["node", "src/cluster.js"]

@@ -6,7 +6,7 @@ services:
     ports:
       - "8090:8090"
     env_file:
-      - ./api-backend/.env
+      - ./.env
     environment:
       - NODE_ENV=production
       - NOTIFICATION_BACKEND_URL=http://notification-backend:8080
@@ -14,11 +14,13 @@ services:
       notification-backend:
         condition: service_started
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8090/health/db"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8090/health/db"]
       interval: 30s
       timeout: 5s
       start_period: 15s
       retries: 3
+    volumes:
+      - ./keys:/keys:ro
     restart: unless-stopped
 
   notification-backend:
@@ -28,7 +30,20 @@ services:
     ports:
       - "8080:8080"
     env_file:
-      - ./notification-backend/.env
+      - ./.env
     environment:
       - NODE_ENV=production
+    volumes:
+      - ./keys:/keys:ro
+    restart: unless-stopped
+
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    ports: []
+    env_file:
+      - ./.env
+    environment:
+      - PORT=8000
     restart: unless-stopped
