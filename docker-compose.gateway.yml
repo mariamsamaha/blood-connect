@@ -1,0 +1,34 @@
+services:
+
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      api-backend:
+        condition: service_healthy
+      notification-backend:
+        condition: service_started
+      ai-service:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      interval: 15s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+    # Production certs — uncomment when you have them:
+    # volumes:
+    #   - /etc/letsencrypt/live/bloodconnect.app/fullchain.pem:/etc/nginx/ssl/cert.pem:ro
+    #   - /etc/letsencrypt/live/bloodconnect.app/privkey.pem:/etc/nginx/ssl/key.pem:ro
+
+  api-backend:
+    ports: []   # no longer exposed directly — go through gateway
+
+  notification-backend:
+    ports: []   # internal only
+
