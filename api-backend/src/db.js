@@ -1,6 +1,11 @@
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
 const metrics = require('./metrics');
 const logger = require('./logger');
+
+// Force timestamp without time zone (OID 1114) to be parsed as UTC.
+// Default pg behavior interprets values in the Node.js local timezone,
+// which causes timezone shifting when the server runs in a non-UTC timezone.
+types.setTypeParser(types.builtins.TIMESTAMP, (val) => new Date(val + 'Z'));
 
 function supabaseSsl() {
   if ((process.env.SUPABASE_REQUIRE_SSL || 'true').toLowerCase() === 'false') {
