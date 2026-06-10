@@ -36,7 +36,10 @@ def test_denormalize():
 
 
 def test_rules_decision_all_normal():
-    values = {param: (THRESHOLDS[param][0] + THRESHOLDS[param][1]) / 2 for param in THRESHOLDS}
+    values = {}
+    for param in THRESHOLDS:
+        mn, mx = THRESHOLDS[param][0], THRESHOLDS[param][1]
+        values[param] = mn if mx is None else (mn + mx) / 2
     result, reasons = rules_decision(values)
     assert result == "Eligible"
     assert reasons == []

@@ -159,10 +159,10 @@ jobs:
         working-directory: ai-service
         run: pip install -r requirements.txt
 
-      # Run unit tests (skip model-dependent tests which need GPU or model file)
+      # conftest.py mocks the ViT model — all tests now run without GPU
       - name: Run tests
         working-directory: ai-service
-        run: pytest test_main.py -v -k "not test_health and not test_predict" --timeout=30
+        run: pytest test_main.py -v --timeout=30
 
   # ─────────────────────────────────────────────────────────────────────────────
   # JOB 5 — Secret scan (Gitleaks)
