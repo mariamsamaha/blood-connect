@@ -264,10 +264,10 @@ class _AiPredictionScreenState extends ConsumerState<AiPredictionScreen>
                             icon: Icons.check_circle_outline_rounded,
                             onPressed: () => Navigator.pop(context, true),
                           )
-                        : AppButton.danger(
-                            label: 'Accept anyway (clinical override)',
-                            icon: Icons.warning_rounded,
-                            onPressed: () => Navigator.pop(context, true),
+                        : AppButton.secondary(
+                            label: 'Go Back',
+                            icon: Icons.arrow_back_rounded,
+                            onPressed: () => Navigator.pop(context, false),
                           ),
                   ],
                 ],
