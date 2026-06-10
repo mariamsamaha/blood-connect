@@ -59,6 +59,7 @@ jobs:
           file: coverage/lcov.info
           flags: flutter
           fail_ci_if_error: false   # don't break build if Codecov is down
+          min_coverage: 70
 
   # ─────────────────────────────────────────────────────────────────────────────
   # JOB 2 — API BFF: lint + test (Jest + Supertest)
@@ -100,6 +101,10 @@ jobs:
           FIREBASE_PROJECT_ID: bloodconnect-mvp-b605f
           GOOGLE_APPLICATION_CREDENTIALS: ""
 
+      - name: Build Docker image
+        run: docker build -t bloodconnect-api:ci .
+        working-directory: api-backend
+
   # ─────────────────────────────────────────────────────────────────────────────
   # JOB 3 — Notification backend: lint + test
   # ─────────────────────────────────────────────────────────────────────────────
@@ -135,6 +140,10 @@ jobs:
           NODE_ENV: test
           INTERNAL_SECRET: ci-test-secret
           FIREBASE_PROJECT_ID: bloodconnect-mvp-b605f
+
+      - name: Build Docker image
+        run: docker build -t bloodconnect-notification:ci .
+        working-directory: notification-backend
 
   # ─────────────────────────────────────────────────────────────────────────────
   # JOB 4 — AI service: unit tests (pytest)
@@ -183,3 +192,18 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 6 — Gateway: build Docker image
+  # ─────────────────────────────────────────────────────────────────────────────
+  gateway:
+    name: Gateway — build test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build gateway image
+        run: docker build -t bloodconnect-gateway:ci ./gateway
