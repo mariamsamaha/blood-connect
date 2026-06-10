@@ -1,6 +1,7 @@
 import 'package:bloodconnect/main.dart';
 import 'package:bloodconnect/models/hospital_request_match.dart';
 import 'package:bloodconnect/models/user_profile.dart';
+import 'package:bloodconnect/providers/notification_provider.dart';
 import 'package:bloodconnect/theme/app_theme.dart';
 import 'package:bloodconnect/widgets/app_button.dart';
 import 'package:bloodconnect/widgets/section_header.dart';
@@ -161,7 +162,47 @@ class _HospitalDashboardScreenState
 
   @override
   Widget build(BuildContext context) {
+    final unreadCount = ref.watch(unreadCountNotifierProvider);
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('BloodConnect'),
+        actions: [
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.notifications_outlined),
+                onPressed: () => context.push('/notifications'),
+              ),
+              if (unreadCount > 0)
+                Positioned(
+                  right: 4,
+                  top: 4,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: AppColors.primaryRed,
+                      shape: BoxShape.circle,
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 18,
+                      minHeight: 18,
+                    ),
+                    child: Text(
+                      '$unreadCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(

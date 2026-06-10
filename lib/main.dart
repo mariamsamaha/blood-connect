@@ -183,7 +183,8 @@ final auditLogServiceProvider = Provider<AuditLogService>((ref) {
 });
 
 final notificationServiceProvider = Provider<NotificationService>((ref) {
-  return NotificationService();
+  final api = ref.watch(apiClientProvider);
+  return NotificationService(api);
 });
 
 final requestServiceProvider = Provider<RequestService>((ref) {

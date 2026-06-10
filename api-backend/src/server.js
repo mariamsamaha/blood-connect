@@ -103,6 +103,36 @@ function profileSelect() {
     FROM users`;
 }
 
+// ─── Notification helpers ──────────────────────────────────────────────────────
+async function insertNotification({ userId, requestId, notificationType, title, body }) {
+  try {
+    await query(
+      `INSERT INTO notifications (user_id, request_id, notification_type, title, body, delivery_status)
+       VALUES ($1::uuid, $2::uuid, $3, $4, $5, 'sent')`,
+      [userId, requestId, notificationType, title, body],
+    );
+  } catch (err) {
+    // notifications table may not exist yet if migration wasn't run — non-critical
+    logger.warn({ err }, 'Failed to insert notification');
+  }
+}
+
+async function insertNotificationsForDonors({ requestId, donorIds, notificationType, title, body }) {
+  if (donorIds.length === 0) return;
+  try {
+    const values = donorIds.map((_, i) =>
+      `($${i * 6 + 1}::uuid, $${i * 6 + 2}::uuid, $${i * 6 + 3}, $${i * 6 + 4}, $${i * 6 + 5}, $${i * 6 + 6})`,
+    ).join(',');
+    const flat = donorIds.flatMap((id) => [id, requestId, notificationType, title, body, 'sent']);
+    await query(
+      `INSERT INTO notifications (user_id, request_id, notification_type, title, body, delivery_status) VALUES ${values}`,
+      flat,
+    );
+  } catch (err) {
+    logger.warn({ err }, 'Failed to insert notifications for donors');
+  }
+}
+
 // ─── Metrics (Prometheus) ─────────────────────────────────────────────────────
 app.get('/metrics', metrics.metricsHandler);
 
@@ -638,6 +668,14 @@ app.post('/api/v1/requests', requireFirebaseAuth, async (req, res) => {
       logger.warn({ err: auditErr }, 'Audit log write failed');
     }
 
+    insertNotification({
+      userId: b.requesterId,
+      requestId: created.id,
+      notificationType: 'request_alert',
+      title: 'Request Created',
+      body: `Your ${b.bloodType} request at ${hospitalName} is now active. Donors in your area are being notified.`,
+    }).catch(() => {});
+
     notifyNewRequest(created).catch((e) =>
       logger.warn({ err: e }, 'Push notification dispatch failed'),
     );
@@ -847,6 +885,27 @@ app.post('/api/v1/donor/responses/accept', requireFirebaseAuth, async (req, res)
        VALUES ($1::uuid, 'donor_accepted', $2, $3::uuid)`,
       [requestId, `Atomic assignment to donor ${donorId}.`, donorId],
     ).catch(() => {});
+    query(
+      `SELECT requester_id, hospital_id, hospital_name, blood_type FROM blood_requests WHERE id = $1::uuid`,
+      [requestId],
+    ).then((rows) => {
+      if (rows.length === 0) return;
+      const r = rows[0];
+      insertNotification({
+        userId: r.requester_id,
+        requestId,
+        notificationType: 'fulfillment_update',
+        title: 'Donor Found',
+        body: `A donor has accepted your ${r.blood_type} request at ${r.hospital_name}.`,
+      }).catch(() => {});
+      insertNotification({
+        userId: r.hospital_id,
+        requestId,
+        notificationType: 'fulfillment_update',
+        title: 'Donor Assigned',
+        body: `A donor accepted request ${requestId} at your hospital.`,
+      }).catch(() => {});
+    }).catch(() => {});
     return res.status(204).send();
   } catch (err) {
     const msg = String(err);
@@ -1072,7 +1131,36 @@ app.post('/api/v1/hospital/verify', requireFirebaseAuth, async (req, res) => {
           'Run database/mvp_incremental.sql on Supabase (verify_request_donation).',
       });
     }
-    if (rows[0].success === true) return res.json({ error: null });
+    if (rows[0].success === true) {
+      query(
+        `SELECT br.requester_id, br.hospital_id, br.hospital_name, br.blood_type,
+                dr.donor_id
+         FROM blood_requests br
+         LEFT JOIN donor_responses dr ON dr.request_id = br.id AND dr.response_type = 'accepted'
+         WHERE br.id = $1::uuid`,
+        [requestId],
+      ).then((r) => {
+        if (r.length === 0) return;
+        const info = r[0];
+        if (info.donor_id) {
+          insertNotification({
+            userId: info.donor_id,
+            requestId,
+            notificationType: 'fulfillment_update',
+            title: 'Donation Verified',
+            body: `Your donation at ${info.hospital_name} has been verified. Thank you for saving lives!`,
+          }).catch(() => {});
+        }
+        insertNotification({
+          userId: info.requester_id,
+          requestId,
+          notificationType: 'fulfillment_update',
+          title: 'Request Fulfilled',
+          body: `Your ${info.blood_type} request at ${info.hospital_name} has been fulfilled.`,
+        }).catch(() => {});
+      }).catch(() => {});
+      return res.json({ error: null });
+    }
     return res.json({ error: rows[0].error_message || 'Verification failed' });
   } catch (err) {
     logger.error({ err, route: 'POST /hospital/verify' }, 'Failed to verify donation');
@@ -1205,7 +1293,7 @@ async function notifyNewRequest(request) {
   if (hospitalLat == null || hospitalLng == null) return;
 
   const donors = await query(
-    `SELECT DISTINCT u.fcm_token FROM users u
+    `SELECT DISTINCT u.id, u.fcm_token FROM users u
      WHERE u.fcm_token IS NOT NULL AND u.account_type = 'regular'
        AND u.role = 'donor' AND u.donor_status = 'available' AND u.is_active = TRUE
        AND u.notification_enabled = TRUE AND u.location IS NOT NULL
@@ -1215,6 +1303,19 @@ async function notifyNewRequest(request) {
          (GREATEST(COALESCE(u.notification_radius_km, 50), 10) * 1000)::double precision)`,
     [donorTypes.join(','), hospitalLat, hospitalLng],
   );
+
+  const donorIds = donors.map((r) => r.id).filter(Boolean);
+  if (donorIds.length > 0) {
+    const urgency = request.urgency_level || 'urgent';
+    const label = urgency === 'critical' ? 'Critical' : urgency === 'urgent' ? 'Urgent' : 'New';
+    insertNotificationsForDonors({
+      requestId: request.id,
+      donorIds,
+      notificationType: 'request_alert',
+      title: `${label} Blood Request`,
+      body: `${request.blood_type} needed at ${request.hospital_name}`,
+    }).catch(() => {});
+  }
 
   const tokens = donors
     .map((r) => r.fcm_token)
@@ -1383,6 +1484,70 @@ app.post('/api/v1/coupons/redeem', requireFirebaseAuth, async (req, res) => {
     if (result.error) return res.status(400).json(result);
     return res.json(result);
   } catch (err) { return serverError(res, err, 'POST /coupons/redeem'); }
+});
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+app.get('/api/v1/notifications', requireFirebaseAuth, async (req, res) => {
+  try {
+    const fbUid = uid(req);
+    const user = await query('SELECT id FROM users WHERE firebase_uid = $1', [fbUid]);
+    if (user.length === 0) return res.json([]);
+    const userId = user[0].id;
+    const rows = await query(
+      `SELECT id, request_id, notification_type, title, body,
+              sent_at, read_at, delivery_status
+       FROM notifications
+       WHERE user_id = $1::uuid
+       ORDER BY sent_at DESC
+       LIMIT 50`,
+      [userId],
+    );
+    return res.json(rows);
+  } catch (err) {
+    logger.error({ err, route: 'GET /notifications' }, 'Failed to fetch notifications');
+    return res.json([]);
+  }
+});
+
+app.post('/api/v1/notifications/read', requireFirebaseAuth, async (req, res) => {
+  try {
+    const fbUid = uid(req);
+    const user = await query('SELECT id FROM users WHERE firebase_uid = $1', [fbUid]);
+    if (user.length === 0) return res.status(204).send();
+    const userId = user[0].id;
+    const { notificationId } = req.body || {};
+    if (notificationId) {
+      await query(
+        `UPDATE notifications SET read_at = NOW() WHERE id = $1::uuid AND user_id = $2::uuid`,
+        [notificationId, userId],
+      );
+    } else {
+      await query(
+        `UPDATE notifications SET read_at = NOW() WHERE user_id = $1::uuid AND read_at IS NULL`,
+        [userId],
+      );
+    }
+    return res.status(204).send();
+  } catch (err) {
+    logger.error({ err, route: 'POST /notifications/read' }, 'Failed to mark read');
+    return res.status(204).send();
+  }
+});
+
+app.get('/api/v1/notifications/unread-count', requireFirebaseAuth, async (req, res) => {
+  try {
+    const fbUid = uid(req);
+    const user = await query('SELECT id FROM users WHERE firebase_uid = $1', [fbUid]);
+    if (user.length === 0) return res.json({ count: 0 });
+    const rows = await query(
+      `SELECT COUNT(*)::int AS count FROM notifications
+       WHERE user_id = $1::uuid AND read_at IS NULL`,
+      [user[0].id],
+    );
+    return res.json({ count: rows[0]?.count ?? 0 });
+  } catch (err) {
+    return res.json({ count: 0 });
+  }
 });
 
 // ── AI Eligibility ────────────────────────────────────────────────────────────

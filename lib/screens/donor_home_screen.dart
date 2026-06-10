@@ -181,6 +181,7 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
                             profile: _profile,
                             donations: _donations,
                             points: _points,
+                            notificationCount: _matchingRequests.length,
                           ),
                           const SizedBox(height: 14),
                           _buildAiCard(),
@@ -285,6 +286,7 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
             profile: null,
             donations: 0,
             points: 0,
+            notificationCount: 0,
           ),
         ),
         const SizedBox(height: 14),
@@ -514,11 +516,13 @@ class _GreetingCard extends StatelessWidget {
     required this.profile,
     required this.donations,
     required this.points,
+    required this.notificationCount,
   });
 
   final UserProfile? profile;
   final int donations;
   final int points;
+  final int notificationCount;
 
   @override
   Widget build(BuildContext context) {
@@ -548,6 +552,47 @@ class _GreetingCard extends StatelessWidget {
                   '$greeting, $name',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     color: Colors.white,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: GestureDetector(
+                  onTap: () => context.push('/notifications'),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      const Icon(
+                        Icons.notifications_rounded,
+                        color: Colors.white,
+                        size: 26,
+                      ),
+                      if (notificationCount > 0)
+                        Positioned(
+                          right: -4,
+                          top: -4,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 18,
+                              minHeight: 18,
+                            ),
+                            child: Text(
+                              '$notificationCount',
+                              style: const TextStyle(
+                                color: AppColors.primaryRed,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ),
