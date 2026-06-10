@@ -234,12 +234,17 @@ class _HospitalDashboardScreenState
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: 0,
         onTap: (i) {
-          if (i == 1) context.go('/profile');
+          if (i == 1) context.go('/stories');
+          if (i == 2) context.go('/profile');
         },
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.dashboard_rounded),
             label: 'Dashboard',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.auto_stories_rounded),
+            label: 'Stories',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person_rounded),

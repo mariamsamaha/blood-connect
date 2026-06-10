@@ -162,12 +162,17 @@ class _RecipientHomeScreenState extends ConsumerState<RecipientHomeScreen> {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: 0,
         onTap: (i) {
-          if (i == 1) context.go('/profile');
+          if (i == 1) context.go('/stories');
+          if (i == 2) context.go('/profile');
         },
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.home_rounded),
             label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.auto_stories_rounded),
+            label: 'Stories',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person_rounded),
@@ -456,7 +461,11 @@ class _ActiveRequestCard extends StatelessWidget {
     final hh = (seconds ~/ 3600).toString().padLeft(2, '0');
     final mm = ((seconds % 3600) ~/ 60).toString().padLeft(2, '0');
     final ss = (seconds % 60).toString().padLeft(2, '0');
-    final progress = request.status == RequestStatus.active ? 0.45 : 0.85;
+    final totalSeconds =
+        request.expiresAt.difference(request.createdAt).inSeconds;
+    final progress = totalSeconds > 0
+        ? 1.0 - (seconds / totalSeconds).clamp(0.0, 1.0)
+        : 0.0;
     final isFinding = request.status == RequestStatus.active;
 
     return Container(

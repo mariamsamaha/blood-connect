@@ -260,12 +260,17 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen> {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: 0,
         onTap: (index) {
-          if (index == 1) context.go('/profile');
+          if (index == 1) context.go('/stories');
+          if (index == 2) context.go('/profile');
         },
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.home_rounded),
             label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.auto_stories_rounded),
+            label: 'Stories',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person_rounded),
