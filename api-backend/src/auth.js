@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const admin = require('firebase-admin');
+const redis = require('./redis');
 
 function resolveCredentialPath() {
   const envPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
@@ -61,6 +62,8 @@ function initializeFirebaseAdmin() {
 
 if (process.env.NODE_ENV !== 'test') {
   initializeFirebaseAdmin();
+  // Initialize Redis (non-blocking if unavailable)
+  redis.init().catch(() => {});
 }
 
 async function requireFirebaseAuth(req, res, next) {
@@ -73,8 +76,25 @@ async function requireFirebaseAuth(req, res, next) {
     return res.status(401).json({ error: 'missing_token' });
   }
 
+  // Check Redis session cache first
+  if (redis.isEnabled()) {
+    try {
+      const cached = await redis.getCachedToken(token);
+      if (cached) {
+        req.firebaseUser = cached;
+        return next();
+      }
+    } catch {
+      // cache miss — fall through to verification
+    }
+  }
+
   try {
     req.firebaseUser = await admin.auth().verifyIdToken(token);
+    // Cache the verified result in Redis
+    if (redis.isEnabled()) {
+      redis.setCachedToken(token, req.firebaseUser).catch(() => {});
+    }
     return next();
   } catch (err) {
     console.error(

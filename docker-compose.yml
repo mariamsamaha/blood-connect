@@ -1,4 +1,15 @@
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
   api-backend:
     build:
       context: ./api-backend
@@ -10,6 +21,7 @@ services:
     environment:
       - NODE_ENV=production
       - NOTIFICATION_BACKEND_URL=http://notification-backend:8080
+      - REDIS_URL=redis://redis:6379
     depends_on:
       notification-backend:
         condition: service_started
