@@ -27,6 +27,23 @@ app.use(express.json({ limit: '1mb' }));
 app.use(traceMiddleware);
 app.use(metrics.metricsMiddleware);
 
+// ─── Version & Deprecation headers ──────────────────────────────────────────
+app.use((req, res, next) => {
+  res.setHeader('X-API-Version', '1');
+
+  const match = req.path.match(/^\/api\/v(\d+)\//);
+  if (match) {
+    const version = parseInt(match[1], 10);
+    if (version < 1) {
+      res.setHeader('Deprecation', 'true');
+      res.setHeader('Sunset', 'Sat, 22 Aug 2026 00:00:00 GMT');
+      res.setHeader('Link', '</api/v1/>; rel="successor-version"');
+    }
+  }
+
+  next();
+});
+
 app.use(require('pino-http')({
   logger,
   genReqId: (req) => req.requestId || randomUUID(),
@@ -228,6 +245,24 @@ app.get('/health/db', async (_req, res) => {
 });
 
 // ─── Users ────────────────────────────────────────────────────────────────────
+/**
+ * @swagger
+ * /api/v1/users/me:
+ *   get:
+ *     summary: Get the authenticated user's profile
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User profile
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/UserProfile'
+ *       404:
+ *         description: User not found
+ */
 app.get('/api/v1/users/me', requireFirebaseAuth, async (req, res) => {
   try {
     const rows = await query(
@@ -241,6 +276,24 @@ app.get('/api/v1/users/me', requireFirebaseAuth, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/users/me/bootstrap:
+ *   post:
+ *     summary: Create a minimal profile on first sign-in
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Existing user profile
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/UserProfile'
+ *       201:
+ *         description: New user profile created
+ */
 app.post('/api/v1/users/me/bootstrap', requireFirebaseAuth, async (req, res) => {
   try {
     const fb = req.firebaseUser;
@@ -274,6 +327,20 @@ app.post('/api/v1/users/me/bootstrap', requireFirebaseAuth, async (req, res) => 
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/users/me/complete:
+ *   post:
+ *     summary: Complete the user profile after sign-up
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Existing or updated profile
+ *       201:
+ *         description: New profile created
+ */
 app.post('/api/v1/users/me/complete', requireFirebaseAuth, async (req, res) => {
   try {
     const fb = req.firebaseUser;
@@ -406,6 +473,20 @@ app.post('/api/v1/users/me/complete', requireFirebaseAuth, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/users/me:
+ *   patch:
+ *     summary: Update the authenticated user's profile fields
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       204:
+ *         description: Updated successfully
+ *       400:
+ *         description: Invalid payload
+ */
 app.patch('/api/v1/users/me', requireFirebaseAuth, async (req, res) => {
   try {
     const updates = req.body?.updates;
@@ -446,6 +527,18 @@ app.patch('/api/v1/users/me', requireFirebaseAuth, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/users/me/location:
+ *   patch:
+ *     summary: Update the user's current location
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       204:
+ *         description: Location updated
+ */
 app.patch('/api/v1/users/me/location', requireFirebaseAuth, async (req, res) => {
   try {
     const { latitude, longitude } = req.body || {};
@@ -464,6 +557,18 @@ app.patch('/api/v1/users/me/location', requireFirebaseAuth, async (req, res) => 
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/users/me/fcm-token:
+ *   patch:
+ *     summary: Update the user's Firebase Cloud Messaging token
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       204:
+ *         description: Token updated
+ */
 app.patch('/api/v1/users/me/fcm-token', requireFirebaseAuth, async (req, res) => {
   try {
     const token = req.body?.token;
@@ -478,6 +583,18 @@ app.patch('/api/v1/users/me/fcm-token', requireFirebaseAuth, async (req, res) =>
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/users/me:
+ *   delete:
+ *     summary: Delete the authenticated user and all associated data
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       204:
+ *         description: User deleted
+ */
 app.delete('/api/v1/users/me', requireFirebaseAuth, async (req, res) => {
   try {
     const fbUid = uid(req);
@@ -505,6 +622,25 @@ app.delete('/api/v1/users/me', requireFirebaseAuth, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/users/me/badges:
+ *   get:
+ *     summary: Get earned badges for a user
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: List of earned badges
+ */
 app.get('/api/v1/users/me/badges', requireFirebaseAuth, async (req, res) => {
   try {
     const userId = req.query.userId;
@@ -525,6 +661,25 @@ app.get('/api/v1/users/me/badges', requireFirebaseAuth, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/users/me/badges/progress:
+ *   get:
+ *     summary: Get all badges with progress toward earning them
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Badges with progress
+ */
 app.get('/api/v1/users/me/badges/progress', requireFirebaseAuth, async (req, res) => {
   try {
     const userId = req.query.userId;
@@ -552,6 +707,31 @@ app.get('/api/v1/users/me/badges/progress', requireFirebaseAuth, async (req, res
 });
 
 // ─── Hospitals (recipient) ────────────────────────────────────────────────────
+/**
+ * @swagger
+ * /api/v1/hospitals:
+ *   get:
+ *     summary: List verified hospitals near a location
+ *     tags: [Hospitals]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: lat
+ *         schema:
+ *           type: number
+ *       - in: query
+ *         name: lng
+ *         schema:
+ *           type: number
+ *       - in: query
+ *         name: radiusKm
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: List of hospitals
+ */
 app.get('/api/v1/hospitals', requireFirebaseAuth, async (req, res) => {
   try {
     const lat = req.query.lat != null ? parseFloat(req.query.lat) : null;
@@ -591,6 +771,57 @@ app.get('/api/v1/hospitals', requireFirebaseAuth, async (req, res) => {
 });
 
 // ─── Blood requests ───────────────────────────────────────────────────────────
+/**
+ * @swagger
+ * /api/v1/requests:
+ *   post:
+ *     summary: Create a new blood request
+ *     tags: [Requests]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - requesterId
+ *               - bloodType
+ *               - unitsNeeded
+ *               - urgencyLevel
+ *               - hospitalId
+ *               - hospitalLat
+ *               - hospitalLng
+ *             properties:
+ *               requesterId:
+ *                 type: string
+ *                 format: uuid
+ *               bloodType:
+ *                 type: string
+ *                 enum: [A+, A-, B+, B-, O+, O-, AB+, AB-]
+ *               unitsNeeded:
+ *                 type: integer
+ *               urgencyLevel:
+ *                 type: string
+ *                 enum: [routine, urgent, critical]
+ *               hospitalId:
+ *                 type: string
+ *                 format: uuid
+ *               hospitalLat:
+ *                 type: number
+ *               hospitalLng:
+ *                 type: number
+ *     responses:
+ *       201:
+ *         description: Request created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/BloodRequest'
+ *       400:
+ *         description: Validation error
+ */
 app.post('/api/v1/requests', requireFirebaseAuth, async (req, res) => {
   try {
     const b = req.body || {};
@@ -719,6 +950,25 @@ app.post('/api/v1/requests', requireFirebaseAuth, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/requests/active:
+ *   get:
+ *     summary: Get the user's active blood request
+ *     tags: [Requests]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Active request or null
+ */
 app.get('/api/v1/requests/active', requireFirebaseAuth, async (req, res) => {
   try {
     const userId = req.query.userId;
@@ -742,6 +992,25 @@ app.get('/api/v1/requests/active', requireFirebaseAuth, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/requests/mine:
+ *   get:
+ *     summary: Get all requests made by the user
+ *     tags: [Requests]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: List of user's requests
+ */
 app.get('/api/v1/requests/mine', requireFirebaseAuth, async (req, res) => {
   try {
     const userId = req.query.userId;
@@ -761,6 +1030,27 @@ app.get('/api/v1/requests/mine', requireFirebaseAuth, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/requests/{id}:
+ *   patch:
+ *     summary: Update a pending blood request
+ *     tags: [Requests]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       204:
+ *         description: Updated
+ *       409:
+ *         description: Cannot update (not active)
+ */
 app.patch('/api/v1/requests/:id', requireFirebaseAuth, async (req, res) => {
   try {
     const requestId = req.params.id;
@@ -808,6 +1098,25 @@ app.patch('/api/v1/requests/:id', requireFirebaseAuth, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/requests/{id}/cancel:
+ *   post:
+ *     summary: Cancel an active blood request
+ *     tags: [Requests]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Cancel result
+ */
 app.post('/api/v1/requests/:id/cancel', requireFirebaseAuth, async (req, res) => {
   try {
     const { userId } = req.body || {};
@@ -838,6 +1147,40 @@ app.post('/api/v1/requests/:id/cancel', requireFirebaseAuth, async (req, res) =>
 });
 
 // ─── Donors ───────────────────────────────────────────────────────────────────
+/**
+ * @swagger
+ * /api/v1/donor/matches:
+ *   get:
+ *     summary: Find matching blood requests for a donor
+ *     tags: [Donors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: donorId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - in: query
+ *         name: compatibleTypesCsv
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: donorLat
+ *         required: true
+ *         schema:
+ *           type: number
+ *       - in: query
+ *         name: donorLng
+ *         required: true
+ *         schema:
+ *           type: number
+ *     responses:
+ *       200:
+ *         description: List of matching requests
+ */
 app.get('/api/v1/donor/matches', requireFirebaseAuth, async (req, res) => {
   try {
     const { donorId, compatibleTypesCsv, donorLat, donorLng, radiusKm } =
@@ -875,6 +1218,20 @@ app.get('/api/v1/donor/matches', requireFirebaseAuth, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/donor/responses/accept:
+ *   post:
+ *     summary: Accept a blood request
+ *     tags: [Donors]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       204:
+ *         description: Accepted
+ *       409:
+ *         description: Accept failed (already taken)
+ */
 app.post('/api/v1/donor/responses/accept', requireFirebaseAuth, async (req, res) => {
   try {
     const { requestId, donorId, donorLat, donorLng } = req.body || {};
@@ -944,6 +1301,12 @@ app.post('/api/v1/donor/responses/accept', requireFirebaseAuth, async (req, res)
         );
       }
     });
+
+    // Send FCM push to requester and hospital about the acceptance
+    notifyDonorAccepted(requestId, donorId).catch((e) =>
+      logger.warn({ err: e, requestId }, 'Failed to push acceptance notification'),
+    );
+
     return res.status(204).send();
   } catch (err) {
     if (err.statusCode === 409) {
@@ -958,6 +1321,18 @@ app.post('/api/v1/donor/responses/accept', requireFirebaseAuth, async (req, res)
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/donor/responses/decline:
+ *   post:
+ *     summary: Decline a blood request
+ *     tags: [Donors]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       204:
+ *         description: Declined
+ */
 app.post('/api/v1/donor/responses/decline', requireFirebaseAuth, async (req, res) => {
   try {
     const { requestId, donorId } = req.body || {};
@@ -975,6 +1350,20 @@ app.post('/api/v1/donor/responses/decline', requireFirebaseAuth, async (req, res
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/donor/responses/withdraw:
+ *   post:
+ *     summary: Withdraw a previously accepted request
+ *     tags: [Donors]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       204:
+ *         description: Withdrawn
+ *       409:
+ *         description: Withdraw failed
+ */
 app.post('/api/v1/donor/responses/withdraw', requireFirebaseAuth, async (req, res) => {
   try {
     const { requestId, donorId } = req.body || {};
@@ -1004,6 +1393,25 @@ app.post('/api/v1/donor/responses/withdraw', requireFirebaseAuth, async (req, re
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/donor/mission:
+ *   get:
+ *     summary: Get the donor's active mission
+ *     tags: [Donors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: donorId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Active mission or null
+ */
 app.get('/api/v1/donor/mission', requireFirebaseAuth, async (req, res) => {
   try {
     const { donorId } = req.query;
@@ -1029,6 +1437,25 @@ app.get('/api/v1/donor/mission', requireFirebaseAuth, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/donor/responses/history:
+ *   get:
+ *     summary: Get the donor's response history
+ *     tags: [Donors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: donorId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Response history
+ */
 app.get('/api/v1/donor/responses/history', requireFirebaseAuth, async (req, res) => {
   try {
     const { donorId } = req.query;
@@ -1046,6 +1473,25 @@ app.get('/api/v1/donor/responses/history', requireFirebaseAuth, async (req, res)
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/donor/stats:
+ *   get:
+ *     summary: Get donor statistics (total donations, reward points)
+ *     tags: [Donors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: donorId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Donor stats
+ */
 app.get('/api/v1/donor/stats', requireFirebaseAuth, async (req, res) => {
   try {
     const { donorId } = req.query;
@@ -1065,6 +1511,25 @@ app.get('/api/v1/donor/stats', requireFirebaseAuth, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/donor/donations:
+ *   get:
+ *     summary: Get the donor's full donation history
+ *     tags: [Donors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: donorId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Donation history list
+ */
 app.get('/api/v1/donor/donations', requireFirebaseAuth, async (req, res) => {
   try {
     const { donorId } = req.query;
@@ -1084,6 +1549,24 @@ app.get('/api/v1/donor/donations', requireFirebaseAuth, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/donor/leaderboard:
+ *   get:
+ *     summary: Get the top-ranked donors
+ *     tags: [Donors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *     responses:
+ *       200:
+ *         description: Leaderboard list
+ */
 app.get('/api/v1/donor/leaderboard', requireFirebaseAuth, async (req, res) => {
   try {
     const limit = parseInt(req.query.limit || '20', 10);
@@ -1100,6 +1583,25 @@ app.get('/api/v1/donor/leaderboard', requireFirebaseAuth, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/donor/rank:
+ *   get:
+ *     summary: Get the current user's rank on the leaderboard
+ *     tags: [Donors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: User rank
+ */
 app.get('/api/v1/donor/rank', requireFirebaseAuth, async (req, res) => {
   try {
     const { userId } = req.query;
@@ -1124,6 +1626,30 @@ function normalizeFourDigitCode(raw) {
   return tail.padStart(4, '0');
 }
 
+/**
+ * @swagger
+ * /api/v1/hospital/search:
+ *   get:
+ *     summary: Search for a request by 4-digit code
+ *     tags: [Hospital]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: code
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: hospitalUserId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Matching request with donor info
+ */
 app.get('/api/v1/hospital/search', requireFirebaseAuth, async (req, res) => {
   try {
     const code = normalizeFourDigitCode(req.query.code || '');
@@ -1159,6 +1685,18 @@ app.get('/api/v1/hospital/search', requireFirebaseAuth, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/hospital/verify:
+ *   post:
+ *     summary: Verify a donation and award points
+ *     tags: [Hospital]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Verification result
+ */
 app.post('/api/v1/hospital/verify', requireFirebaseAuth, async (req, res) => {
   try {
     const { hospitalUserId, requestId, staffName } = req.body || {};
@@ -1212,6 +1750,25 @@ app.post('/api/v1/hospital/verify', requireFirebaseAuth, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/hospital/requests/{id}/audit:
+ *   get:
+ *     summary: Get audit log for a request
+ *     tags: [Hospital]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Audit log entries
+ */
 app.get('/api/v1/hospital/requests/:id/audit', requireFirebaseAuth, async (req, res) => {
   try {
     const rows = await query(
@@ -1225,6 +1782,25 @@ app.get('/api/v1/hospital/requests/:id/audit', requireFirebaseAuth, async (req, 
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/hospital/inventory:
+ *   get:
+ *     summary: Get blood inventory for a hospital
+ *     tags: [Hospital]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: hospitalId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Inventory by blood type
+ */
 app.get('/api/v1/hospital/inventory', requireFirebaseAuth, async (req, res) => {
   try {
     const { hospitalId } = req.query;
@@ -1240,6 +1816,25 @@ app.get('/api/v1/hospital/inventory', requireFirebaseAuth, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/hospital/stats:
+ *   get:
+ *     summary: Get dashboard statistics for a hospital
+ *     tags: [Hospital]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: hospitalId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Hospital stats (pending, today, fulfilled)
+ */
 app.get('/api/v1/hospital/stats', requireFirebaseAuth, async (req, res) => {
   try {
     const { hospitalId } = req.query;
@@ -1264,6 +1859,25 @@ app.get('/api/v1/hospital/stats', requireFirebaseAuth, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/hospital/pending:
+ *   get:
+ *     summary: Get pending blood requests for a hospital
+ *     tags: [Hospital]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: hospitalId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Pending requests list
+ */
 app.get('/api/v1/hospital/pending', requireFirebaseAuth, async (req, res) => {
   try {
     const { hospitalId } = req.query;
@@ -1352,13 +1966,17 @@ async function notifyNewRequest(request) {
   if (donorIds.length > 0) {
     const urgency = request.urgency_level || 'urgent';
     const label = urgency === 'critical' ? 'Critical' : urgency === 'urgent' ? 'Urgent' : 'New';
-    insertNotificationsForDonors({
-      requestId: request.id,
-      donorIds,
-      notificationType: 'request_alert',
-      title: `${label} Blood Request`,
-      body: `${request.blood_type} needed at ${request.hospital_name}`,
-    }).catch(() => {});
+    try {
+      await insertNotificationsForDonors({
+        requestId: request.id,
+        donorIds,
+        notificationType: 'request_alert',
+        title: `${label} Blood Request`,
+        body: `${request.blood_type} needed at ${request.hospital_name}`,
+      });
+    } catch (err) {
+      logger.error({ err, requestId: request.id }, 'Failed to insert donor notifications');
+    }
   }
 
   const tokens = donors
@@ -1390,6 +2008,7 @@ async function notifyNewRequest(request) {
               blood_type: request.blood_type,
               units_needed: request.units_needed,
               hospital_name: request.hospital_name,
+              urgency_level: request.urgency_level,
             },
             tokens,
           }),
@@ -1423,6 +2042,53 @@ async function notifyNewRequest(request) {
   metrics.notificationDispatchDuration.observe(Date.now() - dispatchStart);
 }
 
+async function notifyDonorAccepted(requestId, donorId) {
+  const backendUrl = process.env.NOTIFICATION_BACKEND_URL;
+  const secret = process.env.NOTIFICATION_BACKEND_SECRET;
+  if (!backendUrl || !secret) return;
+
+  const requestRows = await query(
+    `SELECT requester_id, hospital_id, hospital_name, blood_type FROM blood_requests WHERE id = $1::uuid`,
+    [requestId],
+  );
+  if (requestRows.length === 0) return;
+  const reqInfo = requestRows[0];
+
+  const users = await query(
+    `SELECT id, fcm_token FROM users
+     WHERE (id = $1::uuid OR id = $2::uuid)
+       AND fcm_token IS NOT NULL AND fcm_token != ''`,
+    [reqInfo.requester_id, reqInfo.hospital_id],
+  );
+  if (users.length === 0) return;
+
+  const tokens = users.map((u) => u.fcm_token).filter(Boolean);
+  if (tokens.length === 0) return;
+
+  try {
+    const url = new URL('/sendNotification', backendUrl.replace(/\/$/, ''));
+    await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-internal-secret': secret,
+      },
+      body: JSON.stringify({
+        title: `Donor Found for ${reqInfo.blood_type} request`,
+        body: `A donor has accepted the blood request at ${reqInfo.hospital_name}.`,
+        data: {
+          type: 'fulfillment_update',
+          request_id: String(requestId),
+        },
+        tokens,
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+  } catch (err) {
+    logger.warn({ err, requestId }, 'Failed to push acceptance notification');
+  }
+}
+
 // ── Helper: get UUID from Firebase UID ──────────────────────────────────────
 async function getUserIdFromToken(req) {
   const rows = await query(
@@ -1434,6 +2100,34 @@ async function getUserIdFromToken(req) {
 }
 
 // ── Stories ──────────────────────────────────────────────────────────────────
+/**
+ * @swagger
+ * /api/v1/stories:
+ *   get:
+ *     summary: Get approved user stories
+ *     tags: [Stories]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: role
+ *         schema:
+ *           type: string
+ *           enum: [donor, recipient]
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *     responses:
+ *       200:
+ *         description: List of stories
+ */
 app.get('/api/v1/stories', requireFirebaseAuth, async (req, res) => {
   try {
     const { role, limit = '20', offset = '0' } = req.query;
@@ -1457,6 +2151,18 @@ app.get('/api/v1/stories', requireFirebaseAuth, async (req, res) => {
   } catch (err) { return serverError(res, err, 'GET /stories'); }
 });
 
+/**
+ * @swagger
+ * /api/v1/stories:
+ *   post:
+ *     summary: Submit a new user story
+ *     tags: [Stories]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       201:
+ *         description: Story created (pending approval)
+ */
 app.post('/api/v1/stories', requireFirebaseAuth, async (req, res) => {
   try {
     const userId = await getUserIdFromToken(req);
@@ -1476,6 +2182,25 @@ app.post('/api/v1/stories', requireFirebaseAuth, async (req, res) => {
   } catch (err) { return serverError(res, err, 'POST /stories'); }
 });
 
+/**
+ * @swagger
+ * /api/v1/stories/{id}/like:
+ *   post:
+ *     summary: Toggle like on a story
+ *     tags: [Stories]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Like toggled
+ */
 app.post('/api/v1/stories/:id/like', requireFirebaseAuth, async (req, res) => {
   try {
     const userId = await getUserIdFromToken(req);
@@ -1488,6 +2213,18 @@ app.post('/api/v1/stories/:id/like', requireFirebaseAuth, async (req, res) => {
 });
 
 // ── Coupons ───────────────────────────────────────────────────────────────────
+/**
+ * @swagger
+ * /api/v1/coupons:
+ *   get:
+ *     summary: List available coupons for redemption
+ *     tags: [Coupons]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Available coupons list
+ */
 app.get('/api/v1/coupons', requireFirebaseAuth, async (req, res) => {
   try {
     const rows = await query(
@@ -1501,6 +2238,18 @@ app.get('/api/v1/coupons', requireFirebaseAuth, async (req, res) => {
   } catch (err) { return serverError(res, err, 'GET /coupons'); }
 });
 
+/**
+ * @swagger
+ * /api/v1/coupons/mine:
+ *   get:
+ *     summary: Get coupons redeemed by the user
+ *     tags: [Coupons]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User's redeemed coupons
+ */
 app.get('/api/v1/coupons/mine', requireFirebaseAuth, async (req, res) => {
   try {
     const userId = await getUserIdFromToken(req);
@@ -1518,6 +2267,18 @@ app.get('/api/v1/coupons/mine', requireFirebaseAuth, async (req, res) => {
   } catch (err) { return serverError(res, err, 'GET /coupons/mine'); }
 });
 
+/**
+ * @swagger
+ * /api/v1/coupons/redeem:
+ *   post:
+ *     summary: Redeem a coupon using reward points
+ *     tags: [Coupons]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Redemption result
+ */
 app.post('/api/v1/coupons/redeem', requireFirebaseAuth, async (req, res) => {
   try {
     const userId = await getUserIdFromToken(req);
@@ -1531,6 +2292,18 @@ app.post('/api/v1/coupons/redeem', requireFirebaseAuth, async (req, res) => {
 });
 
 // ── Notifications ─────────────────────────────────────────────────────────────
+/**
+ * @swagger
+ * /api/v1/notifications:
+ *   get:
+ *     summary: Get the user's notifications
+ *     tags: [Notifications]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of notifications
+ */
 app.get('/api/v1/notifications', requireFirebaseAuth, async (req, res) => {
   try {
     const fbUid = uid(req);
@@ -1549,10 +2322,22 @@ app.get('/api/v1/notifications', requireFirebaseAuth, async (req, res) => {
     return res.json(rows);
   } catch (err) {
     logger.error({ err, route: 'GET /notifications' }, 'Failed to fetch notifications');
-    return res.json([]);
+    return res.status(500).json({ error: 'internal_error' });
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/notifications/read:
+ *   post:
+ *     summary: Mark notification(s) as read
+ *     tags: [Notifications]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       204:
+ *         description: Marked as read
+ */
 app.post('/api/v1/notifications/read', requireFirebaseAuth, async (req, res) => {
   try {
     const fbUid = uid(req);
@@ -1574,10 +2359,22 @@ app.post('/api/v1/notifications/read', requireFirebaseAuth, async (req, res) => 
     return res.status(204).send();
   } catch (err) {
     logger.error({ err, route: 'POST /notifications/read' }, 'Failed to mark read');
-    return res.status(204).send();
+    return res.status(500).json({ error: 'internal_error' });
   }
 });
 
+/**
+ * @swagger
+ * /api/v1/notifications/unread-count:
+ *   get:
+ *     summary: Get the count of unread notifications
+ *     tags: [Notifications]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Unread count
+ */
 app.get('/api/v1/notifications/unread-count', requireFirebaseAuth, async (req, res) => {
   try {
     const fbUid = uid(req);
@@ -1590,11 +2387,40 @@ app.get('/api/v1/notifications/unread-count', requireFirebaseAuth, async (req, r
     );
     return res.json({ count: rows[0]?.count ?? 0 });
   } catch (err) {
-    return res.json({ count: 0 });
+    logger.error({ err, route: 'GET /notifications/unread-count' }, 'Failed to get unread count');
+    return res.status(500).json({ error: 'internal_error' });
   }
 });
 
 // ── AI Eligibility ────────────────────────────────────────────────────────────
+/**
+ * @swagger
+ * /api/v1/ai/eligibility:
+ *   post:
+ *     summary: Check donor eligibility with AI or rule-based fallback
+ *     tags: [AI]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               donorId:
+ *                 type: string
+ *                 format: uuid
+ *               bloodType:
+ *                 type: string
+ *               feelingWell:
+ *                 type: boolean
+ *               recentIllness:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: Eligibility result (eligible, uncertain, not_eligible)
+ */
 app.post('/api/v1/ai/eligibility', requireFirebaseAuth, async (req, res) => {
   try {
     const { donorId, bloodType, feelingWell, recentIllness } = req.body;

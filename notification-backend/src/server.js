@@ -87,6 +87,74 @@ app.get('/', (_req, res) => {
 //   },
 //   "tokens": ["fcmToken1", "fcmToken2", ...]
 // }
+// Generic notification endpoint for any push (used for fulfillment updates, etc.)
+// Expects body:
+// {
+//   "title": "...",
+//   "body": "...",
+//   "data": { ... },
+//   "tokens": ["fcmToken1", ...]
+// }
+app.post('/sendNotification', requireSecret, async (req, res) => {
+  try {
+    const { title, body, data, tokens } = req.body || {};
+
+    if (!title || !body || !Array.isArray(tokens)) {
+      return res.status(400).json({ error: 'invalid_payload' });
+    }
+
+    const cleanTokens = tokens.filter((t) => typeof t === 'string' && t.length > 0);
+    if (cleanTokens.length === 0) {
+      return res.status(200).json({ sent: 0 });
+    }
+
+    const message = {
+      notification: { title, body },
+      data: { ...data, type: data?.type ?? 'notification' },
+      tokens: cleanTokens,
+    };
+
+    const CHUNK = 500;
+    let successCount = 0;
+    let failureCount = 0;
+    const staleTokens = [];
+
+    for (let i = 0; i < cleanTokens.length; i += CHUNK) {
+      const chunk = cleanTokens.slice(i, i + CHUNK);
+      const response = await admin.messaging().sendEachForMulticast({
+        ...message,
+        tokens: chunk,
+      });
+
+      successCount += response.successCount;
+      failureCount += response.failureCount;
+
+      if (response.failureCount > 0) {
+        response.responses.forEach((r, j) => {
+          if (!r.success) {
+            const code = r.error?.code;
+            console.error(`Token[${i + j}] failed: ${code}`);
+            if (code === 'messaging/registration-token-not-registered' ||
+                code === 'messaging/invalid-registration-token') {
+              staleTokens.push(cleanTokens[i + j]);
+            }
+          }
+        });
+      }
+    }
+
+    if (staleTokens.length > 0) {
+      logger.warn({ count: staleTokens.length }, 'Stale tokens to purge');
+    }
+
+    logger.info({ sent: successCount, total: cleanTokens.length }, 'Push sent');
+    return res.status(200).json({ sent: successCount, failed: failureCount, stale_tokens: staleTokens });
+  } catch (err) {
+    console.error('Error in /sendNotification', err);
+    return res.status(500).json({ error: 'internal_error' });
+  }
+});
+
 app.post('/sendNewRequest', requireSecret, async (req, res) => {
   try {
     const { request, tokens } = req.body || {};
@@ -100,9 +168,12 @@ app.post('/sendNewRequest', requireSecret, async (req, res) => {
       return res.status(200).json({ sent: 0 });
     }
 
+    const urgency = request.urgency_level || 'urgent';
+    const label = urgency === 'critical' ? '🚨 Critical' : urgency === 'urgent' ? '⚠️ Urgent' : 'New';
+
     const message = {
       notification: {
-        title: `Blood request: ${request.blood_type}`,
+        title: `${label}: ${request.blood_type} needed`,
         body: `${request.units_needed} unit(s) needed at ${request.hospital_name}`,
       },
       data: {
@@ -111,6 +182,7 @@ app.post('/sendNewRequest', requireSecret, async (req, res) => {
         short_id: String(request.short_id ?? ''),
         blood_type: String(request.blood_type ?? ''),
         hospital_name: String(request.hospital_name ?? ''),
+        urgency_level: String(request.urgency_level ?? ''),
       },
       tokens: cleanTokens,
     };

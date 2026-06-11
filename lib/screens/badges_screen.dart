@@ -1,7 +1,9 @@
 import 'package:bloodconnect/main.dart';
 import 'package:bloodconnect/theme/app_theme.dart';
 import 'package:bloodconnect/widgets/badge_card.dart';
+import 'package:bloodconnect/widgets/empty_state.dart';
 import 'package:bloodconnect/widgets/section_header.dart';
+import 'package:bloodconnect/widgets/shimmer_loading.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -48,7 +50,49 @@ class _BadgesScreenState extends ConsumerState<BadgesScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Badges & Rewards')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                const ShimmerLoading(
+                  child: SizedBox(
+                    height: 100,
+                    child: Card(),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const ShimmerLoading(child: SectionHeader(title: 'Earned')),
+                const SizedBox(height: 12),
+                Row(
+                  children: List.generate(3, (_) => const Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6),
+                      child: ShimmerLoading(
+                        child: SizedBox(
+                          height: 100,
+                          child: Card(),
+                        ),
+                      ),
+                    ),
+                  )),
+                ),
+                const SizedBox(height: 24),
+                const ShimmerLoading(child: SectionHeader(title: 'Locked')),
+                const SizedBox(height: 12),
+                Row(
+                  children: List.generate(3, (_) => const Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6),
+                      child: ShimmerLoading(
+                        child: SizedBox(
+                          height: 100,
+                          child: Card(),
+                        ),
+                      ),
+                    ),
+                  )),
+                ),
+              ],
+            )
           : ListView(
               padding: const EdgeInsets.all(20),
               children: [
@@ -105,6 +149,13 @@ class _BadgesScreenState extends ConsumerState<BadgesScreen> {
                         .toList(),
                   ),
                   const SizedBox(height: 24),
+                ] else ...[
+                  const EmptyState(
+                    icon: Icons.emoji_events_outlined,
+                    title: 'No badges earned yet',
+                    subtitle: 'Complete donations to earn badges!',
+                  ),
+                  const SizedBox(height: 24),
                 ],
                 if (locked.isNotEmpty) ...[
                   SectionHeader(
@@ -133,6 +184,12 @@ class _BadgesScreenState extends ConsumerState<BadgesScreen> {
                           ),
                         )
                         .toList(),
+                  ),
+                ] else ...[
+                  const EmptyState(
+                    icon: Icons.lock_outline_rounded,
+                    title: 'No badges to unlock',
+                    subtitle: 'Donate to discover available badges!',
                   ),
                 ],
               ],

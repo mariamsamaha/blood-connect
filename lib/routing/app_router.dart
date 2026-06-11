@@ -20,6 +20,7 @@ import 'package:bloodconnect/screens/ai_prediction_screen.dart';
 import 'package:bloodconnect/screens/stories_screen.dart';
 import 'package:bloodconnect/screens/coupons_screen.dart';
 import 'package:bloodconnect/screens/notification_center_screen.dart';
+import 'package:bloodconnect/widgets/app_shell.dart';
 
 final _inFlightProfileFetches = <String, Future<UserProfile?>>{};
 
@@ -77,15 +78,44 @@ GoRouter buildRouter({
         path: '/signup',
         pageBuilder: (ctx, s) => _slideTransition(const SignUpScreen()),
       ),
-      GoRoute(
-        path: '/donor/home',
-        pageBuilder: (ctx, s) => _slideTransition(const DonorHomeScreen()),
+
+      // ── Shell with persistent bottom nav ──────────────────────────────
+      StatefulShellRoute.indexedStack(
+        builder: (ctx, state, navigationShell) =>
+            AppShell(navigationShell: navigationShell),
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/donor/home',
+                builder: (ctx, state) => const DonorHomeScreen(),
+              ),
+              GoRoute(
+                path: '/recipient/home',
+                builder: (ctx, state) => const RecipientHomeScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/stories',
+                builder: (ctx, state) => const StoriesScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/coupons',
+                builder: (ctx, state) => const CouponsScreen(),
+              ),
+            ],
+          ),
+        ],
       ),
-      GoRoute(
-        path: '/recipient/home',
-        pageBuilder: (ctx, s) =>
-            _slideTransition(const RecipientHomeScreen()),
-      ),
+
+      // ── Standalone routes (no bottom nav) ─────────────────────────────
       GoRoute(
         path: '/hospital/dashboard',
         pageBuilder: (ctx, s) =>
@@ -125,16 +155,6 @@ GoRouter buildRouter({
         path: '/ai-check',
         pageBuilder: (ctx, s) =>
             _slideTransition(const AiPredictionScreen()),
-      ),
-      GoRoute(
-        path: '/stories',
-        pageBuilder: (ctx, s) =>
-            _slideTransition(const StoriesScreen()),
-      ),
-      GoRoute(
-        path: '/coupons',
-        pageBuilder: (ctx, s) =>
-            _slideTransition(const CouponsScreen()),
       ),
       GoRoute(
         path: '/notifications',
@@ -218,7 +238,12 @@ GoRouter buildRouter({
         return homeRouteForProfile(profile);
       }
 
-      if (loc == '/ai-check' || loc == '/stories' || loc == '/coupons' || loc == '/notifications') return null;
+      if (loc == '/ai-check' || loc == '/stories' || loc == '/notifications') return null;
+
+      if (loc == '/coupons') {
+        if (profile.role != UserRole.donor) return homeRouteForProfile(profile);
+        return null;
+      }
 
       return null;
     },

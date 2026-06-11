@@ -1,7 +1,9 @@
 import 'package:bloodconnect/main.dart';
 import 'package:bloodconnect/theme/app_theme.dart';
 import 'package:bloodconnect/widgets/blood_type_chip.dart';
+import 'package:bloodconnect/widgets/empty_state.dart';
 import 'package:bloodconnect/widgets/section_header.dart';
+import 'package:bloodconnect/widgets/shimmer_loading.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -64,7 +66,24 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                const ShimmerLoading(
+                  child: SizedBox(
+                    height: 120,
+                    child: Card(),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const ShimmerLoading(child: SectionHeader(title: 'Top Donors')),
+                const SizedBox(height: 12),
+                ...List.generate(5, (_) => const Padding(
+                  padding: EdgeInsets.only(bottom: 10),
+                  child: SkeletonListItem(),
+                )),
+              ],
+            )
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(
@@ -109,28 +128,12 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
                   const SizedBox(height: 12),
 
                   if (_leaders.isEmpty)
-                    Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: AppColors.textTertiary.withValues(alpha: 0.1),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.people_outline,
-                              size: 40,
-                              color: AppColors.textTertiary,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          const Text(
-                            'No donors yet',
-                            style: TextStyle(color: AppColors.textSecondary),
-                          ),
-                        ],
+                    const Padding(
+                      padding: EdgeInsets.only(top: 24),
+                      child: EmptyState(
+                        icon: Icons.people_outline,
+                        title: 'No donors yet',
+                        subtitle: 'Be the first to donate and earn points!',
                       ),
                     )
                   else

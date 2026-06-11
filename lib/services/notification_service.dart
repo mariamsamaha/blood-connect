@@ -16,16 +16,26 @@ class NotificationService {
       );
       return result.map((row) => NotificationItem.fromJson(row)).toList();
     } catch (e) {
+      debugPrint('getNotifications error: $e');
       return [];
     }
   }
 
   Future<int> getUnreadCount() async {
     try {
-      final row = await _api!.getJson('/api/v1/notifications/unread-count');
-      if (row == null) return 0;
-      return (row['count'] as num?)?.toInt() ?? 0;
+      final row = await _api!.getJson(
+        '/api/v1/notifications/unread-count',
+        forceRefresh: true,
+      );
+      if (row == null) {
+        debugPrint('getUnreadCount: null response');
+        return 0;
+      }
+      final count = (row['count'] as num?)?.toInt() ?? 0;
+      debugPrint('getUnreadCount: $count');
+      return count;
     } catch (e) {
+      debugPrint('getUnreadCount error: $e');
       return 0;
     }
   }
@@ -37,7 +47,7 @@ class NotificationService {
         body: notificationId != null ? {'notificationId': notificationId} : {},
       );
     } catch (e) {
-      // non-critical
+      debugPrint('markAsRead error: $e');
     }
   }
 

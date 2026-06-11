@@ -1,9 +1,12 @@
-import 'package:bloodconnect/main.dart';
+import 'package:bloodconnect/providers/core_providers.dart';
 import 'package:bloodconnect/models/notification_item.dart';
 import 'package:bloodconnect/providers/notification_provider.dart';
 import 'package:bloodconnect/theme/app_theme.dart';
+import 'package:bloodconnect/widgets/empty_state.dart';
+import 'package:bloodconnect/widgets/shimmer_loading.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 class NotificationCenterScreen extends ConsumerStatefulWidget {
   const NotificationCenterScreen({super.key});
@@ -18,7 +21,10 @@ class _NotificationCenterScreenState
   @override
   void initState() {
     super.initState();
-    ref.read(unreadCountNotifierProvider.notifier).refresh();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(unreadCountNotifierProvider.notifier).refresh();
+      ref.invalidate(notificationsProvider);
+    });
   }
 
   Future<void> _refresh() async {
@@ -74,7 +80,16 @@ class _NotificationCenterScreenState
         color: AppColors.primaryRed,
         onRefresh: _refresh,
         child: notificationsAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => ListView(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            children: List.generate(
+              6,
+              (_) => const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: SkeletonListItem(),
+              ),
+            ),
+          ),
           error: (_, __) => ListView(
             children: [
               SizedBox(
@@ -94,40 +109,13 @@ class _NotificationCenterScreenState
           ),
           data: (notifications) {
             if (notifications.isEmpty) {
-              return ListView(
-                children: [
-                  SizedBox(
-                    height: MediaQuery.of(context).size.height * 0.6,
-                    child: const Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.notifications_off_outlined,
-                            size: 48,
-                            color: Colors.grey,
-                          ),
-                          SizedBox(height: 12),
-                          Text(
-                            'No notifications yet',
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.grey,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            'Notifications will appear here when events happen.',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
+              return const SizedBox(
+                height: double.infinity,
+                child: EmptyState(
+                  icon: Icons.notifications_off_outlined,
+                  title: 'No notifications yet',
+                  subtitle: 'Notifications will appear here when events happen.',
+                ),
               );
             }
 
@@ -202,7 +190,12 @@ class _NotificationCenterScreenState
                           ),
                         )
                       : null,
-                  onTap: () => _markRead(n),
+                  onTap: () {
+                    _markRead(n);
+                    if (n.requestId != null && n.requestId!.isNotEmpty) {
+                      context.pop();
+                    }
+                  },
                 );
               },
             );

@@ -1,6 +1,7 @@
 import 'package:bloodconnect/main.dart';
 import 'package:bloodconnect/models/blood_request.dart';
 import 'package:bloodconnect/models/hospital.dart';
+import 'package:bloodconnect/providers/notification_provider.dart';
 import 'package:bloodconnect/theme/app_theme.dart';
 import 'package:bloodconnect/widgets/app_button.dart';
 import 'package:bloodconnect/widgets/app_text_field.dart';
@@ -140,6 +141,9 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
                 _notes.text.trim().isEmpty ? null : _notes.text.trim(),
             contactPhone: _phone.text.trim(),
           );
+      if (!mounted) return;
+      await ref.read(unreadCountNotifierProvider.notifier).refresh();
+      ref.invalidate(notificationsProvider);
       if (!mounted) return;
       context.go('/recipient/home');
     } catch (e) {

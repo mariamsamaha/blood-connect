@@ -135,7 +135,11 @@ class _QuestionsView extends StatelessWidget {
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: const Center(
-                  child: Text('🤖', style: TextStyle(fontSize: 24)),
+                  child: Icon(
+                    Icons.auto_awesome_rounded,
+                    color: AppColors.primaryRed,
+                    size: 26,
+                  ),
                 ),
               ),
               const SizedBox(width: 14),

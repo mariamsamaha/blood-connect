@@ -1,6 +1,8 @@
 import 'package:bloodconnect/main.dart';
 import 'package:bloodconnect/models/blood_request.dart';
 import 'package:bloodconnect/theme/app_theme.dart';
+import 'package:bloodconnect/widgets/empty_state.dart';
+import 'package:bloodconnect/widgets/shimmer_loading.dart';
 import 'package:bloodconnect/widgets/urgency_badge.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -57,29 +59,24 @@ class _DonationHistoryScreenState
     return Scaffold(
       appBar: AppBar(title: const Text('Donation History')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                const ShimmerLoading(
+                  child: SizedBox(height: 100, child: Card()),
+                ),
+                const SizedBox(height: 24),
+                ...List.generate(4, (_) => const Padding(
+                  padding: EdgeInsets.only(bottom: 12),
+                  child: SkeletonListItem(),
+                )),
+              ],
+            )
           : _history.isEmpty
-              ? const Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.history_rounded,
-                        size: 64,
-                        color: AppColors.textTertiary,
-                      ),
-                      SizedBox(height: 12),
-                      Text(
-                        'No donations yet',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        'Accept a blood request to get started',
-                        style: TextStyle(color: AppColors.textSecondary),
-                      ),
-                    ],
-                  ),
+              ? const EmptyState(
+                  icon: Icons.history_rounded,
+                  title: 'No donations yet',
+                  subtitle: 'Accept a blood request to get started',
                 )
               : ListView(
                   padding: const EdgeInsets.all(20),

@@ -8,7 +8,6 @@ import 'package:bloodconnect/theme/app_theme.dart';
 import 'package:bloodconnect/widgets/app_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 final storyServiceProvider = Provider<StoryService>(
   (ref) => StoryService(ref.watch(apiClientProvider)),
@@ -92,11 +91,6 @@ class _StoriesScreenState extends ConsumerState<StoriesScreen>
 
   @override
   Widget build(BuildContext context) {
-    final homeRoute = switch (_profile?.accountType) {
-      AccountType.hospital => '/hospital/dashboard',
-      _ => _profile?.role == UserRole.recipient ? '/recipient/home' : '/donor/home',
-    };
-
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -127,27 +121,6 @@ class _StoriesScreenState extends ConsumerState<StoriesScreen>
                 _StoryList(stories: _recipient, onLike: _toggleLike, onRefresh: _load),
               ],
             ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: 1,
-        onTap: (index) {
-          if (index == 0) context.go(homeRoute);
-          if (index == 2) context.go('/profile');
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_rounded),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.auto_stories_rounded),
-            label: 'Stories',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_rounded),
-            label: 'Profile',
-          ),
-        ],
-      ),
     );
   }
 

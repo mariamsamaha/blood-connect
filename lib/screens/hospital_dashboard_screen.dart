@@ -5,6 +5,8 @@ import 'package:bloodconnect/providers/notification_provider.dart';
 import 'package:bloodconnect/theme/app_theme.dart';
 import 'package:bloodconnect/widgets/app_button.dart';
 import 'package:bloodconnect/widgets/section_header.dart';
+import 'package:bloodconnect/widgets/shimmer_loading.dart';
+import 'package:bloodconnect/widgets/sync_status_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -189,7 +191,7 @@ class _HospitalDashboardScreenState
                       minHeight: 18,
                     ),
                     child: Text(
-                      '$unreadCount',
+                      unreadCount > 99 ? '99+' : '$unreadCount',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 10,
@@ -201,10 +203,36 @@ class _HospitalDashboardScreenState
                 ),
             ],
           ),
+          const SizedBox(width: 4),
+          const SyncStatusIndicator(),
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? ListView(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+              children: [
+                const ShimmerLoading(
+                  child: SizedBox(height: 120, child: Card()),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: List.generate(3, (_) => const Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 4),
+                      child: ShimmerLoading(
+                        child: SizedBox(height: 100, child: Card()),
+                      ),
+                    ),
+                  )),
+                ),
+                const SizedBox(height: 24),
+                const ShimmerLoading(child: SectionHeader(title: 'Verify Donation')),
+                const SizedBox(height: 12),
+                const ShimmerLoading(
+                  child: SizedBox(height: 200, child: Card()),
+                ),
+              ],
+            )
           : ListView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
               children: [

@@ -15,17 +15,11 @@ import 'package:bloodconnect/routing/app_router.dart';
 import 'package:bloodconnect/routing/router_refresh.dart';
 import 'package:bloodconnect/services/audit_log_service.dart';
 import 'package:bloodconnect/services/user_service.dart';
-import 'package:bloodconnect/services/cache_service.dart';
-import 'package:bloodconnect/services/cache_metrics_service.dart';
-import 'package:bloodconnect/services/api_client.dart';
 import 'package:bloodconnect/services/auth_service.dart';
 import 'package:bloodconnect/services/request_service.dart';
-import 'package:bloodconnect/services/notification_service.dart';
 import 'package:bloodconnect/services/location_service.dart';
 import 'package:bloodconnect/services/donor_service.dart';
 import 'package:bloodconnect/services/hospital_service.dart';
-import 'package:bloodconnect/services/persistent_cache_service.dart';
-import 'package:bloodconnect/services/sync_manager.dart';
 import 'package:bloodconnect/services/invalidation_service.dart';
 import 'package:bloodconnect/services/ai_prediction_service.dart';
 import 'package:bloodconnect/models/cache_entry.dart';
@@ -33,6 +27,9 @@ import 'package:bloodconnect/repositories/user_repository.dart';
 import 'package:bloodconnect/repositories/donor_repository.dart';
 import 'package:bloodconnect/repositories/request_repository.dart';
 import 'package:bloodconnect/repositories/hospital_repository.dart';
+import 'package:bloodconnect/providers/core_providers.dart';
+export 'package:bloodconnect/providers/core_providers.dart';
+import 'package:bloodconnect/providers/notification_provider.dart';
 import 'package:bloodconnect/providers/theme_mode_provider.dart';
 import 'package:bloodconnect/theme/app_theme.dart';
 import 'package:bloodconnect/config/app_config.dart';
@@ -50,70 +47,10 @@ final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
 
 final authServiceProvider = Provider<AuthService>((ref) => AuthService());
 
-final cacheServiceProvider = Provider<CacheService>((ref) {
-  return CacheService(
-    ttlOverrides: {
-      '/api/v1/donor/matches': const Duration(seconds: 30),
-      '/api/v1/donor/mission': const Duration(seconds: 30),
-      '/api/v1/requests/active': const Duration(seconds: 30),
-      '/api/v1/hospital/pending': const Duration(seconds: 30),
-      '/api/v1/hospitals': const Duration(minutes: 5),
-      '/api/v1/donor/leaderboard': const Duration(minutes: 2),
-      '/api/v1/users/me/badges': const Duration(minutes: 2),
-      '/api/v1/donor/donations': const Duration(minutes: 2),
-      '/api/v1/users/me': const Duration(minutes: 2),
-    },
-  );
-});
-
-final cacheMetricsServiceProvider = Provider<CacheMetricsService>((ref) {
-  return CacheMetricsService();
-});
-
-final syncManagerProvider = Provider<SyncManager>((ref) {
-  final manager = SyncManager();
-  ref.onDispose(() => manager.dispose());
-  return manager;
-});
-
-final connectivityStatusProvider = StreamProvider<ConnectivityStatus>((ref) {
-  final syncManager = ref.watch(syncManagerProvider);
-  return syncManager.onStatusChanged;
-});
-
-final isarProvider = Provider<Isar>((ref) {
-  throw UnimplementedError('isarProvider must be overridden');
-});
-
-final persistentCacheServiceProvider = Provider<PersistentCacheService>((ref) {
-  final isar = ref.watch(isarProvider);
-  return PersistentCacheService(isar);
-});
-
 final invalidationServiceProvider = Provider<InvalidationService>((ref) {
   return InvalidationService(
     cache: ref.watch(cacheServiceProvider),
     persistentCache: ref.watch(persistentCacheServiceProvider),
-  );
-});
-
-final deferredEnqueueMutationProvider =
-    Provider<DeferredEnqueueMutation>((ref) {
-  return DeferredEnqueueMutation();
-});
-
-final apiClientProvider = Provider<ApiClient>((ref) {
-  final cache = ref.watch(cacheServiceProvider);
-  final persistentCache = ref.watch(persistentCacheServiceProvider);
-  final syncManager = ref.watch(syncManagerProvider);
-  final metrics = ref.watch(cacheMetricsServiceProvider);
-  final enqueueMutation = ref.watch(deferredEnqueueMutationProvider);
-  return ApiClient(
-    cache: cache,
-    persistentCache: persistentCache,
-    syncManager: syncManager,
-    metrics: metrics,
-    enqueueMutation: enqueueMutation,
   );
 });
 
@@ -180,11 +117,6 @@ final userServiceProvider = Provider<UserService>((ref) {
 
 final auditLogServiceProvider = Provider<AuditLogService>((ref) {
   return AuditLogService();
-});
-
-final notificationServiceProvider = Provider<NotificationService>((ref) {
-  final api = ref.watch(apiClientProvider);
-  return NotificationService(api);
 });
 
 final requestServiceProvider = Provider<RequestService>((ref) {
@@ -382,6 +314,20 @@ class _BloodConnectAppState extends ConsumerState<BloodConnectApp> {
     ref.read(cacheMetricsServiceProvider).logSummary();
   }
 
+  Future<String?> _homeRouteForCurrentUser() async {
+    final authService = ref.read(authServiceProvider);
+    final userService = ref.read(userServiceProvider);
+    final firebaseUser = authService.currentUser;
+    if (firebaseUser == null) return '/login';
+    try {
+      final profile = await userService.getProfileByFirebaseUid(firebaseUser.uid);
+      if (profile == null) return null;
+      return homeRouteForProfile(profile);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _setupFcmToken() async {
     final authService = ref.read(authServiceProvider);
     final userService = ref.read(userServiceProvider);
@@ -429,16 +375,18 @@ class _BloodConnectAppState extends ConsumerState<BloodConnectApp> {
           body: notification.body ?? '',
         );
       }
-      debugPrint('New request notification - pull to refresh');
+      ref.read(unreadCountNotifierProvider.notifier).refresh();
+      ref.invalidate(notificationsProvider);
     });
 
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) async {
       final requestId = message.data['request_id'] ?? '';
+      final router = ref.read(routerProvider);
       if (requestId.isNotEmpty) {
         debugPrint('Notification tapped: $requestId');
-        final router = ref.read(routerProvider);
-        router.go('/donor/home');
       }
+      final route = await _homeRouteForCurrentUser();
+      if (route != null) router.go(route);
     });
 
     final initial = await FirebaseMessaging.instance.getInitialMessage();
@@ -446,11 +394,12 @@ class _BloodConnectAppState extends ConsumerState<BloodConnectApp> {
       final requestId = initial.data['request_id'] ?? '';
       if (requestId.isNotEmpty) {
         debugPrint('Opened from terminated: $requestId');
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          final router = ref.read(routerProvider);
-          router.go('/donor/home');
-        });
       }
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        final router = ref.read(routerProvider);
+        final route = await _homeRouteForCurrentUser();
+        if (route != null) router.go(route);
+      });
     }
   }
 
