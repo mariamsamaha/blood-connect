@@ -33,12 +33,19 @@ const mockDb = {
   query: jest.fn(),
   withTransaction: mockWithTransaction,
   testConnection: jest.fn().mockResolvedValue(true),
+  healthQuery: jest.fn().mockResolvedValue([{ ok: 1 }]),
   validateDbConfig: jest.fn().mockReturnValue({ ok: true, mode: 'test' }),
   pool: {
     totalCount: 0,
     idleCount: 0,
     waitingCount: 0,
     end: jest.fn(),
+    on: jest.fn(),
+  },
+  bulkheadPool: {
+    totalCount: 0,
+    idleCount: 0,
+    waitingCount: 0,
     on: jest.fn(),
   },
 };
@@ -108,7 +115,7 @@ describe('Failure Scenarios', () => {
 
   describe('2. DB down: kill pool -> 503 on next request', () => {
     test('GET /health/db returns 503 when pool is dead', async () => {
-      mockDb.testConnection.mockRejectedValueOnce(new Error('Connection refused'));
+      mockDb.healthQuery.mockRejectedValueOnce(new Error('Connection refused'));
 
       const res = await request(app).get('/health/db');
       expect(res.status).toBe(503);

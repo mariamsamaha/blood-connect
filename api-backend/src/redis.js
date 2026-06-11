@@ -84,10 +84,15 @@ async function close() {
   }
 }
 
+function getClient() {
+  return client;
+}
+
 module.exports = {
   init,
   close,
   isEnabled,
   getCachedToken,
   setCachedToken,
+  getClient,
 };

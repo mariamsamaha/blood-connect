@@ -33,8 +33,15 @@ jest.mock('../src/db', () => ({
   query: jest.fn(),
   withTransaction: jest.fn(),
   testConnection: jest.fn().mockResolvedValue(true),
+  healthQuery: jest.fn().mockResolvedValue([{ ok: 1 }]),
   validateDbConfig: jest.fn().mockReturnValue({ ok: true, mode: 'test' }),
   pool: {
+    totalCount: 0,
+    idleCount: 0,
+    waitingCount: 0,
+    on: jest.fn(),
+  },
+  bulkheadPool: {
     totalCount: 0,
     idleCount: 0,
     waitingCount: 0,

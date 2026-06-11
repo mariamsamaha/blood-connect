@@ -48,6 +48,7 @@ const circuitBreakerState = new prometheus.Gauge({
   registers: [register],
 });
 circuitBreakerState.set({ service: 'fcm' }, 0); // 0 = CLOSED
+circuitBreakerState.set({ service: 'ai' }, 0);
 
 const circuitBreakerFailures = new prometheus.Counter({
   name: 'bloodconnect_circuit_breaker_failures_total',

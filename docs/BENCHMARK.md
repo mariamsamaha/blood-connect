@@ -147,7 +147,45 @@ With **cluster mode** (4 workers on a quad-core CPU):
 
 ---
 
-## 7. Comparison vs Expected
+## 7. Horizontal Scaling (3.2)
+
+Tested with `docker-compose -f docker-compose.yml -f docker-compose.gateway.yml -f docker-compose.scale.yml up -d` (3 api-backend replicas behind Nginx least_conn).
+
+### Setup
+
+- 3 api-backend instances behind Nginx with `least_conn` load balancing
+- Shared Redis for rate limit state (`rate-limit-redis` store in `express-rate-limit`)
+- 20 concurrent connections, 10s measurement (2s warmup), `DISABLE_RATE_LIMIT=true`
+
+### Before Scaling (single instance, no gateway)
+
+| Endpoint | RPS | p50 | p95 | p99 |
+|----------|-----|-----|-----|-----|
+| `GET /` (health) | 695 | 29ms | 41ms | 46ms |
+| `GET /metrics` | 495 | 40ms | 49ms | 52ms |
+| `GET /slo` | 379 | 53ms | 61ms | 65ms |
+
+### After Scaling (3 replicas, Nginx least_conn)
+
+| Endpoint | RPS | p50 | p95 | p99 |
+|----------|-----|-----|-----|-----|
+| `GET /` (health) | — | — | — | — |
+| `GET /metrics` | — | — | — | — |
+| `GET /slo` | — | — | — | — |
+
+> Run `node load-tests/benchmark-scale.js` with the scaled stack to populate.
+> See `docker-compose.scale.yml` for the replica configuration.
+
+### Key Design Decisions
+
+- **`least_conn`** balancing distributes to the instance with fewest active connections — better than round-robin for variable-length requests.
+- **Shared Redis store** (`rate-limit-redis`) ensures rate limit counters are global across all replicas, so users are not unfairly limited when hitting different instances.
+- **Bulkhead pool** (min/max 2 connections) reserved for health/metrics endpoints via separate `bulkheadPool` in `db.js`, guaranteeing those endpoints never starve even when the main pool is saturated.
+- **AI circuit breaker** (3-failure threshold, 2-success recovery, 15s timeout) exposed as `bloodconnect_circuit_breaker_state{service="ai"}` in Prometheus.
+
+---
+
+## 8. Comparison vs Expected
 
 | Metric | Expected (docs/ARCHITECTURE.md) | Measured | Match? |
 |--------|--------------------------------|----------|--------|

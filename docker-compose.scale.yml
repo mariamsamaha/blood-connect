@@ -1,0 +1,35 @@
+services:
+
+  api-backend:
+    deploy:
+      replicas: 3
+    ports: []   # individual instances not exposed directly
+
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      api-backend:
+        condition: service_healthy
+      notification-backend:
+        condition: service_started
+      ai-service:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      interval: 15s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+
+  notification-backend:
+    ports: []
+
+  redis:
+    ports:
+      - "6379:6379"

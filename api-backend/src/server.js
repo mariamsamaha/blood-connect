@@ -17,7 +17,7 @@ const logger = require('./logger');
 const metrics = require('./metrics');
 const { CircuitBreaker } = require('./circuit-breaker');
 const { traceMiddleware } = require('./trace');
-const { pool, query, withTransaction, testConnection, validateDbConfig } = require('./db');
+const { pool, bulkheadPool, query, withTransaction, testConnection, healthQuery, validateDbConfig } = require('./db');
 const { requireFirebaseAuth } = require('./auth');
 const { serverError } = require('./errors');
 
@@ -37,10 +37,36 @@ app.use(require('pino-http')({
   },
 }));
 
+// Redis-backed rate limit store for horizontal scaling
+let rateLimitStore;
+try {
+  const Redis = require('ioredis');
+  const RedisStore = require('rate-limit-redis');
+  const rlRedisUrl = process.env.REDIS_URL || '';
+  if (rlRedisUrl) {
+    const rlClient = new Redis(rlRedisUrl, {
+      maxRetriesPerRequest: 1,
+      retryStrategy: () => null,
+      enableOfflineQueue: false,
+      lazyConnect: true,
+    });
+    rlClient.connect().catch(() => {});
+    rateLimitStore = new RedisStore({ client: rlClient, prefix: 'rl:' });
+  }
+} catch (e) {
+  // Redis unavailable — use default memory store
+}
+
 const notificationCircuitBreaker = new CircuitBreaker('notification-backend', {
   failureThreshold: 5,
   successThreshold: 2,
   timeoutMs: 30000,
+});
+
+const aiCircuitBreaker = new CircuitBreaker('ai', {
+  failureThreshold: 3,
+  successThreshold: 2,
+  timeoutMs: 15000,
 });
 
 const isProduction = process.env.NODE_ENV === 'production';
@@ -62,6 +88,7 @@ const globalLimiter = rateLimit({
   max: process.env.DISABLE_RATE_LIMIT === 'true' ? 100_000 : 200,
   standardHeaders: true,
   legacyHeaders: false,
+  ...(rateLimitStore && { store: rateLimitStore }),
 });
 
 // Per authenticated user — applied after requireFirebaseAuth
@@ -72,6 +99,7 @@ const userLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'rate_limit_exceeded' },
+  ...(rateLimitStore && { store: rateLimitStore }),
 });
 
 app.use(globalLimiter);
@@ -167,22 +195,27 @@ app.get('/health/db', async (_req, res) => {
   }
   const start = Date.now();
   try {
-    const ok = await testConnection();
+    const ok = await healthQuery('SELECT 1 AS ok');
     const elapsed = Date.now() - start;
     metrics.updatePoolStats(pool.totalCount, pool.idleCount, pool.waitingCount);
-    metrics.trackDbQuery('health', elapsed);
-    return res.status(ok ? 200 : 503).json({
-      status: ok ? 'ok' : 'failed',
+    return res.status(ok[0]?.ok === 1 ? 200 : 503).json({
+      status: ok[0]?.ok === 1 ? 'ok' : 'failed',
       latency_ms: elapsed,
       pool: {
         total: pool.totalCount,
         idle: pool.idleCount,
         waiting: pool.waitingCount,
       },
+      bulkhead: {
+        total: bulkheadPool.totalCount,
+        idle: bulkheadPool.idleCount,
+        waiting: bulkheadPool.waitingCount,
+      },
       version: process.env.npm_package_version || '1.0.0',
       uptime_s: Math.floor(process.uptime()),
       circuit_breakers: {
         notification_backend: notificationCircuitBreaker.getStateName(),
+        ai: aiCircuitBreaker.getStateName(),
       },
     });
   } catch (err) {
@@ -1577,14 +1610,19 @@ app.post('/api/v1/ai/eligibility', requireFirebaseAuth, async (req, res) => {
       return res.json(_ruleBasedCheck({ feelingWell, recentIllness }));
     }
 
-    // Proxy to Flask AI model
+    // Proxy to Flask AI model — protected by circuit breaker
     try {
       const payload = JSON.stringify({
         blood_type: bloodType,
         feeling_well: feelingWell,
         recent_illness: recentIllness,
       });
-      const aiResult = await _callAiModel(aiUrl, payload);
+      const aiResult = await aiCircuitBreaker.call(
+        async () => {
+          return await _callAiModel(aiUrl, payload);
+        },
+        () => _ruleBasedCheck({ feelingWell, recentIllness }),
+      );
       const score = parseFloat(aiResult.probability ?? aiResult.score ?? 0.5);
       const status =
         score >= 0.75 ? 'eligible' : score >= 0.5 ? 'uncertain' : 'not_eligible';

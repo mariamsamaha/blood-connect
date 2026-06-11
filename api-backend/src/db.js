@@ -65,6 +65,18 @@ pool.on('error', (err) => {
   logger.error({ err }, 'Unexpected idle client error from pool');
 });
 
+// Bulkhead pool — reserved for health / metrics so they can never starve.
+// Guarantees at least 2 connections are available for health checks
+// even when the main pool is saturated.
+const bulkheadPool = new Pool({
+  ...buildPoolConfig(),
+  max: 2,
+});
+
+bulkheadPool.on('error', (err) => {
+  logger.error({ err }, 'Bulkhead pool idle client error');
+});
+
 async function query(sql, params = []) {
   const start = Date.now();
   try {
@@ -119,4 +131,16 @@ async function testConnection() {
   }
 }
 
-module.exports = { pool, query, withTransaction, testConnection, validateDbConfig };
+async function healthQuery(sql, params = []) {
+  const start = Date.now();
+  try {
+    const result = await bulkheadPool.query(sql, params);
+    metrics.trackDbQuery('HEALTH', Date.now() - start);
+    return result.rows;
+  } catch (err) {
+    metrics.trackDbQuery('HEALTH_ERROR', Date.now() - start);
+    throw err;
+  }
+}
+
+module.exports = { pool, bulkheadPool, query, withTransaction, testConnection, healthQuery, validateDbConfig };
