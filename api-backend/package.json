@@ -17,7 +17,48 @@
     ],
     "testPathIgnorePatterns": [
       "/tests/e2e/"
-    ]
+    ],
+    "collectCoverage": true,
+    "coverageDirectory": "coverage",
+    "coverageReporters": ["lcov", "text", "text-summary"],
+    "coverageThreshold": {
+      "global": {
+        "branches": 20,
+        "functions": 20,
+        "lines": 30,
+        "statements": 30
+      },
+      "./src/circuit-breaker.js": {
+        "branches": 50,
+        "functions": 80,
+        "lines": 65,
+        "statements": 65
+      },
+      "./src/errors.js": {
+        "branches": 60,
+        "functions": 60,
+        "lines": 60,
+        "statements": 60
+      },
+      "./src/db.js": {
+        "branches": 80,
+        "functions": 40,
+        "lines": 50,
+        "statements": 50
+      },
+      "./src/metrics.js": {
+        "branches": 70,
+        "functions": 80,
+        "lines": 90,
+        "statements": 90
+      },
+      "./src/logger.js": {
+        "branches": 45,
+        "functions": 0,
+        "lines": 65,
+        "statements": 65
+      }
+    }
   },
   "engines": {
     "node": ">=18"

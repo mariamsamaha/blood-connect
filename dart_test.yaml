@@ -1,0 +1,9 @@
+# Flutter test configuration with coverage thresholds
+# Run: flutter test --coverage
+# View: genhtml coverage/lcov.info -o coverage/html
+
+tags:
+  integration:
+    description: "Tests that exercise multiple components through mocked ApiClient"
+  unit:
+    description: "Pure unit tests with no I/O"

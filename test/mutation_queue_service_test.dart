@@ -177,6 +177,43 @@ void main() {
       await service.dispose();
     });
 
+    test('enqueue when offline -> come online -> assert replay', () async {
+      final connectivityCtrl = StreamController<List<ConnectivityResult>>();
+      final mockConnectivity = _MockConnectivityCtrl(connectivityCtrl);
+      syncManager = SyncManager(
+        connectivity: mockConnectivity,
+        initialStatus: ConnectivityStatus.offline,
+      );
+
+      int replayCount = 0;
+      final service = MutationQueueService(
+        executor: (endpoint, method, payload) async {
+          replayCount++;
+        },
+        syncManager: syncManager,
+        storagePath: tmpDir.path,
+      );
+
+      await service.initialize();
+
+      // Enqueue while offline — stays pending
+      await service.enqueue(endpoint: '/test', method: 'POST', payload: {'key': 'val'});
+      await service.enqueue(endpoint: '/test2', method: 'PATCH', payload: {'k': 'v'});
+      expect(service.pendingCount, 2);
+      expect(replayCount, 0);
+
+      // Simulate coming online — publish to connectivity stream
+      connectivityCtrl.add([ConnectivityResult.wifi]);
+      await Future.delayed(const Duration(milliseconds: 800)); // debounce 500ms + exec
+
+      // Both mutations should be replayed
+      expect(service.pendingCount, 0);
+      expect(replayCount, 2);
+
+      await service.dispose();
+      await connectivityCtrl.close();
+    });
+
     test('clearAll removes all mutations', () async {
       final mockConnectivity = _MockConnectivity([ConnectivityResult.none]);
       syncManager = SyncManager(
@@ -211,4 +248,17 @@ class _MockConnectivity extends Fake implements Connectivity {
 
   @override
   Future<List<ConnectivityResult>> checkConnectivity() async => _results;
+}
+
+class _MockConnectivityCtrl extends Fake implements Connectivity {
+  final StreamController<List<ConnectivityResult>> controller;
+  _MockConnectivityCtrl(this.controller);
+
+  @override
+  Stream<List<ConnectivityResult>> get onConnectivityChanged =>
+      controller.stream;
+
+  @override
+  Future<List<ConnectivityResult>> checkConnectivity() async =>
+      controller.isClosed ? [] : controller.stream.first;
 }

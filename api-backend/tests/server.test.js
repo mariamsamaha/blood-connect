@@ -1,3 +1,7 @@
+// Prevent AI_SERVICE_URL from .env causing timeouts — use rule-based fallback
+// Set to empty (dotenv won't override an already-set variable)
+process.env.AI_SERVICE_URL = '';
+
 const mockLogger = {
   info: jest.fn(),
   warn: jest.fn(),
