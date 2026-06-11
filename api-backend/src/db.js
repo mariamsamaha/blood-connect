@@ -77,6 +77,36 @@ async function query(sql, params = []) {
   }
 }
 
+async function withTransaction(callback) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const q = async (sql, params) => {
+      const start = Date.now();
+      try {
+        const result = await client.query(sql, params);
+        metrics.trackDbQuery(sql.split(/\s+/)[0].toUpperCase(), Date.now() - start);
+        return result.rows;
+      } catch (err) {
+        metrics.trackDbQuery('ERROR', Date.now() - start);
+        throw err;
+      }
+    };
+    const result = await callback(q);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rbErr) {
+      logger.warn({ err: rbErr }, 'ROLLBACK failed');
+    }
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 async function testConnection() {
   const start = Date.now();
   try {
@@ -89,4 +119,4 @@ async function testConnection() {
   }
 }
 
-module.exports = { pool, query, testConnection, validateDbConfig };
+module.exports = { pool, query, withTransaction, testConnection, validateDbConfig };

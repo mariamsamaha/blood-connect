@@ -26,11 +26,16 @@ jest.mock('firebase-admin', () => ({
 }));
 
 const mockQueryLog = [];
+const mockQ = jest.fn();
+const mockWithTransaction = jest.fn().mockImplementation(async (callback) => {
+  return await callback(mockQ);
+});
 const mockDb = {
   query: jest.fn().mockImplementation((sql, params) => {
     mockQueryLog.push({ sql: sql.substring(0, 120), params });
     return Promise.resolve([]);
   }),
+  withTransaction: mockWithTransaction,
   testConnection: jest.fn().mockResolvedValue(true),
   validateDbConfig: jest.fn().mockReturnValue({ ok: true, mode: 'test' }),
   pool: {
@@ -58,14 +63,18 @@ describe('Wrapped Transaction Tests', () => {
   beforeEach(() => {
     mockQueryLog.length = 0;
     mockDb.query.mockClear();
+    mockQ.mockClear();
+    mockWithTransaction.mockClear();
   });
 
-  describe('Create request + audit log in single flow (CTE-backed)', () => {
-    test('POST /api/v1/requests writes blood_request + audit_log + notification', async () => {
+  describe('Create request + audit log + notification in explicit transaction', () => {
+    test('POST /api/v1/requests writes blood_request + audit_log + notification atomically', async () => {
       mockDb.query
         .mockResolvedValueOnce([{ hospital_code: 'CH', hospital_name: 'City Hospital' }])
         .mockResolvedValueOnce([{ short_id: 'CH-ABCD' }])
-        .mockResolvedValueOnce([{ donor_count: 5 }])
+        .mockResolvedValueOnce([{ donor_count: 5 }]);
+
+      mockQ
         .mockResolvedValueOnce([{
           id: 'req-new-1', short_id: 'CH-ABCD', blood_type: 'A+',
           units_needed: 2, urgency_level: 'critical',
@@ -75,7 +84,7 @@ describe('Wrapped Transaction Tests', () => {
           created_at: new Date().toISOString(),
           expires_at: new Date(Date.now() + 86400000).toISOString(),
         }])
-        .mockResolvedValueOnce([{ id: 'audit-1' }])
+        .mockResolvedValueOnce([])
         .mockResolvedValueOnce([]);
 
       const res = await request(app)
@@ -95,11 +104,50 @@ describe('Wrapped Transaction Tests', () => {
       expect(res.body.id).toBe('req-new-1');
       expect(res.body.short_id).toBe('CH-ABCD');
 
-      expect(mockDb.query.mock.calls.length).toBeGreaterThanOrEqual(4);
+      expect(mockWithTransaction).toHaveBeenCalledTimes(1);
+      expect(mockQ).toHaveBeenCalledTimes(3);
+      expect(mockQ.mock.calls[0][0]).toContain('WITH');
+      expect(mockQ.mock.calls[0][0]).toContain('INSERT INTO blood_requests');
+      expect(mockQ.mock.calls[1][0]).toContain('INSERT INTO request_audit_log');
+      expect(mockQ.mock.calls[2][0]).toContain('INSERT INTO notifications');
+    });
 
-      const insertCall = mockDb.query.mock.calls.find(call => call[0].includes('INSERT INTO blood_requests'));
-      expect(insertCall).toBeDefined();
-      expect(insertCall[0]).toContain('WITH');
+    test('rollback when audit_log insert fails mid-transaction', async () => {
+      mockDb.query
+        .mockResolvedValueOnce([{ hospital_code: 'CH', hospital_name: 'City Hospital' }])
+        .mockResolvedValueOnce([{ short_id: 'CH-ABCD' }])
+        .mockResolvedValueOnce([{ donor_count: 5 }]);
+
+      mockQ
+        .mockResolvedValueOnce([{
+          id: 'req-1', short_id: 'CH-ABCD', blood_type: 'A+',
+          units_needed: 2, urgency_level: 'critical',
+          hospital_name: 'City Hospital',
+          hospital_lat: 30.05, hospital_lng: 31.24,
+          status: 'active',
+        }])
+        .mockRejectedValueOnce(new Error('db_error'));
+
+      const res = await request(app)
+        .post('/api/v1/requests')
+        .set('Authorization', 'Bearer test-token')
+        .send({
+          requesterId: 'requester-1',
+          bloodType: 'A+',
+          unitsNeeded: 2,
+          urgencyLevel: 'critical',
+          hospitalId: 'hosp-1',
+          hospitalLat: 30.05,
+          hospitalLng: 31.24,
+        });
+
+      expect(res.status).toBe(500);
+      expect(mockWithTransaction).toHaveBeenCalledTimes(1);
+      expect(mockQ).toHaveBeenCalledTimes(2);
+      expect(mockQ.mock.calls[0][0]).toContain('INSERT INTO blood_requests');
+      expect(mockQ.mock.calls[1][0]).toContain('INSERT INTO request_audit_log');
+      const notifCalls = mockQ.mock.calls.filter(c => c[0].includes('INSERT INTO notifications'));
+      expect(notifCalls).toHaveLength(0);
     });
   });
 
@@ -128,14 +176,16 @@ describe('Wrapped Transaction Tests', () => {
     });
   });
 
-  describe('Donor accept uses row-level locking (FOR UPDATE)', () => {
+  describe('Donor accept uses row-level locking (FOR UPDATE) in explicit transaction', () => {
     test('POST /api/v1/donor/responses/accept uses FOR UPDATE lock', async () => {
-      mockDb.query
-        .mockResolvedValueOnce([{ id: 'req-1', status: 'active' }])
+      mockQ
+        .mockResolvedValueOnce()
         .mockResolvedValueOnce([{ response_type: 'accepted' }])
         .mockResolvedValueOnce([{ status: 'in_progress' }])
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([{ requester_id: 'r1', hospital_id: 'h1', hospital_name: 'H', blood_type: 'O+' }]);
+        .mockResolvedValueOnce([{ requester_id: 'r1', hospital_id: 'h1', hospital_name: 'H', blood_type: 'O+' }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
 
       const res = await request(app)
         .post('/api/v1/donor/responses/accept')
@@ -148,10 +198,90 @@ describe('Wrapped Transaction Tests', () => {
         });
 
       expect(res.status).toBe(204);
+      expect(mockWithTransaction).toHaveBeenCalledTimes(1);
+      expect(mockQ.mock.calls[0][0]).toContain('FOR UPDATE');
+      expect(mockQ.mock.calls[0][0]).toContain('INSERT INTO donor_responses');
+      expect(mockQ.mock.calls[1][0]).toContain('SELECT response_type');
+    });
 
-      expect(mockDb.query.mock.calls[0][0]).toContain('FOR UPDATE');
-      expect(mockDb.query.mock.calls[0][0]).toContain('INSERT INTO donor_responses');
-      expect(mockDb.query.mock.calls[1][0]).toContain('SELECT response_type');
+    test('rollback when audit_log insert fails mid-transaction', async () => {
+      mockQ
+        .mockResolvedValueOnce()
+        .mockResolvedValueOnce([{ response_type: 'accepted' }])
+        .mockResolvedValueOnce([{ status: 'in_progress' }])
+        .mockRejectedValueOnce(new Error('db_error'));
+
+      const res = await request(app)
+        .post('/api/v1/donor/responses/accept')
+        .set('Authorization', 'Bearer test-token')
+        .send({
+          requestId: 'req-1',
+          donorId: 'donor-1',
+          donorLat: 30.0444,
+          donorLng: 31.2357,
+        });
+
+      expect(res.status).toBe(500);
+      expect(mockWithTransaction).toHaveBeenCalledTimes(1);
+      expect(mockQ).toHaveBeenCalledTimes(4);
+      expect(mockQ.mock.calls[0][0]).toContain('FOR UPDATE');
+      expect(mockQ.mock.calls[3][0]).toContain('INSERT INTO request_audit_log');
+      const notifCalls = mockQ.mock.calls.filter(c => c[0] && c[0].includes('INSERT INTO notifications'));
+      expect(notifCalls).toHaveLength(0);
+    });
+  });
+
+  describe('Hospital verify uses explicit transaction', () => {
+    test('POST /api/v1/hospital/verify writes verification + notifications atomically', async () => {
+      mockQ
+        .mockResolvedValueOnce([{ success: true, error_message: null }])
+        .mockResolvedValueOnce([{
+          requester_id: 'r1', hospital_id: 'h1',
+          hospital_name: 'City Hospital', blood_type: 'O+', donor_id: 'd1',
+        }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+
+      const res = await request(app)
+        .post('/api/v1/hospital/verify')
+        .set('Authorization', 'Bearer test-token')
+        .send({
+          hospitalUserId: 'h1',
+          requestId: 'req-1',
+          staffName: 'Dr. Smith',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.error).toBeNull();
+      expect(mockWithTransaction).toHaveBeenCalledTimes(1);
+      expect(mockQ).toHaveBeenCalledTimes(4);
+      expect(mockQ.mock.calls[0][0]).toContain('verify_request_donation');
+      expect(mockQ.mock.calls[2][0]).toContain('INSERT INTO notifications');
+    });
+
+    test('rollback when notification insert fails after verification', async () => {
+      mockQ
+        .mockResolvedValueOnce([{ success: true, error_message: null }])
+        .mockResolvedValueOnce([{
+          requester_id: 'r1', hospital_id: 'h1',
+          hospital_name: 'City Hospital', blood_type: 'O+', donor_id: 'd1',
+        }])
+        .mockRejectedValueOnce(new Error('db_error'));
+
+      const res = await request(app)
+        .post('/api/v1/hospital/verify')
+        .set('Authorization', 'Bearer test-token')
+        .send({
+          hospitalUserId: 'h1',
+          requestId: 'req-1',
+          staffName: 'Dr. Smith',
+        });
+
+      expect(res.status).toBe(500);
+      expect(mockWithTransaction).toHaveBeenCalledTimes(1);
+      expect(mockQ).toHaveBeenCalledTimes(3);
+      expect(mockQ.mock.calls[0][0]).toContain('verify_request_donation');
+      expect(mockQ.mock.calls[2][0]).toContain('INSERT INTO notifications');
     });
   });
 });

@@ -25,8 +25,13 @@ jest.mock('firebase-admin', () => ({
   }),
 }));
 
+const mockQ = jest.fn();
+const mockWithTransaction = jest.fn().mockImplementation(async (callback) => {
+  return await callback(mockQ);
+});
 const mockDb = {
   query: jest.fn(),
+  withTransaction: mockWithTransaction,
   testConnection: jest.fn().mockResolvedValue(true),
   validateDbConfig: jest.fn().mockReturnValue({ ok: true, mode: 'test' }),
   pool: {
@@ -125,15 +130,17 @@ describe('Failure Scenarios', () => {
   describe('3. Concurrent donor accept - exactly one succeeds', () => {
     beforeEach(() => {
       mockDb.query.mockReset();
+      mockQ.mockReset();
+      mockWithTransaction.mockClear();
     });
 
     test('parallel accepts on same request_id - first wins, second gets 409', async () => {
       let cteCallCount = 0;
-      mockDb.query.mockImplementation((sql) => {
+      mockQ.mockImplementation((sql) => {
         if (sql.includes('FOR UPDATE')) {
           cteCallCount++;
           if (cteCallCount === 1) {
-            return Promise.resolve([{ id: 'req-1', status: 'active' }]);
+            return Promise.resolve();
           }
           const err = new Error('duplicate key value violates unique constraint "donor_responses_pkey"');
           return Promise.reject(err);

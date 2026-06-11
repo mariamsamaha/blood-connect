@@ -17,7 +17,7 @@ const logger = require('./logger');
 const metrics = require('./metrics');
 const { CircuitBreaker } = require('./circuit-breaker');
 const { traceMiddleware } = require('./trace');
-const { pool, query, testConnection, validateDbConfig } = require('./db');
+const { pool, query, withTransaction, testConnection, validateDbConfig } = require('./db');
 const { requireFirebaseAuth } = require('./auth');
 const { serverError } = require('./errors');
 
@@ -104,15 +104,15 @@ function profileSelect() {
 }
 
 // ─── Notification helpers ──────────────────────────────────────────────────────
-async function insertNotification({ userId, requestId, notificationType, title, body }) {
+async function insertNotification({ userId, requestId, notificationType, title, body }, queryFn) {
+  const q = queryFn || query;
   try {
-    await query(
+    await q(
       `INSERT INTO notifications (user_id, request_id, notification_type, title, body, delivery_status)
        VALUES ($1::uuid, $2::uuid, $3, $4, $5, 'sent')`,
       [userId, requestId, notificationType, title, body],
     );
   } catch (err) {
-    // notifications table may not exist yet if migration wasn't run — non-critical
     logger.warn({ err }, 'Failed to insert notification');
   }
 }
@@ -621,60 +621,56 @@ app.post('/api/v1/requests', requireFirebaseAuth, async (req, res) => {
       params.push(b.requesterLng, b.requesterLat);
     }
 
-    const requestResult = await query(
-      `WITH new_request AS (
-        INSERT INTO blood_requests (
-          short_id, requester_id, blood_type, units_needed, urgency_level,
-          hospital_id, hospital_name, hospital_location, requester_location,
-          patient_name, description, contact_phone, status,
-          nearby_donors_count, total_eligible_count, expires_at
-        ) VALUES (
-          $1, $2::uuid, $3, $4, $5, $6::uuid, $7,
-          ST_SetSRID(ST_MakePoint($8::float8, $9::float8), 4326)::geography,
-          ${requesterLocSql},
-          $10, $11, $12, 'active', $13, $13, NOW() + INTERVAL '24 hours'
+    const created = await withTransaction(async (q) => {
+      const requestResult = await q(
+        `WITH new_request AS (
+          INSERT INTO blood_requests (
+            short_id, requester_id, blood_type, units_needed, urgency_level,
+            hospital_id, hospital_name, hospital_location, requester_location,
+            patient_name, description, contact_phone, status,
+            nearby_donors_count, total_eligible_count, expires_at
+          ) VALUES (
+            $1, $2::uuid, $3, $4, $5, $6::uuid, $7,
+            ST_SetSRID(ST_MakePoint($8::float8, $9::float8), 4326)::geography,
+            ${requesterLocSql},
+            $10, $11, $12, 'active', $13, $13, NOW() + INTERVAL '24 hours'
+          )
+          RETURNING *,
+            ST_Y(hospital_location::geometry) as hospital_lat,
+            ST_X(hospital_location::geometry) as hospital_lng,
+            ST_Y(requester_location::geometry) as requester_lat,
+            ST_X(requester_location::geometry) as requester_lng
+        ),
+        mark_recipient AS (
+          UPDATE users SET is_recipient = TRUE, updated_at = NOW()
+          WHERE id = $2::uuid RETURNING id
         )
-        RETURNING *,
-          ST_Y(hospital_location::geometry) as hospital_lat,
-          ST_X(hospital_location::geometry) as hospital_lng,
-          ST_Y(requester_location::geometry) as requester_lat,
-          ST_X(requester_location::geometry) as requester_lng
-      ),
-      mark_recipient AS (
-        UPDATE users SET is_recipient = TRUE, updated_at = NOW()
-        WHERE id = $2::uuid RETURNING id
-      )
-      SELECT * FROM new_request`,
-      params,
-    );
+        SELECT * FROM new_request`,
+        params,
+      );
 
-    if (requestResult.length === 0) {
-      return res.status(500).json({ error: 'insert_failed' });
-    }
+      if (requestResult.length === 0) {
+        throw new Error('insert_failed');
+      }
 
-    const created = requestResult[0];
+      const record = requestResult[0];
 
-    try {
-      await query(
+      await q(
         `INSERT INTO request_audit_log (request_id, event_type, detail, actor_user_id)
          VALUES ($1::uuid, 'created', $2, $3::uuid)`,
-        [
-          created.id,
-          `Request opened; id=${created.short_id}`,
-          b.requesterId,
-        ],
+        [record.id, `Request opened; id=${record.short_id}`, b.requesterId],
       );
-    } catch (auditErr) {
-      logger.warn({ err: auditErr }, 'Audit log write failed');
-    }
 
-    insertNotification({
-      userId: b.requesterId,
-      requestId: created.id,
-      notificationType: 'request_alert',
-      title: 'Request Created',
-      body: `Your ${b.bloodType} request at ${hospitalName} is now active. Donors in your area are being notified.`,
-    }).catch(() => {});
+      await q(
+        `INSERT INTO notifications (user_id, request_id, notification_type, title, body, delivery_status)
+         VALUES ($1::uuid, $2::uuid, $3, $4, $5, 'sent')`,
+        [b.requesterId, record.id, 'request_alert',
+         'Request Created',
+         `Your ${b.bloodType} request at ${hospitalName} is now active. Donors in your area are being notified.`],
+      );
+
+      return record;
+    });
 
     notifyNewRequest(created).catch((e) =>
       logger.warn({ err: e }, 'Push notification dispatch failed'),
@@ -682,6 +678,9 @@ app.post('/api/v1/requests', requireFirebaseAuth, async (req, res) => {
 
     return res.status(201).json(created);
   } catch (err) {
+    if (err.message === 'insert_failed') {
+      return res.status(500).json({ error: 'insert_failed' });
+    }
     logger.error({ err, route: 'POST /requests' }, 'Failed to create request');
     return res.status(500).json({ error: 'internal_error' });
   }
@@ -846,68 +845,77 @@ app.get('/api/v1/donor/matches', requireFirebaseAuth, async (req, res) => {
 app.post('/api/v1/donor/responses/accept', requireFirebaseAuth, async (req, res) => {
   try {
     const { requestId, donorId, donorLat, donorLng } = req.body || {};
-    await query(
-      `WITH locked AS (
-        SELECT id, status FROM blood_requests WHERE id = $1::uuid FOR UPDATE
-      ),
-      accepted AS (
-        INSERT INTO donor_responses (request_id, donor_id, response_type, distance_km)
-        SELECT $1::uuid, $2::uuid, 'accepted',
-          ROUND((ST_Distance(
-            (SELECT hospital_location FROM blood_requests WHERE id = $1::uuid),
-            ST_SetSRID(ST_MakePoint($4::float8, $3::float8), 4326)::geography
-          ) / 1000)::numeric, 2)
-        FROM locked WHERE status = 'active' RETURNING id
-      )
-      UPDATE blood_requests br SET status = 'in_progress', updated_at = NOW()
-      FROM locked, accepted
-      WHERE br.id = $1::uuid AND locked.status = 'active'`,
-      [requestId, donorId, donorLat, donorLng],
-    );
+    await withTransaction(async (q) => {
+      await q(
+        `WITH locked AS (
+          SELECT id, status FROM blood_requests WHERE id = $1::uuid FOR UPDATE
+        ),
+        accepted AS (
+          INSERT INTO donor_responses (request_id, donor_id, response_type, distance_km)
+          SELECT $1::uuid, $2::uuid, 'accepted',
+            ROUND((ST_Distance(
+              (SELECT hospital_location FROM blood_requests WHERE id = $1::uuid),
+              ST_SetSRID(ST_MakePoint($4::float8, $3::float8), 4326)::geography
+            ) / 1000)::numeric, 2)
+          FROM locked WHERE status = 'active' RETURNING id
+        )
+        UPDATE blood_requests br SET status = 'in_progress', updated_at = NOW()
+        FROM locked, accepted
+        WHERE br.id = $1::uuid AND locked.status = 'active'`,
+        [requestId, donorId, donorLat, donorLng],
+      );
 
-    const check = await query(
-      `SELECT response_type FROM donor_responses
-       WHERE request_id = $1::uuid AND donor_id = $2::uuid`,
-      [requestId, donorId],
-    );
-    if (check.length === 0 || check[0].response_type !== 'accepted') {
-      return res.status(409).json({ error: 'accept_failed' });
-    }
-    const statusCheck = await query(
-      'SELECT status FROM blood_requests WHERE id = $1::uuid',
-      [requestId],
-    );
-    if (statusCheck.length === 0 || statusCheck[0].status !== 'in_progress') {
-      return res.status(409).json({ error: 'accept_failed' });
-    }
-    await query(
-      `INSERT INTO request_audit_log (request_id, event_type, detail, actor_user_id)
-       VALUES ($1::uuid, 'donor_accepted', $2, $3::uuid)`,
-      [requestId, `Atomic assignment to donor ${donorId}.`, donorId],
-    ).catch(() => {});
-    query(
-      `SELECT requester_id, hospital_id, hospital_name, blood_type FROM blood_requests WHERE id = $1::uuid`,
-      [requestId],
-    ).then((rows) => {
-      if (rows.length === 0) return;
-      const r = rows[0];
-      insertNotification({
-        userId: r.requester_id,
-        requestId,
-        notificationType: 'fulfillment_update',
-        title: 'Donor Found',
-        body: `A donor has accepted your ${r.blood_type} request at ${r.hospital_name}.`,
-      }).catch(() => {});
-      insertNotification({
-        userId: r.hospital_id,
-        requestId,
-        notificationType: 'fulfillment_update',
-        title: 'Donor Assigned',
-        body: `A donor accepted request ${requestId} at your hospital.`,
-      }).catch(() => {});
-    }).catch(() => {});
+      const check = await q(
+        `SELECT response_type FROM donor_responses
+         WHERE request_id = $1::uuid AND donor_id = $2::uuid`,
+        [requestId, donorId],
+      );
+      if (check.length === 0 || check[0].response_type !== 'accepted') {
+        const err = new Error('accept_failed');
+        err.statusCode = 409;
+        throw err;
+      }
+      const statusCheck = await q(
+        'SELECT status FROM blood_requests WHERE id = $1::uuid',
+        [requestId],
+      );
+      if (statusCheck.length === 0 || statusCheck[0].status !== 'in_progress') {
+        const err = new Error('accept_failed');
+        err.statusCode = 409;
+        throw err;
+      }
+      await q(
+        `INSERT INTO request_audit_log (request_id, event_type, detail, actor_user_id)
+         VALUES ($1::uuid, 'donor_accepted', $2, $3::uuid)`,
+        [requestId, `Atomic assignment to donor ${donorId}.`, donorId],
+      );
+      const rows = await q(
+        `SELECT requester_id, hospital_id, hospital_name, blood_type FROM blood_requests WHERE id = $1::uuid`,
+        [requestId],
+      );
+      if (rows.length > 0) {
+        const r = rows[0];
+        await q(
+          `INSERT INTO notifications (user_id, request_id, notification_type, title, body, delivery_status)
+           VALUES ($1::uuid, $2::uuid, $3, $4, $5, 'sent')`,
+          [r.requester_id, requestId, 'fulfillment_update',
+           'Donor Found',
+           `A donor has accepted your ${r.blood_type} request at ${r.hospital_name}.`],
+        );
+        await q(
+          `INSERT INTO notifications (user_id, request_id, notification_type, title, body, delivery_status)
+           VALUES ($1::uuid, $2::uuid, $3, $4, $5, 'sent')`,
+          [r.hospital_id, requestId, 'fulfillment_update',
+           'Donor Assigned',
+           `A donor accepted request ${requestId} at your hospital.`],
+        );
+      }
+    });
     return res.status(204).send();
   } catch (err) {
+    if (err.statusCode === 409) {
+      return res.status(409).json({ error: 'accept_failed' });
+    }
     const msg = String(err);
     if (msg.includes('23505') || msg.includes('unique')) {
       return res.status(409).json({ error: 'already_accepted' });
@@ -1121,47 +1129,50 @@ app.get('/api/v1/hospital/search', requireFirebaseAuth, async (req, res) => {
 app.post('/api/v1/hospital/verify', requireFirebaseAuth, async (req, res) => {
   try {
     const { hospitalUserId, requestId, staffName } = req.body || {};
-    const rows = await query(
-      `SELECT success, error_message FROM verify_request_donation($1::uuid, $2::uuid, $3)`,
-      [requestId, hospitalUserId, staffName ?? null],
-    );
-    if (rows.length === 0) {
-      return res.json({
-        error:
-          'Run database/mvp_incremental.sql on Supabase (verify_request_donation).',
-      });
-    }
-    if (rows[0].success === true) {
-      query(
+    let result;
+    await withTransaction(async (q) => {
+      const rows = await q(
+        `SELECT success, error_message FROM verify_request_donation($1::uuid, $2::uuid, $3)`,
+        [requestId, hospitalUserId, staffName ?? null],
+      );
+      if (rows.length === 0) {
+        result = { error: 'Run database/mvp_incremental.sql on Supabase (verify_request_donation).' };
+        return;
+      }
+      if (rows[0].success !== true) {
+        result = { error: rows[0].error_message || 'Verification failed' };
+        return;
+      }
+      const info = await q(
         `SELECT br.requester_id, br.hospital_id, br.hospital_name, br.blood_type,
                 dr.donor_id
          FROM blood_requests br
          LEFT JOIN donor_responses dr ON dr.request_id = br.id AND dr.response_type = 'accepted'
          WHERE br.id = $1::uuid`,
         [requestId],
-      ).then((r) => {
-        if (r.length === 0) return;
-        const info = r[0];
-        if (info.donor_id) {
-          insertNotification({
-            userId: info.donor_id,
-            requestId,
-            notificationType: 'fulfillment_update',
-            title: 'Donation Verified',
-            body: `Your donation at ${info.hospital_name} has been verified. Thank you for saving lives!`,
-          }).catch(() => {});
+      );
+      if (info.length > 0) {
+        const r = info[0];
+        if (r.donor_id) {
+          await q(
+            `INSERT INTO notifications (user_id, request_id, notification_type, title, body, delivery_status)
+             VALUES ($1::uuid, $2::uuid, $3, $4, $5, 'sent')`,
+            [r.donor_id, requestId, 'fulfillment_update',
+             'Donation Verified',
+             `Your donation at ${r.hospital_name} has been verified. Thank you for saving lives!`],
+          );
         }
-        insertNotification({
-          userId: info.requester_id,
-          requestId,
-          notificationType: 'fulfillment_update',
-          title: 'Request Fulfilled',
-          body: `Your ${info.blood_type} request at ${info.hospital_name} has been fulfilled.`,
-        }).catch(() => {});
-      }).catch(() => {});
-      return res.json({ error: null });
-    }
-    return res.json({ error: rows[0].error_message || 'Verification failed' });
+        await q(
+          `INSERT INTO notifications (user_id, request_id, notification_type, title, body, delivery_status)
+           VALUES ($1::uuid, $2::uuid, $3, $4, $5, 'sent')`,
+          [r.requester_id, requestId, 'fulfillment_update',
+           'Request Fulfilled',
+           `Your ${r.blood_type} request at ${r.hospital_name} has been fulfilled.`],
+        );
+      }
+      result = { error: null };
+    });
+    return res.json(result);
   } catch (err) {
     logger.error({ err, route: 'POST /hospital/verify' }, 'Failed to verify donation');
     return res.status(500).json({ error: 'internal_error' });

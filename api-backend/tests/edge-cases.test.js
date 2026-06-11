@@ -27,6 +27,7 @@ jest.mock('firebase-admin', () => ({
 
 jest.mock('../src/db', () => ({
   query: jest.fn(),
+  withTransaction: jest.fn(),
   testConnection: jest.fn().mockResolvedValue(true),
   validateDbConfig: jest.fn().mockReturnValue({ ok: true, mode: 'test' }),
   pool: {
