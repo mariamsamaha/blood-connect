@@ -154,6 +154,53 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  void _showAbout() {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
+        title: Row(
+          children: [
+            Icon(Icons.bloodtype, color: AppColors.primaryRed, size: 28),
+            const SizedBox(width: 10),
+            const Text('BloodConnect'),
+          ],
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Version 1.0.0',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'BloodConnect is a community-driven platform that connects blood donors with recipients and hospitals in real time.',
+            ),
+            SizedBox(height: 12),
+            Text(
+              'Our mission is to make blood donation faster, smarter, and more accessible for everyone.',
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Made with ❤️ to save lives.',
+              style: TextStyle(fontWeight: FontWeight.w500),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _signOut() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -302,6 +349,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ThemeToggleCard(
                   key: const ValueKey('theme_toggle'),
                 ),
+                const SizedBox(height: 16),
+                _SettingsGroup(
+                  title: 'About',
+                  children: [
+                    _SettingsTile(
+                      title: 'About BloodConnect',
+                      subtitle: 'Version 1.0.0',
+                      trailing: const Icon(
+                        Icons.chevron_right,
+                        color: AppColors.textSecondary,
+                      ),
+                      onTap: _showAbout,
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 32),
                 AppButton.secondary(
                   label: 'Sign Out',
@@ -359,37 +421,46 @@ class _SettingsTile extends StatelessWidget {
     required this.title,
     required this.subtitle,
     this.trailing,
+    this.onTap,
   });
 
   final String title;
   final String subtitle;
   final Widget? trailing;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(fontWeight: FontWeight.w600),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.bodySmall?.color ?? AppColors.textSecondary,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  color: Theme.of(context).textTheme.bodySmall?.color ?? AppColors.textSecondary,
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
+            ),
+            if (trailing != null) trailing!,
+          ],
         ),
-        if (trailing != null) trailing!,
-      ],
+      ),
     );
   }
 }
