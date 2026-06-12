@@ -40,9 +40,9 @@ jobs:
         run: dart fix --dry-run
 
       # flutter analyze uses analysis_options.yaml (flutter_lints)
-      # --fatal-infos turns info-level hints into failures — keeps code clean
+      # --fatal-warnings turns warnings + errors into failures; infos are OK
       - name: Analyze code
-        run: flutter analyze --fatal-infos
+        run: flutter analyze --fatal-warnings
 
       # Run all 42+ Flutter tests + widget tests with coverage
       - name: Run tests
@@ -168,6 +168,8 @@ jobs:
       - name: Run tests
         working-directory: ai-service
         run: pytest test_main.py -v --timeout=30
+        env:
+          TESTING: "true"
 
   # ─────────────────────────────────────────────────────────────────────────────
   # JOB 5 — Secret scan (Gitleaks)

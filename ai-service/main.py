@@ -152,17 +152,20 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_PATH = BASE_DIR / "vit_medical_best.pt"
 
-print("Loading model weights...")
-if not MODEL_PATH.exists():
-    raise RuntimeError(f"Model file not found at: {MODEL_PATH}")
-state_dict = torch.load(MODEL_PATH, map_location=device, weights_only=False)
-
-print("Building model...")
-model = MedicalViT(state_dict)
-model.load_state_dict(state_dict, strict=True)
-model.eval()
-model.to(device)
-print("Model ready!")
+if os.getenv("TESTING") != "true":
+    print("Loading model weights...")
+    if not MODEL_PATH.exists():
+        raise RuntimeError(f"Model file not found at: {MODEL_PATH}")
+    state_dict = torch.load(MODEL_PATH, map_location=device, weights_only=False)
+    print("Building model...")
+    model = MedicalViT(state_dict)
+    model.load_state_dict(state_dict, strict=True)
+    model.eval()
+    model.to(device)
+    print("Model ready!")
+else:
+    print("TESTING mode — skipping model load")
+    model = None
 
 # ── Same transforms used in your training notebook ─────────────────────
 transform = transforms.Compose([
