@@ -155,7 +155,7 @@ MODEL_PATH = BASE_DIR / "vit_medical_best.pt"
 print("Loading model weights...")
 if not MODEL_PATH.exists():
     raise RuntimeError(f"Model file not found at: {MODEL_PATH}")
-state_dict = torch.load(MODEL_PATH, map_location=device)
+state_dict = torch.load(MODEL_PATH, map_location=device, weights_only=False)
 
 print("Building model...")
 model = MedicalViT(state_dict)
