@@ -365,13 +365,13 @@ class _HospitalDashboardScreenState
                 ),
               ),
               const Spacer(),
-              if (_profile?.cityArea != null && _profile.cityArea.isNotEmpty)
+              if ((_profile?.cityArea ?? '').isNotEmpty)
                 Row(
                   children: [
                     Icon(Icons.location_on_rounded, color: Colors.white70, size: 14),
                     const SizedBox(width: 4),
                     Text(
-                      _profile!.cityArea,
+                      _profile?.cityArea ?? '',
                       style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 12,
