@@ -13,7 +13,7 @@ class UrgencyBadge extends StatefulWidget {
 }
 
 class _UrgencyBadgeState extends State<UrgencyBadge>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late AnimationController _pulseController;
   late Animation<double> _scaleAnimation;
 
