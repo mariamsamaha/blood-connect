@@ -28,16 +28,27 @@ class PersistentCacheService {
     final fresh = freshTtl ?? const Duration(minutes: 5);
     final max = maxTtl ?? const Duration(hours: 24);
 
-    final entry = CacheEntry()
-      ..key = key
-      ..jsonData = jsonEncode(data)
-      ..createdAt = now
-      ..expiresAt = now.add(max)
-      ..staleAt = now.add(fresh);
-
-    await _isar.writeTxn(() async {
-      await _isar.cacheEntrys.put(entry);
-    });
+    /// Retry loop — handles unique-index race when two concurrent writes
+    /// both read null from findFirst() and both try to insert the same key.
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        await _isar.writeTxn(() async {
+          final existing =
+              await _isar.cacheEntrys.where().keyEqualTo(key).findFirst();
+          final entry = (existing ?? CacheEntry())
+            ..key = key
+            ..jsonData = jsonEncode(data)
+            ..createdAt = now
+            ..expiresAt = now.add(max)
+            ..staleAt = now.add(fresh);
+          await _isar.cacheEntrys.put(entry);
+        });
+        return;
+      } on IsarError catch (_) {
+        if (attempt == 2) rethrow;
+        // unique index violation from a concurrent write — retry
+      }
+    }
   }
 
   Future<Map<String, dynamic>?> get(String key) async {
