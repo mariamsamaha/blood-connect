@@ -49,4 +49,8 @@ class StoryService {
       return false;
     }
   }
+
+  Future<void> deleteStory(String storyId) async {
+    await _api.deleteJson('/api/v1/stories/$storyId');
+  }
 }

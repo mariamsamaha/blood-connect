@@ -116,12 +116,45 @@ class _StoriesScreenState extends ConsumerState<StoriesScreen>
           : TabBarView(
               controller: _tab,
               children: [
-                _StoryList(stories: _all, onLike: _toggleLike, onRefresh: _load),
-                _StoryList(stories: _donor, onLike: _toggleLike, onRefresh: _load),
-                _StoryList(stories: _recipient, onLike: _toggleLike, onRefresh: _load),
+                _StoryList(stories: _all, currentUserId: _profile?.id, onLike: _toggleLike, onDelete: _deleteStory, onRefresh: _load),
+                _StoryList(stories: _donor, currentUserId: _profile?.id, onLike: _toggleLike, onDelete: _deleteStory, onRefresh: _load),
+                _StoryList(stories: _recipient, currentUserId: _profile?.id, onLike: _toggleLike, onDelete: _deleteStory, onRefresh: _load),
               ],
             ),
     );
+  }
+
+  Future<void> _deleteStory(Story story) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete story?'),
+        content: const Text('This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: AppColors.primaryRed)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ref.read(storyServiceProvider).deleteStory(story.id);
+      setState(() {
+        _all.removeWhere((s) => s.id == story.id);
+        _donor.removeWhere((s) => s.id == story.id);
+        _recipient.removeWhere((s) => s.id == story.id);
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Story deleted'), backgroundColor: AppColors.success),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
   }
 
   Future<void> _openSubmit() async {
@@ -139,11 +172,15 @@ class _StoriesScreenState extends ConsumerState<StoriesScreen>
 class _StoryList extends StatelessWidget {
   const _StoryList({
     required this.stories,
+    required this.currentUserId,
     required this.onLike,
+    required this.onDelete,
     required this.onRefresh,
   });
   final List<Story> stories;
+  final String? currentUserId;
   final void Function(Story) onLike;
+  final void Function(Story) onDelete;
   final Future<void> Function() onRefresh;
 
   @override
@@ -176,12 +213,12 @@ class _StoryList extends StatelessWidget {
           if (featured.isNotEmpty) ...[
             _Label('⭐  Featured'),
             const SizedBox(height: 8),
-            ...featured.map((s) => _StoryCard(story: s, onLike: onLike, featured: true)),
+            ...featured.map((s) => _StoryCard(story: s, currentUserId: currentUserId, onLike: onLike, onDelete: onDelete, featured: true)),
             const SizedBox(height: 20),
             _Label('All Stories'),
             const SizedBox(height: 8),
           ],
-          ...regular.map((s) => _StoryCard(story: s, onLike: onLike)),
+          ...regular.map((s) => _StoryCard(story: s, currentUserId: currentUserId, onLike: onLike, onDelete: onDelete)),
         ],
       ),
     );
@@ -202,9 +239,11 @@ class _Label extends StatelessWidget {
 
 // ─── Story card ───────────────────────────────────────────────────────────────
 class _StoryCard extends StatefulWidget {
-  const _StoryCard({required this.story, required this.onLike, this.featured = false});
+  const _StoryCard({required this.story, required this.currentUserId, required this.onLike, required this.onDelete, this.featured = false});
   final Story story;
+  final String? currentUserId;
   final void Function(Story) onLike;
+  final void Function(Story) onDelete;
   final bool featured;
   @override
   State<_StoryCard> createState() => _StoryCardState();
@@ -301,15 +340,39 @@ class _StoryCardState extends State<_StoryCard>
                             ),
                           ),
                           const SizedBox(width: 6),
-                          Text(timeAgo, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                          Flexible(
+                            child: Text(timeAgo,
+                                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                                overflow: TextOverflow.ellipsis),
+                          ),
                         ],
                       ),
-                    ],
-                  ),
+                  ],
                 ),
-                if (widget.featured) const Text('⭐', style: TextStyle(fontSize: 18)),
-              ],
-            ),
+              ),
+              const Spacer(),
+              if (widget.featured) const Text('⭐', style: TextStyle(fontSize: 18)),
+              if (s.authorId == widget.currentUserId)
+                PopupMenuButton<String>(
+                  iconSize: 20,
+                  padding: EdgeInsets.zero,
+                  color: AppColors.surface,
+                  onSelected: (v) => widget.onDelete(s),
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete_outline, size: 18, color: AppColors.primaryRed),
+                          SizedBox(width: 8),
+                          Text('Delete', style: TextStyle(color: AppColors.primaryRed)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
           ),
           // Title
           Padding(
