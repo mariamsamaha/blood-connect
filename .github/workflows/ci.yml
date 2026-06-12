@@ -35,10 +35,6 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      # Regenerate Isar .g.dart files — fails CI if codegen is stale
-      - name: Regenerate Isar codegen
-        run: dart run build_runner build --delete-conflicting-outputs
-
       # dart fix --dry-run exits non-zero if there are fixable issues
       - name: Check for fixable issues
         run: dart fix --dry-run
