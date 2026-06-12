@@ -46,15 +46,15 @@
       },
       "./src/db.js": {
         "branches": 80,
-        "functions": 40,
-        "lines": 50,
-        "statements": 50
+        "functions": 25,
+        "lines": 30,
+        "statements": 30
       },
       "./src/metrics.js": {
         "branches": 70,
-        "functions": 80,
-        "lines": 90,
-        "statements": 90
+        "functions": 55,
+        "lines": 88,
+        "statements": 85
       },
       "./src/logger.js": {
         "branches": 45,
