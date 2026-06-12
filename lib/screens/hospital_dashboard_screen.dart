@@ -365,7 +365,7 @@ class _HospitalDashboardScreenState
                 ),
               ),
               const Spacer(),
-              if (_profile?.cityArea != null && _profile!.cityArea!.isNotEmpty)
+              if (_profile?.cityArea != null && _profile.cityArea.isNotEmpty)
                 Row(
                   children: [
                     Icon(Icons.location_on_rounded, color: Colors.white70, size: 14),

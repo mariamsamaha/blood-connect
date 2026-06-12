@@ -104,7 +104,7 @@ class ApiClient {
   String get _base => AppConfig.apiBaseUrl;
 
   Duration _freshTtl(String path) {
-    if (_cache != null) return _cache!.ttlForKey(path);
+    if (_cache != null) return _cache.ttlForKey(path);
     return const Duration(seconds: 60);
   }
 

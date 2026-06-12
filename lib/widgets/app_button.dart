@@ -186,7 +186,7 @@ class _AppButtonState extends State<AppButton> with SingleTickerProviderStateMix
                 borderRadius: BorderRadius.circular(AppRadius.md),
                 onTap: enabled ? widget.onPressed : null,
                 splashColor: splashColor,
-                highlightColor: splashColor?.withValues(alpha: 0.3),
+                highlightColor: splashColor.withValues(alpha: 0.3),
                 child: Padding(
                   padding: _padding,
                   child: Center(
