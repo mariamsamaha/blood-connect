@@ -1950,9 +1950,9 @@ async function notifyNewRequest(request) {
   const hospitalLng = request.hospital_lng;
   if (hospitalLat == null || hospitalLng == null) return;
 
-  const donors = await query(
+  const allDonors = await query(
     `SELECT DISTINCT u.id, u.fcm_token FROM users u
-     WHERE u.fcm_token IS NOT NULL AND u.account_type = 'regular'
+     WHERE u.account_type = 'regular'
        AND u.role = 'donor' AND u.donor_status = 'available' AND u.is_active = TRUE
        AND u.notification_enabled = TRUE AND u.location IS NOT NULL
        AND u.blood_type = ANY(string_to_array($1, ',')::varchar[])
@@ -1962,7 +1962,7 @@ async function notifyNewRequest(request) {
     [donorTypes.join(','), hospitalLat, hospitalLng],
   );
 
-  const donorIds = donors.map((r) => r.id).filter(Boolean);
+  const donorIds = allDonors.map((r) => r.id).filter(Boolean);
   if (donorIds.length > 0) {
     const urgency = request.urgency_level || 'urgent';
     const label = urgency === 'critical' ? 'Critical' : urgency === 'urgent' ? 'Urgent' : 'New';
@@ -1979,7 +1979,8 @@ async function notifyNewRequest(request) {
     }
   }
 
-  const tokens = donors
+  const tokens = allDonors
+    .filter((r) => r.fcm_token)
     .map((r) => r.fcm_token)
     .filter((t) => t && String(t).length > 0);
   if (tokens.length === 0) {
@@ -2142,7 +2143,7 @@ app.get('/api/v1/stories', requireFirebaseAuth, async (req, res) => {
               ) AS is_liked_by_me
        FROM user_stories s
        JOIN users u ON u.id = s.author_id
-       WHERE s.is_approved = TRUE ${role ? 'AND s.role = $4' : ''}
+        ${role ? 'WHERE s.role = $4' : ''}
        ORDER BY s.is_featured DESC, s.likes_count DESC, s.created_at DESC
        LIMIT $1 OFFSET $2`,
       role ? [+limit, +offset, userId, role] : [+limit, +offset, userId],
@@ -2175,7 +2176,7 @@ app.post('/api/v1/stories', requireFirebaseAuth, async (req, res) => {
       return res.status(400).json({ error: 'invalid_role' });
     const rows = await query(
       `INSERT INTO user_stories (author_id, role, title, body, blood_type, is_approved)
-       VALUES ($1, $2, $3, $4, $5, FALSE) RETURNING *`,
+       VALUES ($1, $2, $3, $4, $5, TRUE) RETURNING *`,
       [userId, role, title.trim(), body.trim(), blood_type || null],
     );
     return res.status(201).json(rows[0]);
@@ -2208,8 +2209,64 @@ app.post('/api/v1/stories/:id/like', requireFirebaseAuth, async (req, res) => {
       'SELECT toggle_story_like($1, $2) AS result',
       [req.params.id, userId],
     );
-    return res.json(rows[0].result);
+    const result = rows[0].result;
+    if (result?.liked === true) {
+      const storyRows = await query(
+        'SELECT author_id FROM user_stories WHERE id = $1::uuid',
+        [req.params.id],
+      );
+      if (storyRows.length > 0) {
+        const authorId = storyRows[0].author_id;
+        if (authorId !== userId) {
+          const userRows = await query(
+            'SELECT full_name FROM users WHERE id = $1::uuid',
+            [userId],
+          );
+          const likerName = userRows.length > 0 ? userRows[0].full_name : 'Someone';
+          await query(
+            `INSERT INTO notifications (user_id, request_id, notification_type, title, body, delivery_status)
+             VALUES ($1::uuid, NULL, $2, $3, $4, 'sent')`,
+            [authorId, 'story_like', 'New Like on Your Story', `${likerName} liked your story.`],
+          );
+        }
+      }
+    }
+    return res.json(result);
   } catch (err) { return serverError(res, err, 'POST /stories/:id/like'); }
+});
+
+/**
+ * @swagger
+ * /api/v1/stories/{id}:
+ *   delete:
+ *     summary: Delete own story (author only)
+ *     tags: [Stories]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Story deleted
+ *       404:
+ *         description: Not found or not owner
+ */
+app.delete('/api/v1/stories/:id', requireFirebaseAuth, async (req, res) => {
+  try {
+    const userId = await getUserIdFromToken(req);
+    const rows = await query(
+      'DELETE FROM user_stories WHERE id = $1 AND author_id = $2 RETURNING id',
+      [req.params.id, userId],
+    );
+    if (rows.length === 0)
+      return res.status(404).json({ error: 'story_not_found' });
+    return res.json({ deleted: true });
+  } catch (err) { return serverError(res, err, 'DELETE /stories/:id'); }
 });
 
 // ── Coupons ───────────────────────────────────────────────────────────────────
