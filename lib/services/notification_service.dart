@@ -9,35 +9,20 @@ class NotificationService {
   NotificationService([this._api]);
 
   Future<List<NotificationItem>> getNotifications() async {
-    try {
-      final result = await _api!.getJsonList(
-        '/api/v1/notifications',
-        forceRefresh: true,
-      );
-      return result.map((row) => NotificationItem.fromJson(row)).toList();
-    } catch (e) {
-      debugPrint('getNotifications error: $e');
-      return [];
-    }
+    final result = await _api!.getJsonList(
+      '/api/v1/notifications',
+      forceRefresh: true,
+    );
+    return result.map((row) => NotificationItem.fromJson(row)).toList();
   }
 
   Future<int> getUnreadCount() async {
-    try {
-      final row = await _api!.getJson(
-        '/api/v1/notifications/unread-count',
-        forceRefresh: true,
-      );
-      if (row == null) {
-        debugPrint('getUnreadCount: null response');
-        return 0;
-      }
-      final count = (row['count'] as num?)?.toInt() ?? 0;
-      debugPrint('getUnreadCount: $count');
-      return count;
-    } catch (e) {
-      debugPrint('getUnreadCount error: $e');
-      return 0;
-    }
+    final row = await _api!.getJson(
+      '/api/v1/notifications/unread-count',
+      forceRefresh: true,
+    );
+    if (row == null) return 0;
+    return (row['count'] as num?)?.toInt() ?? 0;
   }
 
   Future<void> markAsRead({String? notificationId}) async {

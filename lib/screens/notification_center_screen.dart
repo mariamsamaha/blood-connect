@@ -55,6 +55,8 @@ class _NotificationCenterScreenState
         return Icons.check_circle_outline_rounded;
       case 'reward_earned':
         return Icons.emoji_events_rounded;
+      case 'story_like':
+        return Icons.favorite_rounded;
       default:
         return Icons.notifications_outlined;
     }
@@ -213,6 +215,8 @@ class _NotificationCenterScreenState
         return AppColors.success;
       case 'reward_earned':
         return AppColors.warning;
+      case 'story_like':
+        return AppColors.primaryRed;
       default:
         return AppColors.textSecondary;
     }

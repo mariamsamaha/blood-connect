@@ -16,16 +16,7 @@ class UnreadCountNotifier extends Notifier<int> {
 
   @override
   int build() {
-    debugPrint('UnreadCountNotifier: build started');
     _refresh();
-    _timer = Timer.periodic(const Duration(seconds: 5), (_) {
-      debugPrint('UnreadCountNotifier: timer tick');
-      _refresh();
-    });
-    ref.onDispose(() {
-      debugPrint('UnreadCountNotifier: disposed');
-      _timer?.cancel();
-    });
     return 0;
   }
 
@@ -36,14 +27,22 @@ class UnreadCountNotifier extends Notifier<int> {
       final service = ref.read(notificationServiceProvider);
       final count = await service.getUnreadCount();
       if (myRefresh == _pendingRefresh) {
-        debugPrint('UnreadCountNotifier: setting state=$count (was $state)');
         state = count;
-      } else {
-        debugPrint('UnreadCountNotifier: discarded stale refresh (req=$myRefresh, pending=$_pendingRefresh)');
+        if (count > 0) _startPolling();
+        else _stopPolling();
       }
-    } catch (e) {
-      debugPrint('UnreadCountNotifier refresh failed: $e');
-    }
+    } catch (_) {}
+  }
+
+  void _startPolling() {
+    if (_timer != null) return;
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) => _refresh());
+    ref.onDispose(() => _timer?.cancel());
+  }
+
+  void _stopPolling() {
+    _timer?.cancel();
+    _timer = null;
   }
 
   Future<void> refresh() => _refresh();
