@@ -33,7 +33,7 @@ class _RequestCardState extends State<RequestCard>
     super.dispose();
   }
 
-  Color get _barColor {
+  Color get _urgencyColor {
     switch (widget.request.urgencyLevel) {
       case UrgencyLevel.critical:
         return AppColors.primaryRed;
@@ -41,6 +41,17 @@ class _RequestCardState extends State<RequestCard>
         return AppColors.warning;
       case UrgencyLevel.routine:
         return AppColors.info;
+    }
+  }
+
+  Color get _urgencyBg {
+    switch (widget.request.urgencyLevel) {
+      case UrgencyLevel.critical:
+        return AppColors.softRed;
+      case UrgencyLevel.urgent:
+        return AppColors.softAmber;
+      case UrgencyLevel.routine:
+        return AppColors.softBlue;
     }
   }
 
@@ -62,7 +73,7 @@ class _RequestCardState extends State<RequestCard>
           final pulseVal = _pulse.value;
           return Container(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(AppRadius.lg),
+              borderRadius: BorderRadius.circular(20),
               boxShadow: isCritical
                   ? [
                       BoxShadow(
@@ -73,7 +84,13 @@ class _RequestCardState extends State<RequestCard>
                         spreadRadius: 1,
                       ),
                     ]
-                  : AppShadows.card,
+                  : [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.06),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
             ),
             child: child,
           );
@@ -81,12 +98,12 @@ class _RequestCardState extends State<RequestCard>
         child: Container(
           decoration: BoxDecoration(
             color: Theme.of(context).cardColor,
-            borderRadius: BorderRadius.circular(AppRadius.lg),
+            borderRadius: BorderRadius.circular(20),
             border: isCritical
                 ? Border.all(
                     color: AppColors.primaryRed.withValues(alpha: 0.15),
                   )
-                : Border.all(color: AppColors.divider),
+                : Border.all(color: Theme.of(context).dividerColor),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -95,11 +112,14 @@ class _RequestCardState extends State<RequestCard>
                 height: 4,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [_barColor, _barColor.withValues(alpha: 0.6)],
+                    colors: [
+                      _urgencyColor,
+                      _urgencyColor.withValues(alpha: 0.6),
+                    ],
                   ),
                   borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(AppRadius.lg),
-                    topRight: Radius.circular(AppRadius.lg),
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
                   ),
                 ),
               ),
@@ -112,21 +132,21 @@ class _RequestCardState extends State<RequestCard>
                       children: [
                         Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 8,
+                            horizontal: 16,
+                            vertical: 10,
                           ),
                           decoration: BoxDecoration(
-                            color: AppColors.primaryRed.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(AppRadius.sm),
+                            color: _urgencyBg,
+                            borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
                             widget.request.bloodType,
                             style: Theme.of(context)
                                 .textTheme
-                                .titleLarge
+                                .headlineMedium
                                 ?.copyWith(
-                                  color: AppColors.primaryRed,
-                                  fontWeight: FontWeight.w700,
+                                  color: _urgencyColor,
+                                  fontWeight: FontWeight.w800,
                                 ),
                           ),
                         ),
@@ -134,7 +154,7 @@ class _RequestCardState extends State<RequestCard>
                         UrgencyBadge(level: widget.request.urgencyLevel),
                       ],
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 14),
                     Row(
                       children: [
                         Icon(
@@ -146,7 +166,7 @@ class _RequestCardState extends State<RequestCard>
                         Expanded(
                           child: Text(
                             widget.request.hospitalName,
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontSize: 14,
                               color: AppColors.textPrimary,
                               fontWeight: FontWeight.w500,
@@ -163,7 +183,7 @@ class _RequestCardState extends State<RequestCard>
                             ),
                             decoration: BoxDecoration(
                               color: AppColors.info.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(AppRadius.full),
+                              borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(
                               '${widget.request.distanceKm!.toStringAsFixed(1)} km',
@@ -177,7 +197,7 @@ class _RequestCardState extends State<RequestCard>
                         ],
                       ],
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                     Wrap(
                       spacing: 8,
                       runSpacing: 4,
@@ -196,7 +216,7 @@ class _RequestCardState extends State<RequestCard>
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 16),
                     Row(
                       children: [
                         Expanded(
@@ -242,7 +262,7 @@ class _MetaChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: AppColors.background,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -251,7 +271,7 @@ class _MetaChip extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             label,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 12,
               color: AppColors.textSecondary,
             ),
