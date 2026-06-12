@@ -7,9 +7,20 @@ import 'package:bloodconnect/models/blood_request.dart';
 import 'package:bloodconnect/services/api_client.dart';
 import 'package:bloodconnect/services/request_service.dart';
 
+class _FakeUser extends Fake implements User {
+  @override
+  String get uid => 'test-uid';
+
+  @override
+  Future<String> getIdToken([bool forceRefresh = false]) async => 'mock-token';
+}
+
 class _MockAuth extends Fake implements FirebaseAuth {
   @override
   Stream<User?> authStateChanges() => const Stream.empty();
+
+  @override
+  User? get currentUser => _FakeUser();
 }
 
 class _FakeHttpClient extends http.BaseClient {
@@ -31,12 +42,15 @@ class _FakeHttpClient extends http.BaseClient {
     final method = request.method;
 
     String? matchedKey;
+    int maxLen = -1;
     for (final key in _responses.keys) {
       final km = key.split(':')[0];
       final kp = key.split(':')[1];
       if (method == km && url.contains(kp)) {
-        matchedKey = key;
-        break;
+        if (kp.length > maxLen) {
+          maxLen = kp.length;
+          matchedKey = key;
+        }
       }
     }
 
