@@ -2602,10 +2602,9 @@ app.post('/api/v1/hospital/inventory/add', requireFirebaseAuth, async (req, res)
     if (units <= 0) {
       return res.status(400).json({ error: 'units_must_be_positive' });
     }
-    const userId = await getUserIdFromToken(req);
     const rows = await query(
       `SELECT * FROM add_hospital_inventory_units($1, $2, $3, $4, $5, $6)`,
-      [hospitalId, bloodType, units, reason || null, expirationDate || null, userId],
+      [hospitalId, bloodType, units, reason || null, expirationDate || null, hospitalId],
     );
     const result = rows[0];
     if (!result.success) {
@@ -2638,10 +2637,9 @@ app.post('/api/v1/hospital/inventory/remove', requireFirebaseAuth, async (req, r
     if (units <= 0) {
       return res.status(400).json({ error: 'units_must_be_positive' });
     }
-    const userId = await getUserIdFromToken(req);
     const rows = await query(
       `SELECT * FROM remove_hospital_inventory_units($1, $2, $3, $4, $5)`,
-      [hospitalId, bloodType, units, reason || null, userId],
+      [hospitalId, bloodType, units, reason || null, hospitalId],
     );
     const result = rows[0];
     if (!result.success) {
@@ -2674,10 +2672,9 @@ app.post('/api/v1/hospital/inventory/set', requireFirebaseAuth, async (req, res)
     if (units < 0) {
       return res.status(400).json({ error: 'units_cannot_be_negative' });
     }
-    const userId = await getUserIdFromToken(req);
     const rows = await query(
       `SELECT * FROM set_hospital_inventory_units($1, $2, $3, $4, $5)`,
-      [hospitalId, bloodType, units, reason || null, userId],
+      [hospitalId, bloodType, units, reason || null, hospitalId],
     );
     const result = rows[0];
     if (!result.success) {
@@ -2710,10 +2707,9 @@ app.post('/api/v1/hospital/inventory/threshold', requireFirebaseAuth, async (req
     if (threshold < 0) {
       return res.status(400).json({ error: 'threshold_cannot_be_negative' });
     }
-    const userId = await getUserIdFromToken(req);
     const rows = await query(
       `SELECT * FROM set_hospital_inventory_threshold($1, $2, $3, $4)`,
-      [hospitalId, bloodType, threshold, userId],
+      [hospitalId, bloodType, threshold, hospitalId],
     );
     const result = rows[0];
     if (!result.success) {
