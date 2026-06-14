@@ -22,8 +22,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   List<Map<String, dynamic>> _badges = const [];
   List<DonorResponseEntry> _history = const [];
   bool _loading = true;
-  bool _notify = true;
-
   @override
   void initState() {
     super.initState();
@@ -274,53 +272,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ],
               ),
             ],
-            const SizedBox(height: 24),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(AppRadius.lg),
-                border: Border.all(color: AppColors.divider),
-                boxShadow: AppShadows.card,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: AppColors.primaryRed.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(AppRadius.sm),
-                        ),
-                        child: const Icon(Icons.tune_rounded, size: 18, color: AppColors.primaryRed),
-                      ),
-                      const SizedBox(width: 10),
-                      const Text(
-                        'Quick Settings',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Notifications',
-                          style: TextStyle(fontSize: 14),
-                        ),
-                      ),
-                      Switch(
-                        value: _notify,
-                        onChanged: (v) => setState(() => _notify = v),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
             const SizedBox(height: 20),
             AppButton.secondary(
               label: 'Sign Out',

@@ -409,7 +409,8 @@ class _StoryCardState extends State<_StoryCard>
                     widget.onLike(s);
                     _heart.forward(from: 0);
                   },
-                  child: AnimatedBuilder(
+                  child: RepaintBoundary(
+                    child: AnimatedBuilder(
                     animation: _scale,
                     builder: (_, child) => Transform.scale(scale: _scale.value, child: child),
                     child: Row(
@@ -429,8 +430,9 @@ class _StoryCardState extends State<_StoryCard>
                     ),
                   ),
                 ),
-                const Spacer(),
-                if (s.bloodType != null)
+              ),
+              const Spacer(),
+              if (s.bloodType != null)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(

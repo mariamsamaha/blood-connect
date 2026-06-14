@@ -778,12 +778,8 @@ class _ChatBubble extends StatelessWidget {
                   decoration: BoxDecoration(
                     gradient: isUser
                         ? AppGradients.primary
-                        : LinearGradient(
-                            colors: [
-                              AppColors.background,
-                              AppColors.background,
-                            ],
-                          ),
+                        : null,
+                    color: isUser ? null : Theme.of(context).cardColor,
                     borderRadius: BorderRadius.only(
                       topLeft: const Radius.circular(12),
                       topRight: const Radius.circular(12),
@@ -797,15 +793,15 @@ class _ChatBubble extends StatelessWidget {
                       : MarkdownBody(
                           data: message.content,
                           styleSheet: MarkdownStyleSheet(
-                            p: TextStyle(color: AppColors.textPrimary, fontSize: 13.5, height: 1.5),
+                            p: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13.5, height: 1.5),
                             strong: TextStyle(
-                              color: AppColors.textPrimary,
+                              color: Theme.of(context).colorScheme.onSurface,
                               fontWeight: FontWeight.w700,
                               fontSize: 13.5,
                             ),
-                            listBullet: TextStyle(color: AppColors.textPrimary, fontSize: 13.5),
+                            listBullet: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13.5),
                             blockquote: TextStyle(
-                              color: AppColors.textSecondary,
+                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
                               fontSize: 13,
                               fontStyle: FontStyle.italic,
                             ),
@@ -818,7 +814,7 @@ class _ChatBubble extends StatelessWidget {
                               ),
                             ),
                             code: TextStyle(
-                              backgroundColor: Colors.grey.shade200,
+                              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                               fontSize: 12,
                               fontFamily: 'monospace',
                             ),
@@ -904,7 +900,7 @@ class _ChatInputBarState extends State<_ChatInputBar> {
                   borderSide: BorderSide.none,
                 ),
                 filled: true,
-                fillColor: AppColors.background,
+                fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 isDense: true,
               ),

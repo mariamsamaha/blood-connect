@@ -57,6 +57,8 @@ class _NotificationCenterScreenState
         return Icons.emoji_events_rounded;
       case 'story_like':
         return Icons.favorite_rounded;
+      case 'story_created':
+        return Icons.edit_note_rounded;
       default:
         return Icons.notifications_outlined;
     }
@@ -96,13 +98,13 @@ class _NotificationCenterScreenState
             children: [
               SizedBox(
                 height: MediaQuery.of(context).size.height * 0.6,
-                child: const Center(
+                child: Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.error_outline, size: 48, color: Colors.grey),
-                      SizedBox(height: 12),
-                      Text('Could not load notifications'),
+                      Icon(Icons.error_outline, size: 48, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4)),
+                      const SizedBox(height: 12),
+                      Text('Could not load notifications', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6))),
                     ],
                   ),
                 ),
@@ -217,6 +219,8 @@ class _NotificationCenterScreenState
         return AppColors.warning;
       case 'story_like':
         return AppColors.primaryRed;
+      case 'story_created':
+        return AppColors.info;
       default:
         return AppColors.textSecondary;
     }

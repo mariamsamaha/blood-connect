@@ -81,7 +81,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           children: [
@@ -186,7 +186,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          AnimatedBuilder(
+          RepaintBoundary(
+            child: AnimatedBuilder(
             animation: Listenable.merge([_iconScale, _iconRotate]),
             builder: (context, child) {
               return Transform.scale(
@@ -230,6 +231,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               ),
             ),
           ),
+          ),
           const SizedBox(height: 60),
           SlideTransition(
             position: _contentSlide,
@@ -246,7 +248,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                           style: GoogleFonts.poppins(
                             fontSize: 28,
                             fontWeight: FontWeight.bold,
-                            color: Colors.grey[900],
+                            color: Theme.of(context).colorScheme.onSurface,
                             height: 1.2,
                           ),
                         ),

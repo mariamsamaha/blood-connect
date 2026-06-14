@@ -22,6 +22,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   final _name = TextEditingController();
   final _phone = TextEditingController();
   final _city = TextEditingController();
+  DateTime? _dateOfBirth;
   bool _loading = false;
   double? _lat;
   double? _lng;
@@ -71,6 +72,9 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     try {
       final user = ref.read(authServiceProvider).currentUser;
       if (user == null) throw Exception('No authenticated user');
+      if (!_hospital && _dateOfBirth == null) {
+        throw Exception('Please enter your date of birth');
+      }
       final profile = await ref.read(userServiceProvider).createCompleteProfile(
             user,
             name: _name.text.trim(),
@@ -79,6 +83,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
             bloodType: _hospital ? '' : _blood,
             role: _hospital ? 'hospital' : _role,
             accountType: _hospital ? 'hospital' : 'regular',
+            dateOfBirth: _dateOfBirth?.toIso8601String().split('T')[0],
             cityArea: _city.text.trim(),
             latitude: _lat,
             longitude: _lng,
@@ -291,6 +296,49 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
           icon: Icons.phone_outlined,
         ),
         const SizedBox(height: 16),
+        if (!_hospital) ...[
+          InkWell(
+            onTap: () async {
+              final now = DateTime.now();
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: now.subtract(const Duration(days: 6570)), // ~18 years
+                firstDate: now.subtract(const Duration(days: 36525)), // ~100 years
+                lastDate: now.subtract(const Duration(days: 6570)), // 18 years ago
+                helpText: 'Select your date of birth',
+              );
+              if (picked != null) {
+                setState(() => _dateOfBirth = picked);
+              }
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.divider),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.cake_outlined, size: 20, color: AppColors.textSecondary),
+                  const SizedBox(width: 12),
+                  Text(
+                    _dateOfBirth != null
+                        ? '${_dateOfBirth!.month}/${_dateOfBirth!.day}/${_dateOfBirth!.year}'
+                        : 'Date of Birth',
+                    style: TextStyle(
+                      color: _dateOfBirth != null
+                          ? AppColors.textPrimary
+                          : AppColors.textSecondary,
+                      fontSize: 15,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
         if (!_hospital) ...[
           Text(
             'Blood Type',

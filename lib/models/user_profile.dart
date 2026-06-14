@@ -40,6 +40,9 @@ class UserProfile {
   /// Push notifications enabled.
   final bool notificationEnabled;
 
+  /// Date of birth for age verification (must be 18+).
+  final DateTime? dateOfBirth;
+
   const UserProfile({
     required this.id,
     required this.firebaseUid,
@@ -52,6 +55,7 @@ class UserProfile {
     required this.isRecipient,
     required this.donorStatus,
     this.notificationEnabled = true,
+    this.dateOfBirth,
     this.latitude,
     this.longitude,
     this.hospitalName,
@@ -106,6 +110,9 @@ class UserProfile {
       cityArea: (json['city_area'] ?? '') as String,
       notificationRadiusKm: n <= 0 ? 50 : n.clamp(10, 400),
       notificationEnabled: json['notification_enabled'] as bool? ?? true,
+      dateOfBirth: json['date_of_birth'] != null
+          ? DateTime.tryParse(json['date_of_birth'] as String)
+          : null,
     );
   }
 
@@ -146,6 +153,7 @@ class UserProfile {
     'city_area': cityArea,
     'notification_radius_km': notificationRadiusKm,
     'notification_enabled': notificationEnabled,
+    if (dateOfBirth != null) 'date_of_birth': dateOfBirth!.toIso8601String().split('T')[0],
   };
 
   String get homeRoute {

@@ -357,7 +357,23 @@ app.post('/api/v1/users/me/complete', requireFirebaseAuth, async (req, res) => {
       latitude,
       longitude,
       cityArea,
+      dateOfBirth,
     } = body;
+
+    // Validate 18+ for non-hospital users
+    if (accountType !== 'hospital') {
+      if (!dateOfBirth) {
+        return res.status(400).json({ error: 'date_of_birth_required' });
+      }
+      const dob = new Date(dateOfBirth);
+      if (isNaN(dob.getTime())) {
+        return res.status(400).json({ error: 'invalid_date_of_birth' });
+      }
+      const age = Math.floor((Date.now() - dob.getTime()) / 31557600000);
+      if (age < 18) {
+        return res.status(400).json({ error: 'must_be_18_or_older' });
+      }
+    }
 
     const existing = await query(
       `${profileSelect()} WHERE firebase_uid = $1`,
@@ -443,6 +459,7 @@ app.post('/api/v1/users/me/complete', requireFirebaseAuth, async (req, res) => {
           latitude,
           longitude,
           cityArea || '',
+          dateOfBirth || null,
         ]
       : [
           fb.uid,
@@ -453,14 +470,18 @@ app.post('/api/v1/users/me/complete', requireFirebaseAuth, async (req, res) => {
           donorStatus,
           role,
           cityArea || '',
+          dateOfBirth || null,
         ];
+    const lastIdx = params.length;
     const row = await query(
       `INSERT INTO users (
         firebase_uid, email, name, phone, blood_type,
-        account_type, is_recipient, donor_status, role, location, city_area
+        account_type, is_recipient, donor_status, role,
+        location, city_area, date_of_birth
       ) VALUES (
         $1, $2, $3, $4, $5,
-        'regular', FALSE, $6, $7, ${locPart}, $${hasLoc ? 10 : 8}
+        'regular', FALSE, $6, $7,
+        ${locPart}, $${lastIdx - 1}, $${lastIdx}
       ) RETURNING *,
         ST_Y(location::geometry) as latitude,
         ST_X(location::geometry) as longitude`,
@@ -2179,6 +2200,11 @@ app.post('/api/v1/stories', requireFirebaseAuth, async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, TRUE) RETURNING *`,
       [userId, role, title.trim(), body.trim(), blood_type || null],
     );
+    await query(
+      `INSERT INTO notifications (user_id, request_id, notification_type, title, body, delivery_status)
+       VALUES ($1::uuid, NULL, 'story_created', $2, $3, 'sent')`,
+      [userId, 'Your Story Was Published', `"${title.trim()}" is now live.`],
+    );
     return res.status(201).json(rows[0]);
   } catch (err) { return serverError(res, err, 'POST /stories'); }
 });
@@ -2219,10 +2245,10 @@ app.post('/api/v1/stories/:id/like', requireFirebaseAuth, async (req, res) => {
         const authorId = storyRows[0].author_id;
         if (authorId !== userId) {
           const userRows = await query(
-            'SELECT full_name FROM users WHERE id = $1::uuid',
+            'SELECT name FROM users WHERE id = $1::uuid',
             [userId],
           );
-          const likerName = userRows.length > 0 ? userRows[0].full_name : 'Someone';
+          const likerName = userRows.length > 0 ? userRows[0].name : 'Someone';
           await query(
             `INSERT INTO notifications (user_id, request_id, notification_type, title, body, delivery_status)
              VALUES ($1::uuid, NULL, $2, $3, $4, 'sent')`,
