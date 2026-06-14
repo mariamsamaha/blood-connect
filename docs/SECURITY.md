@@ -32,10 +32,12 @@ Debug builds may load `.env` from the project root for local development.
 
 ## Local development
 
-1. Copy `api-backend/.env.example` → `api-backend/.env`
-2. Copy `.env_example` → `.env` (debug only, gitignored)
-3. Start API: `cd api-backend && npm install && npm start`
-4. Run Flutter with emulator host: default `http://10.0.2.2:8090` (Android) or set `API_BASE_URL`
+1. Copy `api-backend/.env.example` → `api-backend/.env` (manual API start)
+2. Or copy `.env.compose.example` → `.env` at project root (Docker Compose)
+3. Copy `.env_example` → `.env` for Flutter (debug only, gitignored)
+4. Place Firebase service account at `keys/firebase-adminsdk.json`
+5. Start API: `cd api-backend && npm install && npm start`
+6. Run Flutter with emulator host: default `http://10.0.2.2:8090` (Android) or set `API_BASE_URL`
 
 ## HTTPS
 

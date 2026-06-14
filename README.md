@@ -236,6 +236,7 @@ See [Deployment](docs/DEPLOYMENT.md) for production deployment and rollback proc
 | [Architecture](docs/ARCHITECTURE.md) | Design decisions, trade-offs, component responsibilities, failure modes, bottlenecks, optimizations |
 | [API Versioning](docs/API_VERSIONING.md) | Versioning strategy, deprecation policy, migration guide |
 | [Deployment](docs/DEPLOYMENT.md) | Deployment steps, rollback strategy, configuration table, health check verification |
+| [CD Pipeline](docs/CD.md) | GitHub Actions CD, GHCR images, Render/Fly deploy hooks, secrets setup |
 | [SLA & Metrics](docs/SLA.md) | Target availability (99.5%), latency SLOs, error budget, incident response, alert thresholds |
 | [Cost Analysis](docs/COST_ANALYSIS.md) | Monthly cost estimates by usage tier ($30–200/mo), most expensive components |
 | [Benchmark](docs/BENCHMARK.md) | Measured RPS, p50/p95/p99 latency per endpoint, scaling estimates |
@@ -247,12 +248,22 @@ See [Deployment](docs/DEPLOYMENT.md) for production deployment and rollback proc
 
 ## CI/CD
 
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| [BloodConnect CI](.github/workflows/ci.yml) | Push/PR to `main`, `develop` | Flutter (330+ tests), API (50 tests), E2E smoke, Docker builds, secret scan |
+| [BloodConnect CD](.github/workflows/cd.yml) | After CI passes on `main`, or manual | Publish images to GHCR, deploy via Render/Fly hooks |
+
 GitHub Actions CI runs on every push:
-1. **Flutter**: analyze, codegen check, 311+ tests
-2. **API Backend**: syntax check, 32 tests
-3. **Notification Backend**: syntax check, 8 tests
-4. **AI Service**: pytest unit tests
-5. **Secret scan**: gitleaks full history scan
+1. **Flutter** — analyze, 330+ tests, coverage
+2. **API Backend** — syntax check, 50 tests, E2E smoke (no secrets required)
+3. **API E2E live** — optional, runs when Supabase/Firebase secrets are configured
+4. **Notification Backend** — syntax check, 8 tests
+5. **AI Service** — pytest unit tests
+6. **Docker** — matrix build for all 4 service images
+7. **Compose** — validate docker-compose files
+8. **Secret scan** — gitleaks full history scan
+
+CD publishes Docker images and triggers deployment. See [CD Guide](docs/CD.md) for required secrets and Render/Fly setup.
 
 ---
 

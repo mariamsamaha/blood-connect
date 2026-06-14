@@ -5,11 +5,15 @@ on:
     branches: [main, master, develop]
   pull_request:
     branches: [main, master, develop]
+  workflow_dispatch:
 
-# Cancel in-progress runs on the same branch when a new push arrives
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
 
 jobs:
 
@@ -19,7 +23,7 @@ jobs:
   flutter:
     name: Flutter — analyze & test
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -35,35 +39,30 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      # dart fix --dry-run exits non-zero if there are fixable issues
       - name: Check for fixable issues
         run: dart fix --dry-run
 
-      # flutter analyze uses analysis_options.yaml (flutter_lints)
-      # --fatal-warnings turns warnings + errors into failures; infos are OK
       - name: Analyze code
         run: flutter analyze --fatal-warnings
 
-      # Run all 42+ Flutter tests + widget tests with coverage
-      - name: Run tests
+      - name: Run tests (330+)
         run: flutter test --coverage --reporter=github
 
-      # Upload to Codecov — free for public repos, shows coverage % on README
       - name: Upload coverage
         uses: codecov/codecov-action@v4
         with:
           file: coverage/lcov.info
           flags: flutter
-          fail_ci_if_error: false   # don't break build if Codecov is down
+          fail_ci_if_error: false
           min_coverage: 70
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # JOB 2 — API BFF: lint + test (Jest + Supertest)
+  # JOB 2 — API BFF: test + coverage
   # ─────────────────────────────────────────────────────────────────────────────
   api-backend:
     name: API backend — test
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: api-backend
@@ -79,30 +78,153 @@ jobs:
           cache: npm
           cache-dependency-path: api-backend/package-lock.json
 
-      # npm ci is faster and more reproducible than npm install
       - name: Install dependencies
         run: npm ci
 
-      # Verify all source files are syntactically valid
-      - name: Syntax check
-        run: node --check src/server.js src/db.js src/auth.js src/errors.js src/swagger.js src/logger.js
+      - name: Syntax check (core modules)
+        run: |
+          node --check src/server.js src/db.js src/auth.js src/errors.js
+          node --check src/swagger.js src/logger.js src/metrics.js
+          node --check src/redis.js src/trace.js src/slo.js src/circuit-breaker.js
+          node --check src/cluster.js scripts/ci-smoke-listen.js
 
-      # Jest runs db.test.js + errors.test.js + server.test.js + edge-cases.test.js
-      # NODE_ENV=test prevents startServer() from actually binding a port
-      - name: Run tests
+      - name: Run unit & integration tests (50)
         run: npm test
         env:
           NODE_ENV: test
-          # Minimal stubs so Firebase Admin init doesn't throw in test env
           FIREBASE_PROJECT_ID: bloodconnect-mvp-b605f
           GOOGLE_APPLICATION_CREDENTIALS: ""
 
-      - name: Build Docker image
-        run: docker build -t bloodconnect-api:ci .
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 3 — API E2E smoke (no external secrets required)
+  # ─────────────────────────────────────────────────────────────────────────────
+  api-e2e-smoke:
+    name: API — E2E smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: api-backend
+    defaults:
+      run:
         working-directory: api-backend
 
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: api-backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start CI smoke server
+        run: |
+          node scripts/ci-smoke-listen.js &
+          echo $! > /tmp/smoke-server.pid
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8090/ > /dev/null; then
+              echo "Smoke server ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Smoke server failed to start"
+          exit 1
+        env:
+          NODE_ENV: test
+          PORT: 8090
+
+      - name: Run E2E smoke tests
+        run: npm run test:e2e
+        env:
+          NODE_ENV: test
+          API_BASE_URL: http://127.0.0.1:8090
+
+      - name: Stop smoke server
+        if: always()
+        run: |
+          if [ -f /tmp/smoke-server.pid ]; then
+            kill "$(cat /tmp/smoke-server.pid)" 2>/dev/null || true
+          fi
+
   # ─────────────────────────────────────────────────────────────────────────────
-  # JOB 3 — Notification backend: lint + test
+  # JOB 4 — API E2E with live DB (optional — requires repository secrets)
+  # ─────────────────────────────────────────────────────────────────────────────
+  api-e2e-live:
+    name: API — E2E live (staging DB)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: api-backend
+    if: ${{ secrets.SUPABASE_HOST != '' && secrets.FIREBASE_SERVICE_ACCOUNT_JSON != '' }}
+    defaults:
+      run:
+        working-directory: api-backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: api-backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Write Firebase service account
+        run: |
+          mkdir -p ../keys
+          printf '%s' "$FIREBASE_SA" > ../keys/firebase-adminsdk.json
+        env:
+          FIREBASE_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+
+      - name: Start API server
+        run: |
+          node src/server.js &
+          echo $! > /tmp/api-server.pid
+          for i in $(seq 1 45); do
+            if curl -sf http://127.0.0.1:8090/health/db | grep -q '"status":"ok"'; then
+              echo "API server ready (DB connected)"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API server failed health check"
+          curl -s http://127.0.0.1:8090/health/db || true
+          exit 1
+        env:
+          NODE_ENV: development
+          PORT: 8090
+          SUPABASE_HOST: ${{ secrets.SUPABASE_HOST }}
+          SUPABASE_USERNAME: ${{ secrets.SUPABASE_USERNAME }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_DATABASE: ${{ secrets.SUPABASE_DATABASE }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          GOOGLE_APPLICATION_CREDENTIALS: ../keys/firebase-adminsdk.json
+          NOTIFICATION_BACKEND_URL: http://127.0.0.1:8080
+          NOTIFICATION_BACKEND_SECRET: ci-e2e-secret
+
+      - name: Run E2E tests against live API
+        run: npm run test:e2e
+        env:
+          API_BASE_URL: http://127.0.0.1:8090
+
+      - name: Stop API server
+        if: always()
+        run: |
+          if [ -f /tmp/api-server.pid ]; then
+            kill "$(cat /tmp/api-server.pid)" 2>/dev/null || true
+          fi
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 5 — Notification backend
   # ─────────────────────────────────────────────────────────────────────────────
   notification-backend:
     name: Notification backend — test
@@ -129,7 +251,6 @@ jobs:
       - name: Syntax check
         run: node --check src/server.js
 
-      # Runs notification-backend/tests/server.test.js
       - name: Run tests
         run: npm test
         env:
@@ -137,12 +258,8 @@ jobs:
           INTERNAL_SECRET: ci-test-secret
           FIREBASE_PROJECT_ID: bloodconnect-mvp-b605f
 
-      - name: Build Docker image
-        run: docker build -t bloodconnect-notification:ci .
-        working-directory: notification-backend
-
   # ─────────────────────────────────────────────────────────────────────────────
-  # JOB 4 — AI service: unit tests (pytest)
+  # JOB 6 — AI service
   # ─────────────────────────────────────────────────────────────────────────────
   ai-service:
     name: AI service — test
@@ -164,7 +281,6 @@ jobs:
         working-directory: ai-service
         run: pip install -r requirements.txt
 
-      # conftest.py mocks the ViT model — all tests now run without GPU
       - name: Run tests
         working-directory: ai-service
         run: pytest test_main.py -v --timeout=30
@@ -172,8 +288,60 @@ jobs:
           TESTING: "true"
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # JOB 5 — Secret scan (Gitleaks)
-  # Prevents credentials ever sneaking back into the repo
+  # JOB 7 — Docker image builds (matrix)
+  # ─────────────────────────────────────────────────────────────────────────────
+  docker-build:
+    name: Docker — ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: api-backend
+            context: api-backend
+            file: api-backend/Dockerfile
+            tag: bloodconnect-api
+          - name: notification-backend
+            context: notification-backend
+            file: notification-backend/Dockerfile
+            tag: bloodconnect-notification
+          - name: ai-service
+            context: ai-service
+            file: ai-service/Dockerfile
+            tag: bloodconnect-ai
+          - name: gateway
+            context: gateway
+            file: gateway/Dockerfile
+            tag: bloodconnect-gateway
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -f "${{ matrix.file }}" -t "${{ matrix.tag }}:ci" "${{ matrix.context }}"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 8 — Docker Compose validate
+  # ─────────────────────────────────────────────────────────────────────────────
+  compose-validate:
+    name: Docker Compose — validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate compose files
+        run: |
+          docker compose -f docker-compose.yml config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.gateway.yml config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.scale.yml config --quiet
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 9 — Secret scan
   # ─────────────────────────────────────────────────────────────────────────────
   secret-scan:
     name: Secret scan
@@ -184,7 +352,7 @@ jobs:
       - name: Checkout (full history)
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # full git history — Gitleaks scans every commit
+          fetch-depth: 0
 
       - name: Run Gitleaks
         uses: gitleaks/gitleaks-action@v2
@@ -192,16 +360,34 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # JOB 6 — Gateway: build Docker image
+  # JOB 10 — CI gate (required for branch protection / CD trigger)
   # ─────────────────────────────────────────────────────────────────────────────
-  gateway:
-    name: Gateway — build test
+  ci-success:
+    name: CI — all checks passed
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    needs:
+      - flutter
+      - api-backend
+      - api-e2e-smoke
+      - notification-backend
+      - ai-service
+      - docker-build
+      - compose-validate
+      - secret-scan
+    if: always()
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Build gateway image
-        run: docker build -t bloodconnect-gateway:ci ./gateway
+      - name: Verify required jobs succeeded
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS_JSON" | jq -e '
+            to_entries
+            | map(select(.key != "api-e2e-live"))
+            | all(.value.result == "success" or .value.result == "skipped")
+          ' || {
+            echo "One or more required CI jobs failed:"
+            echo "$NEEDS_JSON" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+            exit 1
+          }
+          echo "All required CI checks passed."

@@ -15,12 +15,11 @@ Flutter App → API BFF (Express) → Supabase (PostgreSQL + PostGIS)
 ### Docker Compose (Local / Single Server)
 
 ```bash
-export NOTIFICATION_BACKEND_SECRET="your-secret"
-export GOOGLE_APPLICATION_CREDENTIALS="/abs/path/to/firebase-adminsdk.json"
-export SUPABASE_HOST="db.supabase.co"
-export SUPABASE_USERNAME="postgres"
-export SUPABASE_DB_PASSWORD="your-password"
+cp .env.compose.example .env
+# Edit .env: SUPABASE_*, FIREBASE_PROJECT_ID, NOTIFICATION_BACKEND_SECRET, INTERNAL_SECRET
+mkdir -p keys && cp /path/to/firebase-adminsdk.json keys/
 
+export GOOGLE_APPLICATION_CREDENTIALS="/abs/path/to/keys/firebase-adminsdk.json"
 docker compose up --build -d
 ```
 
@@ -95,20 +94,33 @@ psql "$DATABASE_URL" -f database/migrations/rollback/<version>.sql
 ### Emergency Rollback (if deployment is broken)
 
 ```bash
-# Pull the last known good image
-docker pull bloodconnect-api:stable
-docker compose -f docker-compose.rollback.yml up -d
+# Tag a known-good image before each release:
+docker tag bloodconnect-api:ci bloodconnect-api:stable
+
+# Roll back to the last tagged image:
+docker compose down
+docker tag bloodconnect-api:stable bloodconnect-api:latest
+docker compose up -d --no-build
 ```
 
 ## CI/CD Pipeline
 
-The GitHub Actions CI pipeline runs:
+| Workflow | File | When |
+|----------|------|------|
+| CI | `.github/workflows/ci.yml` | Every push/PR |
+| CD | `.github/workflows/cd.yml` | After CI passes on `main`, or manual |
 
-1. **Flutter** — analyze, codegen check, 46+ tests, coverage
-2. **API Backend** — syntax check, 10+ tests
+The CI pipeline runs:
+
+1. **Flutter** — analyze, 330+ tests, coverage
+2. **API Backend** — syntax check, 50 tests, E2E smoke
 3. **Notification Backend** — syntax check, 8 tests
-4. **AI Service** — pytest unit tests (skipping model-dependent)
-5. **Secret Scan** — gitleaks full history scan
+4. **AI Service** — pytest unit tests
+5. **Docker** — build all service images
+6. **Compose** — validate docker-compose files
+7. **Secret Scan** — gitleaks full history scan
+
+CD publishes images to GHCR and triggers Render/Fly deploy hooks. See [CD Guide](CD.md).
 
 ## Environment-Specific Config
 
