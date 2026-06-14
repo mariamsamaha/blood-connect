@@ -241,7 +241,14 @@ class _HospitalDashboardScreenState
                 _buildStatRow(),
                 if (_inventory.isNotEmpty) ...[
                   const SizedBox(height: 24),
-                  const SectionHeader(title: 'Blood Inventory'),
+                  SectionHeader(
+                    title: 'Blood Inventory',
+                    trailing: TextButton.icon(
+                      onPressed: () => context.push('/hospital/inventory'),
+                      icon: const Icon(Icons.tune, size: 18),
+                      label: const Text('Manage'),
+                    ),
+                  ),
                   const SizedBox(height: 12),
                   _buildInventoryRow(),
                   const SizedBox(height: 24),

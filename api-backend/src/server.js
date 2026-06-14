@@ -2565,6 +2565,445 @@ app.post('/api/v1/ai/eligibility', requireFirebaseAuth, async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════
+// Feature 1 — Inventory Management CRUD
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * @swagger
+ * /api/v1/hospital/inventory/add:
+ *   post:
+ *     summary: Add units to hospital blood inventory
+ *     tags: [Inventory]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               hospitalId: { type: string, format: uuid }
+ *               bloodType: { type: string, enum: [A+, A-, B+, B-, O+, O-, AB+, AB-] }
+ *               units: { type: integer, minimum: 1 }
+ *               reason: { type: string }
+ *               expirationDate: { type: string, format: date }
+ */
+app.post('/api/v1/hospital/inventory/add', requireFirebaseAuth, async (req, res) => {
+  try {
+    const { hospitalId, bloodType, units, reason, expirationDate } = req.body;
+    if (!hospitalId || !bloodType || !units) {
+      return res.status(400).json({ error: 'missing_fields: hospitalId, bloodType, units' });
+    }
+    if (!VALID_BLOOD_TYPES.has(bloodType)) {
+      return res.status(400).json({ error: 'invalid_blood_type' });
+    }
+    if (units <= 0) {
+      return res.status(400).json({ error: 'units_must_be_positive' });
+    }
+    const userId = await getUserIdFromToken(req);
+    const rows = await query(
+      `SELECT * FROM add_hospital_inventory_units($1, $2, $3, $4, $5, $6)`,
+      [hospitalId, bloodType, units, reason || null, expirationDate || null, userId],
+    );
+    const result = rows[0];
+    if (!result.success) {
+      return res.status(400).json({ error: result.error_message });
+    }
+    return res.json(result);
+  } catch (err) {
+    return serverError(res, err, 'POST /hospital/inventory/add');
+  }
+});
+
+/**
+ * @swagger
+ * /api/v1/hospital/inventory/remove:
+ *   post:
+ *     summary: Remove units from hospital blood inventory
+ *     tags: [Inventory]
+ *     security:
+ *       - bearerAuth: []
+ */
+app.post('/api/v1/hospital/inventory/remove', requireFirebaseAuth, async (req, res) => {
+  try {
+    const { hospitalId, bloodType, units, reason } = req.body;
+    if (!hospitalId || !bloodType || !units) {
+      return res.status(400).json({ error: 'missing_fields: hospitalId, bloodType, units' });
+    }
+    if (!VALID_BLOOD_TYPES.has(bloodType)) {
+      return res.status(400).json({ error: 'invalid_blood_type' });
+    }
+    if (units <= 0) {
+      return res.status(400).json({ error: 'units_must_be_positive' });
+    }
+    const userId = await getUserIdFromToken(req);
+    const rows = await query(
+      `SELECT * FROM remove_hospital_inventory_units($1, $2, $3, $4, $5)`,
+      [hospitalId, bloodType, units, reason || null, userId],
+    );
+    const result = rows[0];
+    if (!result.success) {
+      return res.status(400).json({ error: result.error_message });
+    }
+    return res.json(result);
+  } catch (err) {
+    return serverError(res, err, 'POST /hospital/inventory/remove');
+  }
+});
+
+/**
+ * @swagger
+ * /api/v1/hospital/inventory/set:
+ *   post:
+ *     summary: Set exact units for a blood type (absolute override)
+ *     tags: [Inventory]
+ *     security:
+ *       - bearerAuth: []
+ */
+app.post('/api/v1/hospital/inventory/set', requireFirebaseAuth, async (req, res) => {
+  try {
+    const { hospitalId, bloodType, units, reason } = req.body;
+    if (!hospitalId || !bloodType || units === undefined) {
+      return res.status(400).json({ error: 'missing_fields: hospitalId, bloodType, units' });
+    }
+    if (!VALID_BLOOD_TYPES.has(bloodType)) {
+      return res.status(400).json({ error: 'invalid_blood_type' });
+    }
+    if (units < 0) {
+      return res.status(400).json({ error: 'units_cannot_be_negative' });
+    }
+    const userId = await getUserIdFromToken(req);
+    const rows = await query(
+      `SELECT * FROM set_hospital_inventory_units($1, $2, $3, $4, $5)`,
+      [hospitalId, bloodType, units, reason || null, userId],
+    );
+    const result = rows[0];
+    if (!result.success) {
+      return res.status(400).json({ error: result.error_message });
+    }
+    return res.json(result);
+  } catch (err) {
+    return serverError(res, err, 'POST /hospital/inventory/set');
+  }
+});
+
+/**
+ * @swagger
+ * /api/v1/hospital/inventory/threshold:
+ *   post:
+ *     summary: Set minimum threshold for a blood type
+ *     tags: [Inventory]
+ *     security:
+ *       - bearerAuth: []
+ */
+app.post('/api/v1/hospital/inventory/threshold', requireFirebaseAuth, async (req, res) => {
+  try {
+    const { hospitalId, bloodType, threshold } = req.body;
+    if (!hospitalId || !bloodType || threshold === undefined) {
+      return res.status(400).json({ error: 'missing_fields: hospitalId, bloodType, threshold' });
+    }
+    if (!VALID_BLOOD_TYPES.has(bloodType)) {
+      return res.status(400).json({ error: 'invalid_blood_type' });
+    }
+    if (threshold < 0) {
+      return res.status(400).json({ error: 'threshold_cannot_be_negative' });
+    }
+    const userId = await getUserIdFromToken(req);
+    const rows = await query(
+      `SELECT * FROM set_hospital_inventory_threshold($1, $2, $3, $4)`,
+      [hospitalId, bloodType, threshold, userId],
+    );
+    const result = rows[0];
+    if (!result.success) {
+      return res.status(400).json({ error: result.error_message });
+    }
+    return res.json({ success: true });
+  } catch (err) {
+    return serverError(res, err, 'POST /hospital/inventory/threshold');
+  }
+});
+
+/**
+ * @swagger
+ * /api/v1/hospital/inventory/history:
+ *   get:
+ *     summary: Get inventory change history
+ *     tags: [Inventory]
+ *     security:
+ *       - bearerAuth: []
+ */
+app.get('/api/v1/hospital/inventory/history', requireFirebaseAuth, async (req, res) => {
+  try {
+    const { hospitalId, limit: limitParam } = req.query;
+    if (!hospitalId) {
+      return res.status(400).json({ error: 'missing_fields: hospitalId' });
+    }
+    const rowLimit = Math.min(parseInt(limitParam || '50', 10), 200);
+    const rows = await query(
+      `SELECT id, blood_type, change_type, units_before, units_after,
+              units_changed, threshold_before, threshold_after,
+              reason, changed_by_name, created_at
+       FROM inventory_history_view
+       WHERE hospital_id = $1::uuid
+       ORDER BY created_at DESC LIMIT $2`,
+      [hospitalId, rowLimit],
+    );
+    return res.json(rows);
+  } catch (err) {
+    return serverError(res, err, 'GET /hospital/inventory/history');
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Feature 2 — Auto Low-Inventory Check & Alerts
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * @swagger
+ * /api/v1/hospital/low-inventory/check:
+ *   post:
+ *     summary: Manually trigger low-inventory check
+ *     tags: [Inventory]
+ *     security:
+ *       - bearerAuth: []
+ */
+app.post('/api/v1/hospital/low-inventory/check', requireFirebaseAuth, async (req, res) => {
+  try {
+    const rows = await query(`SELECT * FROM check_and_alert_low_inventory()`, []);
+    return res.json({ checked: true, alerts_created: rows.length, details: rows });
+  } catch (err) {
+    return serverError(res, err, 'POST /hospital/low-inventory/check');
+  }
+});
+
+/**
+ * @swagger
+ * /api/v1/hospital/low-inventory/alerts:
+ *   get:
+ *     summary: Get low inventory alerts for a hospital
+ *     tags: [Inventory]
+ *     security:
+ *       - bearerAuth: []
+ */
+app.get('/api/v1/hospital/low-inventory/alerts', requireFirebaseAuth, async (req, res) => {
+  try {
+    const { hospitalId } = req.query;
+    if (!hospitalId) {
+      return res.status(400).json({ error: 'missing_fields: hospitalId' });
+    }
+    const rows = await query(
+      `SELECT lia.*, br.short_id, br.status AS request_status
+       FROM low_inventory_alerts lia
+       LEFT JOIN blood_requests br ON br.id = lia.request_id
+       WHERE lia.hospital_id = $1::uuid
+       ORDER BY lia.created_at DESC LIMIT 50`,
+      [hospitalId],
+    );
+    return res.json(rows);
+  } catch (err) {
+    return serverError(res, err, 'GET /hospital/low-inventory/alerts');
+  }
+});
+
+/**
+ * @swagger
+ * /api/v1/hospital/low-inventory/resolve:
+ *   post:
+ *     summary: Resolve low inventory alerts for a blood type
+ *     tags: [Inventory]
+ *     security:
+ *       - bearerAuth: []
+ */
+app.post('/api/v1/hospital/low-inventory/resolve', requireFirebaseAuth, async (req, res) => {
+  try {
+    const { hospitalId, bloodType } = req.body;
+    if (!hospitalId || !bloodType) {
+      return res.status(400).json({ error: 'missing_fields: hospitalId, bloodType' });
+    }
+    if (!VALID_BLOOD_TYPES.has(bloodType)) {
+      return res.status(400).json({ error: 'invalid_blood_type' });
+    }
+    await query(`SELECT resolve_low_inventory_alerts($1, $2)`, [hospitalId, bloodType]);
+    return res.json({ success: true });
+  } catch (err) {
+    return serverError(res, err, 'POST /hospital/low-inventory/resolve');
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Feature 3 — Donor Feedback & Rating System
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * @swagger
+ * /api/v1/feedback/submit:
+ *   post:
+ *     summary: Submit feedback for a donation
+ *     tags: [Feedback]
+ *     security:
+ *       - bearerAuth: []
+ */
+app.post('/api/v1/feedback/submit', requireFirebaseAuth, async (req, res) => {
+  try {
+    const {
+      donationId, donorId, feedbackType, targetId,
+      overallRating, communicationRating, organizationRating,
+      hospitalEfficiencyRating, staffProfessionalismRating,
+      cleanlinessRating, waitingTimeRating,
+      comment, isAnonymous,
+    } = req.body;
+
+    if (!donationId || !donorId || !feedbackType || !targetId) {
+      return res.status(400).json({
+        error: 'missing_fields: donationId, donorId, feedbackType, targetId',
+      });
+    }
+    if (!['recipient_request', 'hospital_request'].includes(feedbackType)) {
+      return res.status(400).json({ error: 'invalid_feedback_type' });
+    }
+
+    const existing = await query(
+      `SELECT id FROM donor_feedback WHERE donation_id = $1 AND donor_id = $2`,
+      [donationId, donorId],
+    );
+    if (existing.length > 0) {
+      return res.status(409).json({ error: 'feedback_already_submitted' });
+    }
+
+    const row = await query(
+      `INSERT INTO donor_feedback (
+        donation_id, donor_id, feedback_type, target_id,
+        overall_rating, communication_rating, organization_rating,
+        hospital_efficiency_rating, staff_professionalism_rating,
+        cleanliness_rating, waiting_time_rating,
+        comment, is_anonymous
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      RETURNING id, created_at`,
+      [
+        donationId, donorId, feedbackType, targetId,
+        overallRating || null, communicationRating || null, organizationRating || null,
+        hospitalEfficiencyRating || null, staffProfessionalismRating || null,
+        cleanlinessRating || null, waitingTimeRating || null,
+        comment || null, isAnonymous || false,
+      ],
+    );
+    return res.status(201).json(row[0]);
+  } catch (err) {
+    return serverError(res, err, 'POST /feedback/submit');
+  }
+});
+
+/**
+ * @swagger
+ * /api/v1/feedback/hospital/{hospitalId}:
+ *   get:
+ *     summary: Get hospital feedback with analytics
+ *     tags: [Feedback]
+ *     security:
+ *       - bearerAuth: []
+ */
+app.get('/api/v1/feedback/hospital/:hospitalId', requireFirebaseAuth, async (req, res) => {
+  try {
+    const { hospitalId } = req.params;
+    const { limit: limitParam } = req.query;
+    const rowLimit = Math.min(parseInt(limitParam || '50', 10), 200);
+
+    const [analytics, feedbacks] = await Promise.all([
+      query(`SELECT * FROM get_hospital_feedback_analytics($1)`, [hospitalId]),
+      query(
+        `SELECT df.id, df.overall_rating, df.hospital_efficiency_rating,
+                df.staff_professionalism_rating, df.cleanliness_rating,
+                df.waiting_time_rating, df.comment, df.created_at,
+                CASE WHEN df.is_anonymous THEN 'Anonymous' ELSE u.name END AS donor_name
+         FROM donor_feedback df
+         LEFT JOIN users u ON u.id = df.donor_id
+         WHERE df.target_id = $1::uuid AND df.feedback_type = 'hospital_request'
+         ORDER BY df.created_at DESC LIMIT $2`,
+        [hospitalId, rowLimit],
+      ),
+    ]);
+
+    return res.json({
+      analytics: analytics[0] || { total_feedbacks: 0, avg_overall: 0, avg_efficiency: 0, avg_professionalism: 0, avg_cleanliness: 0, avg_waiting_time: 0, rating_1_count: 0, rating_2_count: 0, rating_3_count: 0, rating_4_count: 0, rating_5_count: 0 },
+      feedbacks,
+    });
+  } catch (err) {
+    return serverError(res, err, 'GET /feedback/hospital/:id');
+  }
+});
+
+/**
+ * @swagger
+ * /api/v1/feedback/recipient/{recipientId}:
+ *   get:
+ *     summary: Get recipient feedback with analytics
+ *     tags: [Feedback]
+ *     security:
+ *       - bearerAuth: []
+ */
+app.get('/api/v1/feedback/recipient/:recipientId', requireFirebaseAuth, async (req, res) => {
+  try {
+    const { recipientId } = req.params;
+    const { limit: limitParam } = req.query;
+    const rowLimit = Math.min(parseInt(limitParam || '50', 10), 200);
+
+    const [analytics, feedbacks] = await Promise.all([
+      query(`SELECT * FROM get_recipient_feedback_analytics($1)`, [recipientId]),
+      query(
+        `SELECT df.id, df.overall_rating, df.communication_rating,
+                df.organization_rating, df.comment, df.created_at,
+                CASE WHEN df.is_anonymous THEN 'Anonymous' ELSE u.name END AS donor_name
+         FROM donor_feedback df
+         LEFT JOIN users u ON u.id = df.donor_id
+         WHERE df.target_id = $1::uuid AND df.feedback_type = 'recipient_request'
+         ORDER BY df.created_at DESC LIMIT $2`,
+        [recipientId, rowLimit],
+      ),
+    ]);
+
+    return res.json({
+      analytics: analytics[0] || { total_feedbacks: 0, avg_overall: 0, avg_communication: 0, avg_organization: 0 },
+      feedbacks,
+    });
+  } catch (err) {
+    return serverError(res, err, 'GET /feedback/recipient/:id');
+  }
+});
+
+/**
+ * @swagger
+ * /api/v1/feedback/mine:
+ *   get:
+ *     summary: Get feedback submitted by the current donor
+ *     tags: [Feedback]
+ *     security:
+ *       - bearerAuth: []
+ */
+app.get('/api/v1/feedback/mine', requireFirebaseAuth, async (req, res) => {
+  try {
+    const { donorId } = req.query;
+    if (!donorId) {
+      return res.status(400).json({ error: 'missing_fields: donorId' });
+    }
+    const rows = await query(
+      `SELECT df.*, d.donated_at,
+              CASE WHEN df.feedback_type = 'hospital_request' THEN u_hosp.hospital_name ELSE u_rec.name END AS target_name
+       FROM donor_feedback df
+       JOIN donations d ON d.id = df.donation_id
+       LEFT JOIN users u_hosp ON u_hosp.id = df.target_id AND df.feedback_type = 'hospital_request'
+       LEFT JOIN users u_rec ON u_rec.id = df.target_id AND df.feedback_type = 'recipient_request'
+       WHERE df.donor_id = $1::uuid
+       ORDER BY df.created_at DESC LIMIT 100`,
+      [donorId],
+    );
+    return res.json(rows);
+  } catch (err) {
+    return serverError(res, err, 'GET /feedback/mine');
+  }
+});
+
 function _ruleBasedCheck({ feelingWell, recentIllness }) {
   let score = 0.8;
   const warnings = [];
@@ -2695,8 +3134,23 @@ Missing: ${dbConfig.missing.join(', ')}
     });
   }
 
+  // ── Low-inventory auto-check scheduler ──
+  const checkIntervalMs = parseInt(process.env.LOW_INVENTORY_CHECK_INTERVAL || '300000', 10);
+  const lowInventoryInterval = setInterval(async () => {
+    try {
+      const rows = await query('SELECT * FROM check_and_alert_low_inventory()', []);
+      if (rows.length > 0) {
+        logger.info({ alerts_created: rows.length }, 'Low-inventory auto-check completed');
+      }
+    } catch (err) {
+      logger.error({ err }, 'Low-inventory auto-check failed');
+    }
+  }, checkIntervalMs);
+  logger.info({ intervalMs: checkIntervalMs }, 'Low-inventory auto-check scheduler started');
+
   function shutdown(signal) {
     logger.info({ signal }, 'Shutting down gracefully...');
+    clearInterval(lowInventoryInterval);
     server.close(() => {
       pool.end(() => {
         logger.info('Server and pool closed');

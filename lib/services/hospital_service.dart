@@ -118,4 +118,130 @@ class HospitalService {
       return [];
     }
   }
+
+  // ── Inventory Management ──
+
+  Future<Map<String, dynamic>?> addInventoryUnits({
+    required String hospitalId,
+    required String bloodType,
+    required int units,
+    String? reason,
+    String? expirationDate,
+  }) async {
+    try {
+      return await _api.postJson('/api/v1/hospital/inventory/add', body: {
+        'hospitalId': hospitalId,
+        'bloodType': bloodType,
+        'units': units,
+        'reason': reason,
+        'expirationDate': expirationDate,
+      });
+    } catch (e) {
+      debugPrint('addInventoryUnits failed: $e');
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> removeInventoryUnits({
+    required String hospitalId,
+    required String bloodType,
+    required int units,
+    String? reason,
+  }) async {
+    try {
+      return await _api.postJson('/api/v1/hospital/inventory/remove', body: {
+        'hospitalId': hospitalId,
+        'bloodType': bloodType,
+        'units': units,
+        'reason': reason,
+      });
+    } catch (e) {
+      debugPrint('removeInventoryUnits failed: $e');
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> setInventoryUnits({
+    required String hospitalId,
+    required String bloodType,
+    required int units,
+    String? reason,
+  }) async {
+    try {
+      return await _api.postJson('/api/v1/hospital/inventory/set', body: {
+        'hospitalId': hospitalId,
+        'bloodType': bloodType,
+        'units': units,
+        'reason': reason,
+      });
+    } catch (e) {
+      debugPrint('setInventoryUnits failed: $e');
+      return null;
+    }
+  }
+
+  Future<bool> setInventoryThreshold({
+    required String hospitalId,
+    required String bloodType,
+    required int threshold,
+  }) async {
+    try {
+      await _api.postEmpty('/api/v1/hospital/inventory/threshold', body: {
+        'hospitalId': hospitalId,
+        'bloodType': bloodType,
+        'threshold': threshold,
+      });
+      return true;
+    } catch (e) {
+      debugPrint('setInventoryThreshold failed: $e');
+      return false;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getInventoryHistory(
+    String hospitalId, {
+    int limit = 50,
+  }) async {
+    try {
+      return await _api.getJsonList(
+        '/api/v1/hospital/inventory/history',
+        query: {'hospitalId': hospitalId, 'limit': limit.toString()},
+      );
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // ── Auto Low-Inventory ──
+
+  Future<Map<String, dynamic>> triggerLowInventoryCheck() async {
+    return await _api.postJson('/api/v1/hospital/low-inventory/check');
+  }
+
+  Future<List<Map<String, dynamic>>> getLowInventoryAlerts(String hospitalId) async {
+    try {
+      return await _api.getJsonList(
+        '/api/v1/hospital/low-inventory/alerts',
+        query: {'hospitalId': hospitalId},
+      );
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<bool> resolveLowInventoryAlert({
+    required String hospitalId,
+    required String bloodType,
+  }) async {
+    try {
+      await _api.postEmpty('/api/v1/hospital/low-inventory/resolve', body: {
+        'hospitalId': hospitalId,
+        'bloodType': bloodType,
+      });
+      return true;
+    } catch (e) {
+      debugPrint('resolveLowInventoryAlert failed: $e');
+      return false;
+    }
+  }
 }

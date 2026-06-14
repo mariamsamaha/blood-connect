@@ -21,6 +21,9 @@ import 'package:bloodconnect/screens/stories_screen.dart';
 import 'package:bloodconnect/screens/coupons_screen.dart';
 import 'package:bloodconnect/screens/map_discover_screen.dart';
 import 'package:bloodconnect/screens/notification_center_screen.dart';
+import 'package:bloodconnect/screens/inventory_management_screen.dart';
+import 'package:bloodconnect/screens/donor_feedback_submission_screen.dart';
+import 'package:bloodconnect/screens/hospital_feedback_analytics_screen.dart';
 import 'package:bloodconnect/widgets/app_shell.dart';
 
 final _inFlightProfileFetches = <String, Future<UserProfile?>>{};
@@ -170,6 +173,31 @@ GoRouter buildRouter({
         pageBuilder: (ctx, s) =>
             _slideTransition(const NotificationCenterScreen()),
       ),
+      GoRoute(
+        path: '/hospital/inventory',
+        pageBuilder: (ctx, s) =>
+            _slideTransition(const InventoryManagementScreen()),
+      ),
+      GoRoute(
+        path: '/hospital/feedback',
+        pageBuilder: (ctx, s) => _slideTransition(
+          HospitalFeedbackAnalyticsScreen(
+            hospitalId: s.uri.queryParameters['hospitalId'] ?? '',
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/feedback/submit',
+        pageBuilder: (ctx, s) => _slideTransition(
+          DonorFeedbackSubmissionScreen(
+            donationId: s.uri.queryParameters['donationId'] ?? '',
+            donorId: s.uri.queryParameters['donorId'] ?? '',
+            feedbackType: s.uri.queryParameters['feedbackType'] ?? '',
+            targetId: s.uri.queryParameters['targetId'] ?? '',
+            targetName: s.uri.queryParameters['targetName'] ?? '',
+          ),
+        ),
+      ),
     ],
     redirect: (context, state) async {
       if (state.matchedLocation == '/signup') {
@@ -252,7 +280,7 @@ GoRouter buildRouter({
         return homeRouteForProfile(profile);
       }
 
-      if (loc == '/ai-check' || loc == '/stories' || loc == '/notifications') return null;
+      if (loc == '/ai-check' || loc == '/stories' || loc == '/notifications' || loc == '/feedback/submit') return null;
 
       if (loc == '/coupons') {
         if (profile.role != UserRole.donor) return homeRouteForProfile(profile);

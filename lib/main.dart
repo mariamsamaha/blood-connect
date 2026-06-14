@@ -20,6 +20,7 @@ import 'package:bloodconnect/services/request_service.dart';
 import 'package:bloodconnect/services/location_service.dart';
 import 'package:bloodconnect/services/donor_service.dart';
 import 'package:bloodconnect/services/hospital_service.dart';
+import 'package:bloodconnect/services/feedback_service.dart';
 import 'package:bloodconnect/services/invalidation_service.dart';
 import 'package:bloodconnect/services/ai_prediction_service.dart';
 import 'package:bloodconnect/models/cache_entry.dart';
@@ -136,6 +137,10 @@ final donorServiceProvider = Provider<DonorService>((ref) {
 
 final hospitalServiceProvider = Provider<HospitalService>((ref) {
   return HospitalService(ref.watch(apiClientProvider));
+});
+
+final feedbackServiceProvider = Provider<FeedbackService>((ref) {
+  return FeedbackService(ref.watch(apiClientProvider));
 });
 
 final routerRefreshProvider = Provider<RouterRefreshNotifier>((ref) {

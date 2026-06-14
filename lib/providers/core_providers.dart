@@ -19,6 +19,12 @@ final cacheServiceProvider = Provider<CacheService>((ref) {
       '/api/v1/users/me/badges': const Duration(minutes: 2),
       '/api/v1/donor/donations': const Duration(minutes: 2),
       '/api/v1/users/me': const Duration(minutes: 2),
+      '/api/v1/hospital/inventory/history': const Duration(minutes: 1),
+      '/api/v1/hospital/inventory': const Duration(seconds: 30),
+      '/api/v1/hospital/low-inventory/alerts': const Duration(seconds: 30),
+      '/api/v1/feedback/hospital': const Duration(minutes: 2),
+      '/api/v1/feedback/recipient': const Duration(minutes: 2),
+      '/api/v1/feedback/mine': const Duration(minutes: 2),
     },
   );
 });
