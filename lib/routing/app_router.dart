@@ -19,6 +19,7 @@ import 'package:bloodconnect/screens/profile_screen.dart';
 import 'package:bloodconnect/screens/ai_prediction_screen.dart';
 import 'package:bloodconnect/screens/stories_screen.dart';
 import 'package:bloodconnect/screens/coupons_screen.dart';
+import 'package:bloodconnect/screens/map_discover_screen.dart';
 import 'package:bloodconnect/screens/notification_center_screen.dart';
 import 'package:bloodconnect/widgets/app_shell.dart';
 
@@ -93,6 +94,14 @@ GoRouter buildRouter({
               GoRoute(
                 path: '/recipient/home',
                 builder: (ctx, state) => const RecipientHomeScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/map-discover',
+                builder: (ctx, state) => const MapDiscoverScreen(),
               ),
             ],
           ),
@@ -214,6 +223,11 @@ GoRouter buildRouter({
         if (profile.role != UserRole.donor) {
           return '/recipient/home';
         }
+        return null;
+      }
+
+      if (loc == '/map-discover') {
+        if (profile.role != UserRole.donor) return homeRouteForProfile(profile);
         return null;
       }
 

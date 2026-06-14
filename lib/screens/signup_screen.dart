@@ -7,6 +7,7 @@ import 'package:bloodconnect/theme/app_theme.dart';
 import 'package:bloodconnect/widgets/app_button.dart';
 import 'package:bloodconnect/widgets/app_text_field.dart';
 import 'package:bloodconnect/widgets/blood_type_chip.dart';
+import 'package:bloodconnect/widgets/location_map_picker.dart';
 
 class SignUpScreen extends ConsumerStatefulWidget {
   const SignUpScreen({super.key});
@@ -24,11 +25,10 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   final _city = TextEditingController();
   DateTime? _dateOfBirth;
   bool _loading = false;
+  bool _locating = false;
   double? _lat;
   double? _lng;
-  final _bloodTypes = const [
-    'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-',
-  ];
+  final _bloodTypes = const ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
   @override
   void initState() {
@@ -46,18 +46,21 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   }
 
   Future<void> _fetchLocation() async {
-    final pos =
-        await ref.read(locationServiceProvider).getCurrentPosition();
-    if (!mounted) return;
-    setState(() {
-      _lat = pos?.latitude;
-      _lng = pos?.longitude;
-    });
+    setState(() => _locating = true);
+    try {
+      final pos = await ref.read(locationServiceProvider).getCurrentPosition();
+      if (!mounted) return;
+      setState(() {
+        _lat = pos?.latitude;
+        _lng = pos?.longitude;
+      });
+    } finally {
+      if (mounted) setState(() => _locating = false);
+    }
   }
 
   static String _generateHospitalCode(String name) {
-    final clean =
-        name.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
+    final clean = name.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
     final prefix = clean.length >= 3
         ? clean.substring(0, 3)
         : clean.padRight(3, 'X');
@@ -75,7 +78,9 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       if (!_hospital && _dateOfBirth == null) {
         throw Exception('Please enter your date of birth');
       }
-      final profile = await ref.read(userServiceProvider).createCompleteProfile(
+      final profile = await ref
+          .read(userServiceProvider)
+          .createCompleteProfile(
             user,
             name: _name.text.trim(),
             email: user.email ?? '',
@@ -88,16 +93,15 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
             latitude: _lat,
             longitude: _lng,
             hospitalName: _hospital ? _name.text.trim() : null,
-            hospitalCode:
-                _hospital ? _generateHospitalCode(_name.text.trim()) : null,
+            hospitalCode: _hospital
+                ? _generateHospitalCode(_name.text.trim())
+                : null,
           );
       if (!mounted) return;
       context.go(profile.homeRoute);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$e')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -187,9 +191,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                 ),
               );
             },
-            child: !isStep2
-                ? _buildRoleSelection()
-                : _buildDetailsForm(),
+            child: !isStep2 ? _buildRoleSelection() : _buildDetailsForm(),
           ),
         ],
       ),
@@ -198,9 +200,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
           decoration: BoxDecoration(
             color: Theme.of(context).cardColor,
-            border: const Border(
-              top: BorderSide(color: AppColors.divider),
-            ),
+            border: const Border(top: BorderSide(color: AppColors.divider)),
           ),
           child: Row(
             children: [
@@ -217,8 +217,9 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                 child: AppButton.primary(
                   label: isStep2 ? 'Create Account' : 'Continue',
                   isLoading: _loading,
-                  onPressed:
-                      isStep2 ? _submit : () => setState(() => _step = 1),
+                  onPressed: isStep2
+                      ? _submit
+                      : () => setState(() => _step = 1),
                 ),
               ),
             ],
@@ -302,9 +303,15 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
               final now = DateTime.now();
               final picked = await showDatePicker(
                 context: context,
-                initialDate: now.subtract(const Duration(days: 6570)), // ~18 years
-                firstDate: now.subtract(const Duration(days: 36525)), // ~100 years
-                lastDate: now.subtract(const Duration(days: 6570)), // 18 years ago
+                initialDate: now.subtract(
+                  const Duration(days: 6570),
+                ), // ~18 years
+                firstDate: now.subtract(
+                  const Duration(days: 36525),
+                ), // ~100 years
+                lastDate: now.subtract(
+                  const Duration(days: 6570),
+                ), // 18 years ago
                 helpText: 'Select your date of birth',
               );
               if (picked != null) {
@@ -320,7 +327,11 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.cake_outlined, size: 20, color: AppColors.textSecondary),
+                  const Icon(
+                    Icons.cake_outlined,
+                    size: 20,
+                    color: AppColors.textSecondary,
+                  ),
                   const SizedBox(width: 12),
                   Text(
                     _dateOfBirth != null
@@ -342,9 +353,9 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
         if (!_hospital) ...[
           Text(
             'Blood Type',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              color: AppColors.textPrimary,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(color: AppColors.textPrimary),
           ),
           const SizedBox(height: 8),
           Wrap(
@@ -368,65 +379,20 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
           icon: Icons.place_outlined,
         ),
         const SizedBox(height: 16),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Theme.of(context).cardColor,
-            borderRadius: BorderRadius.circular(AppRadius.lg),
-            border: Border.all(color: AppColors.divider),
-            boxShadow: AppShadows.card,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.location_pin,
-                    color: AppColors.primaryRed,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Location',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _lat == null
-                    ? 'Allow location for better matching'
-                    : '${_lat!.toStringAsFixed(4)}, ${_lng!.toStringAsFixed(4)}',
-                style: TextStyle(
-                  color: _lat == null
-                      ? AppColors.textSecondary
-                      : AppColors.textPrimary,
-                  fontSize: 13,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: AppButton.primary(
-                      label: 'Enable',
-                      onPressed: _fetchLocation,
-                      size: ButtonSize.md,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: AppButton.secondary(
-                      label: 'Skip',
-                      onPressed: () {},
-                      size: ButtonSize.md,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+        LocationMapPicker(
+          title: 'Your Location',
+          subtitle: 'Tap the map to adjust your matching area',
+          latitude: _lat,
+          longitude: _lng,
+          isLocating: _locating,
+          actionLabel: 'Use my current location',
+          onUseCurrentLocation: _fetchLocation,
+          onLocationChanged: (location) {
+            setState(() {
+              _lat = location.latitude;
+              _lng = location.longitude;
+            });
+          },
         ),
       ],
     );
@@ -463,9 +429,7 @@ class _RoleCard extends StatelessWidget {
             color: selected ? AppColors.primaryRed : AppColors.divider,
             width: selected ? 1.6 : 1,
           ),
-          color: selected
-              ? AppColors.softRed
-              : Theme.of(context).cardColor,
+          color: selected ? AppColors.softRed : Theme.of(context).cardColor,
           boxShadow: selected ? AppShadows.primary : null,
         ),
         child: Column(
@@ -481,7 +445,9 @@ class _RoleCard extends StatelessWidget {
               ),
               child: Icon(
                 icon,
-                color: selected ? AppColors.primaryRed : AppColors.textSecondary,
+                color: selected
+                    ? AppColors.primaryRed
+                    : AppColors.textSecondary,
                 size: 28,
               ),
             ),

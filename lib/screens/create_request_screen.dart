@@ -7,6 +7,7 @@ import 'package:bloodconnect/widgets/app_button.dart';
 import 'package:bloodconnect/widgets/app_text_field.dart';
 import 'package:bloodconnect/widgets/blood_type_chip.dart';
 import 'package:bloodconnect/widgets/blood_type_wheel.dart';
+import 'package:bloodconnect/widgets/location_map_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -34,9 +35,7 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
   double? _requesterLat;
   double? _requesterLng;
   String? _locationNote;
-  final _bloodTypes = const [
-    'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-',
-  ];
+  final _bloodTypes = const ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
   @override
   void initState() {
@@ -53,15 +52,18 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
   Future<void> _prefillPhone() async {
     final auth = ref.read(authServiceProvider).currentUser;
     if (auth == null) return;
-    final profile =
-        await ref.read(userServiceProvider).getProfileByFirebaseUid(auth.uid);
+    final profile = await ref
+        .read(userServiceProvider)
+        .getProfileByFirebaseUid(auth.uid);
     if (!mounted || profile == null) return;
     _phone.text = profile.phone;
   }
 
   Future<void> _loadHospitals() async {
     try {
-      final data = await ref.read(requestServiceProvider).getHospitals(
+      final data = await ref
+          .read(requestServiceProvider)
+          .getHospitals(
             userLatitude: _requesterLat,
             userLongitude: _requesterLng,
           );
@@ -102,18 +104,28 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
         final profile = await userService.getProfileByFirebaseUid(auth.uid);
         _requesterLat = profile?.latitude;
         _requesterLng = profile?.longitude;
-        _locationNote =
-            (_requesterLat != null && _requesterLng != null)
-                ? 'Using saved profile location'
-                : 'Location unavailable, hospital location will be used';
+        _locationNote = (_requesterLat != null && _requesterLng != null)
+            ? 'Using saved profile location'
+            : 'Location unavailable, hospital location will be used';
       }
     } catch (_) {
-      _locationNote = 'Could not detect location, hospital location will be used';
+      _locationNote =
+          'Could not detect location, hospital location will be used';
     } finally {
       if (mounted) {
         setState(() => _locating = false);
       }
     }
+  }
+
+  Future<void> _selectRequestLocation(double latitude, double longitude) async {
+    setState(() {
+      _requesterLat = latitude;
+      _requesterLng = longitude;
+      _locationNote = 'Using selected request location';
+      _loadingHospitals = true;
+    });
+    await _loadHospitals();
   }
 
   Future<void> _submit() async {
@@ -122,10 +134,13 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
     try {
       final auth = ref.read(authServiceProvider).currentUser;
       if (auth == null) return;
-      final user =
-          await ref.read(userServiceProvider).getProfileByFirebaseUid(auth.uid);
+      final user = await ref
+          .read(userServiceProvider)
+          .getProfileByFirebaseUid(auth.uid);
       if (user == null) return;
-      await ref.read(requestServiceProvider).createRequest(
+      await ref
+          .read(requestServiceProvider)
+          .createRequest(
             requesterId: user.id,
             bloodType: _bloodType,
             unitsNeeded: _units,
@@ -135,10 +150,10 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
             hospitalLng: _hospital!.longitude,
             requesterLat: _requesterLat ?? user.latitude,
             requesterLng: _requesterLng ?? user.longitude,
-            patientName:
-                _patient.text.trim().isEmpty ? null : _patient.text.trim(),
-            description:
-                _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+            patientName: _patient.text.trim().isEmpty
+                ? null
+                : _patient.text.trim(),
+            description: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
             contactPhone: _phone.text.trim(),
           );
       if (!mounted) return;
@@ -148,9 +163,7 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
       context.go('/recipient/home');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$e')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -290,6 +303,7 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
                         await _captureLocation();
                         await _loadHospitals();
                       },
+                      onLocationSelected: _selectRequestLocation,
                       onBloodType: (v) => setState(() => _bloodType = v),
                       onUnits: (v) => setState(() => _units = v.clamp(1, 10)),
                       onUrgency: (v) => setState(() => _urgency = v),
@@ -305,9 +319,7 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
               decoration: BoxDecoration(
                 color: Theme.of(context).cardColor,
-                border: const Border(
-                  top: BorderSide(color: AppColors.divider),
-                ),
+                border: const Border(top: BorderSide(color: AppColors.divider)),
               ),
               child: Row(
                 children: [
@@ -327,8 +339,8 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
                       onPressed: !canProceed
                           ? null
                           : (_step == 4
-                              ? _submit
-                              : () => setState(
+                                ? _submit
+                                : () => setState(
                                     () => _step = (_step + 1).clamp(0, 4),
                                   )),
                     ),
@@ -429,6 +441,7 @@ class _StepContent extends StatelessWidget {
     required this.requesterLat,
     required this.requesterLng,
     required this.onRefreshLocation,
+    required this.onLocationSelected,
   });
 
   final int step;
@@ -451,6 +464,8 @@ class _StepContent extends StatelessWidget {
   final double? requesterLat;
   final double? requesterLng;
   final Future<void> Function() onRefreshLocation;
+  final Future<void> Function(double latitude, double longitude)
+  onLocationSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -476,9 +491,7 @@ class _StepContent extends StatelessWidget {
                   .toList(),
             ),
             const SizedBox(height: 20),
-            Center(
-              child: BloodTypeWheel(selectedType: bloodType, size: 220),
-            ),
+            Center(child: BloodTypeWheel(selectedType: bloodType, size: 220)),
           ],
         ),
       );
@@ -590,70 +603,21 @@ class _StepContent extends StatelessWidget {
       }
       return ListView(
         children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Theme.of(context).cardColor,
-              borderRadius: BorderRadius.circular(AppRadius.lg),
-              border: Border.all(color: AppColors.divider),
-              boxShadow: AppShadows.card,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryRed.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(AppRadius.sm),
-                      ),
-                      child: const Icon(
-                        Icons.location_pin,
-                        color: AppColors.primaryRed,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            locationNote ?? 'Detecting location...',
-                            style: const TextStyle(fontWeight: FontWeight.w500),
-                          ),
-                          if (requesterLat != null && requesterLng != null)
-                            Text(
-                              '${requesterLat!.toStringAsFixed(4)}, ${requesterLng!.toStringAsFixed(4)}',
-                              style: const TextStyle(
-                                color: AppColors.textSecondary,
-                                fontSize: 12,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    if (locating)
-                      const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    else
-                      TextButton(
-                        onPressed: onRefreshLocation,
-                        child: const Text('Refresh'),
-                      ),
-                  ],
-                ),
-              ],
-            ),
+          LocationMapPicker(
+            title: 'Request Location',
+            subtitle: locationNote ?? 'Choose where donors should respond',
+            latitude: requesterLat,
+            longitude: requesterLng,
+            isLocating: locating,
+            actionLabel: 'Use current location',
+            onUseCurrentLocation: onRefreshLocation,
+            onLocationChanged: (location) {
+              onLocationSelected(location.latitude, location.longitude);
+            },
           ),
           const SizedBox(height: 16),
           DropdownButtonFormField<Hospital>(
-            value: hospital,
+            initialValue: hospital,
             decoration: const InputDecoration(
               labelText: 'Select Hospital (nearest first)',
             ),
@@ -792,15 +756,8 @@ class _UrgencyCard extends StatelessWidget {
             if (selected)
               Container(
                 padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.check,
-                  color: Colors.white,
-                  size: 14,
-                ),
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                child: const Icon(Icons.check, color: Colors.white, size: 14),
               ),
           ],
         ),
