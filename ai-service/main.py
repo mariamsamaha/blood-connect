@@ -17,39 +17,27 @@ load_dotenv()
 MODEL_WEIGHTS_PATH = "./fine_tuned_qwen2_vl_medical"
 BASE_MODEL_NAME = "retal16/Qwen2-VL-2B-Instruct"
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ✅ OPTIMIZED THRESHOLDS (More conservative for safety)
-# Matches actual VLM extracted features
-# ─────────────────────────────────────────────────────────────────────────────
+MALE_MIN_HEMOGLOBIN = 13.5
+FEMALE_MIN_HEMOGLOBIN = 12.5
+MALE_MAX_HEMOGLOBIN = 17.5
+FEMALE_MAX_HEMOGLOBIN = 16.0
 
-# Hemoglobin thresholds (increased minimums for safety margin)
-MALE_MIN_HEMOGLOBIN = 13.5      # ↑ was 13.0 → more conservative
-FEMALE_MIN_HEMOGLOBIN = 12.5    # ↑ was 12.0 → more conservative
-MALE_MAX_HEMOGLOBIN = 17.5      # unchanged
-FEMALE_MAX_HEMOGLOBIN = 16.0    # unchanged
-
-# Comprehensive CBC thresholds (all features VLM extracts)
 THRESHOLDS = {
-    # PRIMARY SCREENING PARAMETERS (Critical for eligibility)
-    "hemoglobin": (13.5, 17.5, "g/dL", "Hemoglobin", "Hb"),          # ↑ min increased
-    "tlc": (4.5, 10.5, "x10³/μL", "Total Leukocyte Count", "TLC"),   # ↑ min, ↓ max optimized
-    "platelet_count": (180.0, 400.0, "x10³/μL", "Platelet Count", "Plt"),  # ↑ min increased
-    
-    # SUPPORTING PARAMETERS (Quality checks)
+    "hemoglobin": (13.5, 17.5, "g/dL", "Hemoglobin", "Hb"),
+    "tlc": (4.5, 10.5, "x10³/μL", "Total Leukocyte Count", "TLC"),
+    "platelet_count": (180.0, 400.0, "x10³/μL", "Platelet Count", "Plt"),
     "hematocrit": (38.0, 52.0, "%", "Hematocrit", "Hct"),
     "red_cell_count": (4.5, 5.5, "x10⁶/μL", "Red Cell Count", "RBC"),
     "mcv": (80.0, 100.0, "fL", "Mean Corpuscular Volume", "MCV"),
     "mch": (27.0, 33.0, "pg", "Mean Corpuscular Hemoglobin", "MCH"),
     "mchc": (32.0, 36.0, "g/dL", "Mean Corpuscular Hemoglobin Concentration", "MCHC"),
     "rdw": (11.5, 14.5, "%", "Red Cell Distribution Width", "RDW"),
-    
-    # DIFFERENTIAL COUNTS
     "neutrophils": (40.0, 75.0, "%", "Neutrophils", "Neut"),
-    "lymphocytes": (20.0, 40.0, "%", "Lymphocytes", "Lymph"),
+    "lymphocytes": (20.0, 45.0, "%", "Lymphocytes", "Lymph"),
     "monocytes": (2.0, 10.0, "%", "Monocytes", "Mono"),
     "eosinophils": (1.0, 6.0, "%", "Eosinophils", "Eos"),
     "basophils": (0.0, 2.0, "%", "Basophils", "Baso"),
-    "segmented": (45.0, 75.0, "%", "Segmented Neutrophils", "Seg"),
+    "segmented": (40.0, 75.0, "%", "Segmented Neutrophils", "Seg"),
 }
 
 EXTRA_RULES = {
@@ -63,51 +51,61 @@ EXTRA_RULES = {
 
 def normalize_extracted_data(extracted_data: dict) -> dict:
     """
-    Normalize all extracted keys to lowercase for consistent handling.
-    VLM may return keys in different cases (TLC, tlc, Hemoglobin, haemoglobin, etc.)
+    Normalize all extracted keys to lowercase.
+    Fix decimal vs percentage for differential counts.
     """
     normalized = {}
+
+    DIFFERENTIAL_KEYS = {
+        "neutrophils", "lymphocytes", "monocytes",
+        "eosinophils", "basophils", "segmented"
+    }
+
     for k, v in extracted_data.items():
-        # Convert key to lowercase and normalize common variations
         norm_key = k.lower().strip()
+
+        # Key normalization
         norm_key = norm_key.replace("haemoglobin", "hemoglobin")
-        norm_key = norm_key.replace("hematocrit", "hematocrit")
-        norm_key = norm_key.replace("red_cell_count", "red_cell_count")
-        norm_key = norm_key.replace("rbc", "red_cell_count")
+        norm_key = norm_key.replace("hb", "hemoglobin") if norm_key == "hb" else norm_key
+        norm_key = norm_key.replace("rbc", "red_cell_count") if norm_key == "rbc" else norm_key
+        norm_key = norm_key.replace("red cell count", "red_cell_count")
         norm_key = norm_key.replace("rdw_cv", "rdw")
-        norm_key = norm_key.replace("rdw", "rdw")
-        norm_key = norm_key.replace("platelet_count", "platelet_count")
-        norm_key = norm_key.replace("platelets", "platelet_count")
-        norm_key = norm_key.replace("plt", "platelet_count")
-        norm_key = norm_key.replace("wbc", "tlc")
-        norm_key = norm_key.replace("leukocytes", "tlc")
-        
+        norm_key = norm_key.replace("platelets", "platelet_count") if norm_key == "platelets" else norm_key
+        norm_key = norm_key.replace("plt", "platelet_count") if norm_key == "plt" else norm_key
+        norm_key = norm_key.replace("platelet count", "platelet_count")
+        norm_key = norm_key.replace("wbc", "tlc") if norm_key == "wbc" else norm_key
+        norm_key = norm_key.replace("leukocytes", "tlc") if norm_key == "leukocytes" else norm_key
+        norm_key = norm_key.replace("total leukocyte count", "tlc")
+        norm_key = norm_key.replace("total leucocyte count", "tlc")
+        norm_key = norm_key.replace("t.l.c", "tlc")
+        norm_key = norm_key.replace("tlc", "tlc")
+
         try:
-            normalized[norm_key] = float(v)
+            val = float(v)
+
+            # Fix differential counts: convert decimal to percentage if needed
+            if norm_key in DIFFERENTIAL_KEYS and val < 2.0:
+                val = val * 100
+
+            normalized[norm_key] = val
         except (ValueError, TypeError):
             continue
-    
+
     return normalized
 
 
 def run_donor_evaluation(extracted_data: dict, gender: str = "male") -> dict:
-    """
-    Evaluate blood donor eligibility based on CBC values.
-    Uses OPTIMIZED thresholds for better safety.
-    Checks all parameters returned by VLM.
-    """
     is_deferred = False
     reasons_en = []
     reasons_ar = []
 
-    # Normalize extracted data (handle case variations from VLM)
     clean_data = normalize_extracted_data(extracted_data)
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # PRIMARY SCREENING PARAMETERS (Most critical for eligibility)
-    # ─────────────────────────────────────────────────────────────────────────
-    
-    # 1. HEMOGLOBIN CHECK (✅ OPTIMIZED THRESHOLD)
+    # DEBUG — print what was extracted
+    print(f"[DEBUG] Gender: {gender}")
+    print(f"[DEBUG] Normalized data: {json.dumps(clean_data, indent=2)}")
+
+    # 1. HEMOGLOBIN
     hb_min = FEMALE_MIN_HEMOGLOBIN if gender.lower() == "female" else MALE_MIN_HEMOGLOBIN
     hb_max = FEMALE_MAX_HEMOGLOBIN if gender.lower() == "female" else MALE_MAX_HEMOGLOBIN
 
@@ -116,101 +114,110 @@ def run_donor_evaluation(extracted_data: dict, gender: str = "male") -> dict:
         if hb < hb_min:
             is_deferred = True
             reasons_en.append(f"Hemoglobin ({hb} g/dL) is below the minimum safe range ({hb_min} g/dL) for {gender} donors. Risk of anemia post-donation.")
-            reasons_ar.append(f"مستوى الهيموغلوبين ({hb} جم/ديسيلتر) أقل من الحد الآمن ({hb_min} جم/ديسيلتر) للمتبرعين {gender}. خطر فقر الدم بعد التبرع.")
+            reasons_ar.append(f"مستوى الهيموغلوبين ({hb} جم/ديسيلتر) أقل من الحد الآمن ({hb_min} جم/ديسيلتر). خطر فقر الدم بعد التبرع.")
         elif hb > hb_max:
             is_deferred = True
             reasons_en.append(f"Hemoglobin ({hb} g/dL) exceeds the maximum safe range ({hb_max} g/dL). Potential blood viscosity concerns.")
-            reasons_ar.append(f"مستوى الهيموغلوبين ({hb} جم/ديسيلتر) يتجاوز الحد الأقصى الآمن ({hb_max} جم/ديسيلتر). مخاوف من لزوجة الدم.")
+            reasons_ar.append(f"مستوى الهيموغلوبين ({hb} جم/ديسيلتر) يتجاوز الحد الأقصى الآمن ({hb_max} جم/ديسيلتر).")
+    else:
+        # If hemoglobin not extracted at all — defer for safety
+        is_deferred = True
+        reasons_en.append("Hemoglobin value could not be extracted from the report. Manual review required.")
+        reasons_ar.append("لم يتم استخراج قيمة الهيموغلوبين من التقرير. يلزم المراجعة اليدوية.")
 
-    # 2. WHITE BLOOD CELL COUNT / TLC CHECK (✅ OPTIMIZED THRESHOLD)
+    # 2. TLC
     if "tlc" in clean_data:
         tlc = clean_data["tlc"]
         tlc_min, tlc_max = THRESHOLDS["tlc"][0], THRESHOLDS["tlc"][1]
         if tlc < tlc_min:
             is_deferred = True
             reasons_en.append(f"Total Leukocyte Count ({tlc} x10³/μL) is below normal range ({tlc_min}-{tlc_max}). Indicates immunocompromise.")
-            reasons_ar.append(f"عدد خلايا الدم البيضاء ({tlc} × 10³/ميكروتر) أقل من المعدل الطبيعي ({tlc_min}-{tlc_max}). يشير إلى ضعف المناعة.")
+            reasons_ar.append(f"عدد خلايا الدم البيضاء ({tlc}) أقل من المعدل الطبيعي.")
         elif tlc > tlc_max:
             is_deferred = True
             reasons_en.append(f"Total Leukocyte Count ({tlc} x10³/μL) is above normal range ({tlc_min}-{tlc_max}). Possible active infection.")
-            reasons_ar.append(f"عدد خلايا الدم البيضاء ({tlc} × 10³/ميكروتر) يتجاوز المعدل الطبيعي ({tlc_min}-{tlc_max}). قد يشير إلى عدوى نشطة.")
+            reasons_ar.append(f"عدد خلايا الدم البيضاء ({tlc}) يتجاوز المعدل الطبيعي.")
 
-    # 3. PLATELET COUNT CHECK (✅ OPTIMIZED THRESHOLD)
+    # 3. PLATELET COUNT
     if "platelet_count" in clean_data:
         plt = clean_data["platelet_count"]
         plt_min, plt_max = THRESHOLDS["platelet_count"][0], THRESHOLDS["platelet_count"][1]
         if plt < plt_min:
             is_deferred = True
             reasons_en.append(f"Platelet count ({plt} x10³/μL) is below safe range ({plt_min}-{plt_max}). Risk of bleeding complications.")
-            reasons_ar.append(f"عدد الصفيحات ({plt} × 10³/ميكروتر) أقل من المعدل الآمن ({plt_min}-{plt_max}). خطر مضاعفات النزيف.")
+            reasons_ar.append(f"عدد الصفيحات ({plt}) أقل من المعدل الآمن.")
         elif plt > plt_max:
             is_deferred = True
             reasons_en.append(f"Platelet count ({plt} x10³/μL) exceeds safe range ({plt_min}-{plt_max}). Potential thrombotic risk.")
-            reasons_ar.append(f"عدد الصفيحات ({plt} × 10³/ميكروتر) يتجاوز المعدل الآمن ({plt_min}-{plt_max}). خطر تجلط الدم.")
+            reasons_ar.append(f"عدد الصفيحات ({plt}) يتجاوز المعدل الآمن.")
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # SECONDARY CHECKS (Supporting quality parameters)
-    # ─────────────────────────────────────────────────────────────────────────
-    
-    # 4. HEMATOCRIT CHECK
+    # 4. HEMATOCRIT
     if "hematocrit" in clean_data:
         hct = clean_data["hematocrit"]
         hct_min, hct_max = THRESHOLDS["hematocrit"][0], THRESHOLDS["hematocrit"][1]
         if hct < hct_min:
             is_deferred = True
-            reasons_en.append(f"Hematocrit ({hct}%) is below normal range. Confirms low red blood cells.")
-            reasons_ar.append(f"الهيماتوكريت ({hct}%) أقل من المعدل الطبيعي. يؤكد انخفاض خلايا الدم الحمراء.")
+            reasons_en.append(f"Hematocrit ({hct}%) is below normal range ({hct_min}-{hct_max}%). Confirms low red blood cells.")
+            reasons_ar.append(f"الهيماتوكريت ({hct}%) أقل من المعدل الطبيعي.")
         elif hct > hct_max:
             is_deferred = True
-            reasons_en.append(f"Hematocrit ({hct}%) is above normal range. Possible dehydration or polycythemia.")
-            reasons_ar.append(f"الهيماتوكريت ({hct}%) أعلى من المعدل الطبيعي. قد يشير إلى جفاف أو زيادة كريات الدم.")
+            reasons_en.append(f"Hematocrit ({hct}%) is above normal range ({hct_min}-{hct_max}%). Possible dehydration.")
+            reasons_ar.append(f"الهيماتوكريت ({hct}%) أعلى من المعدل الطبيعي.")
 
-    # 5. RED BLOOD CELL COUNT CHECK
+    # 5. RED BLOOD CELL COUNT
     if "red_cell_count" in clean_data:
         rbc = clean_data["red_cell_count"]
         rbc_min, rbc_max = THRESHOLDS["red_cell_count"][0], THRESHOLDS["red_cell_count"][1]
         if rbc < rbc_min or rbc > rbc_max:
             is_deferred = True
             reasons_en.append(f"Red Cell Count ({rbc} x10⁶/μL) is outside normal range ({rbc_min}-{rbc_max}).")
-            reasons_ar.append(f"عدد خلايا الدم الحمراء ({rbc} × 10⁶/ميكروتر) خارج المعدل الطبيعي ({rbc_min}-{rbc_max}).")
+            reasons_ar.append(f"عدد خلايا الدم الحمراء ({rbc}) خارج المعدل الطبيعي.")
 
-    # 6. MCV (Mean Corpuscular Volume) CHECK
+    # 6. MCHC — important flag in this report
+    if "mchc" in clean_data:
+        mchc = clean_data["mchc"]
+        mchc_min, mchc_max = THRESHOLDS["mchc"][0], THRESHOLDS["mchc"][1]
+        if mchc < mchc_min:
+            is_deferred = True
+            reasons_en.append(f"MCHC ({mchc} g/dL) is below normal range ({mchc_min}-{mchc_max}). Consistent with hypochromic anaemia.")
+            reasons_ar.append(f"MCHC ({mchc} جم/ديسيلتر) أقل من المعدل الطبيعي. يتوافق مع فقر الدم نقص الصبغة.")
+        elif mchc > mchc_max:
+            is_deferred = True
+            reasons_en.append(f"MCHC ({mchc} g/dL) is above normal range ({mchc_min}-{mchc_max}).")
+            reasons_ar.append(f"MCHC ({mchc} جم/ديسيلتر) يتجاوز المعدل الطبيعي.")
+
+    # 7. MCV
     if "mcv" in clean_data:
         mcv = clean_data["mcv"]
         mcv_min, mcv_max = THRESHOLDS["mcv"][0], THRESHOLDS["mcv"][1]
         if mcv < mcv_min or mcv > mcv_max:
             is_deferred = True
-            reasons_en.append(f"MCV ({mcv} fL) indicates abnormal cell size. Check for anemia type.")
-            reasons_ar.append(f"MCV ({mcv} fL) يشير إلى حجم خلايا غير طبيعي. تحقق من نوع فقر الدم.")
+            reasons_en.append(f"MCV ({mcv} fL) indicates abnormal cell size.")
+            reasons_ar.append(f"MCV ({mcv} fL) يشير إلى حجم خلايا غير طبيعي.")
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # DIFFERENTIAL COUNT CHECKS (White cell types)
-    # ─────────────────────────────────────────────────────────────────────────
-    
-    # 7. NEUTROPHILS CHECK
+    # 8. NEUTROPHILS
     if "neutrophils" in clean_data:
         neut = clean_data["neutrophils"]
         neut_min, neut_max = THRESHOLDS["neutrophils"][0], THRESHOLDS["neutrophils"][1]
-        if neut < neut_min or neut > neut_max:
-            if neut > neut_max:
-                is_deferred = True
-                reasons_en.append(f"Neutrophils ({neut}%) are elevated. Possible bacterial infection.")
-                reasons_ar.append(f"النيوتروفيل ({neut}%) مرتفع. قد يشير إلى عدوى بكتيرية.")
+        if neut > neut_max:
+            is_deferred = True
+            reasons_en.append(f"Neutrophils ({neut}%) are elevated. Possible bacterial infection.")
+            reasons_ar.append(f"النيوتروفيل ({neut}%) مرتفع.")
+        elif neut < neut_min:
+            is_deferred = True
+            reasons_en.append(f"Neutrophils ({neut}%) are low. Possible immunodeficiency.")
+            reasons_ar.append(f"النيوتروفيل ({neut}%) منخفض.")
 
-    # 8. LYMPHOCYTES CHECK
+    # 9. LYMPHOCYTES
     if "lymphocytes" in clean_data:
         lymph = clean_data["lymphocytes"]
         lymph_min, lymph_max = THRESHOLDS["lymphocytes"][0], THRESHOLDS["lymphocytes"][1]
-        if lymph < lymph_min or lymph > lymph_max:
-            if lymph > lymph_max:
-                is_deferred = True
-                reasons_en.append(f"Lymphocytes ({lymph}%) are elevated. Possible viral infection.")
-                reasons_ar.append(f"الليمفوسيت ({lymph}%) مرتفع. قد يشير إلى عدوى فيروسية.")
+        if lymph > lymph_max:
+            is_deferred = True
+            reasons_en.append(f"Lymphocytes ({lymph}%) are elevated. Possible viral infection.")
+            reasons_ar.append(f"الليمفوسيت ({lymph}%) مرتفع.")
 
-    # ─────────────────────────────────────────────────────────────────────────
     # FINAL DECISION
-    # ─────────────────────────────────────────────────────────────────────────
-    
     status = "DEFERRED" if is_deferred else "ELIGIBLE"
 
     if status == "ELIGIBLE":
@@ -232,8 +239,24 @@ def run_donor_evaluation(extracted_data: dict, gender: str = "male") -> dict:
 def create_extraction_prompt() -> str:
     return """You are a medical data extraction system.
 Extract ALL numeric CBC values from this lab report image.
-Return ONLY a valid JSON object with snake_case parameter keys and numeric values.
+Return ONLY a valid JSON object with snake_case lowercase parameter keys and numeric values.
 Do NOT include units, text, or any explanation.
+Use these exact key names:
+- haemoglobin (or hemoglobin)
+- hematocrit
+- red_cell_count
+- mcv
+- mch
+- mchc
+- rdw
+- platelet_count
+- tlc
+- neutrophils (percentage, not absolute)
+- lymphocytes (percentage, not absolute)
+- monocytes (percentage, not absolute)
+- eosinophils (percentage, not absolute)
+- basophils (percentage, not absolute)
+- segmented (percentage, not absolute)
 
 Example output format:
 {
@@ -246,18 +269,19 @@ Example output format:
   "rdw": 13.7,
   "platelet_count": 321,
   "tlc": 6.4,
-  "neutrophils": 0.4,
+  "neutrophils": 58.3,
   "lymphocytes": 30.6,
   "monocytes": 5.0,
   "eosinophils": 3.7,
-  "basophils": 0.4,
-  "segmented": 58.3
+  "basophils": 0.8,
+  "segmented": 56.7
 }
 
+IMPORTANT: Extract percentage values for differential counts, NOT absolute counts.
 Extract values exactly as shown in the report."""
 
 
-app = FastAPI(title="BloodConnect AI Service", version="2.2.0")
+app = FastAPI(title="BloodConnect AI Service", version="2.3.0")
 
 ALLOWED_ORIGINS = os.environ.get("CORS_ORIGINS", "").split(",") if os.environ.get("CORS_ORIGINS") else ["*"]
 
@@ -336,10 +360,8 @@ def health():
         "device": str(device) if device else "N/A",
         "model_path": MODEL_WEIGHTS_PATH,
         "base_model": BASE_MODEL_NAME,
-        "version": "2.2.0",
+        "version": "2.3.0",
         "thresholds_optimized": True,
-        "safety_level": "Conservative (optimized for false negative reduction)",
-        "features_supported": ["hemoglobin", "tlc", "platelet_count", "hematocrit", "red_cell_count", "mcv", "mch", "mchc", "rdw", "neutrophils", "lymphocytes", "monocytes", "eosinophils", "basophils", "segmented"],
     }
 
 
@@ -348,13 +370,6 @@ async def screen_report(
     file: UploadFile = File(...),
     gender: str = Form(default="male"),
 ):
-    """
-    Screen a blood report image for donor eligibility.
-    
-    Returns:
-      - extracted_values: CBC parameters extracted by VLM
-      - evaluation: Eligibility decision with English & Arabic explanations
-    """
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Please upload a valid image file (JPEG/PNG).")
 
@@ -405,6 +420,7 @@ async def screen_report(
         ]
 
         response_text = processor.batch_decode(generated_ids_trimmed, skip_special_tokens=True)[0]
+        print(f"[DEBUG] Raw model output: {response_text}")
 
         json_str = response_text.strip()
         if "```json" in json_str:
@@ -415,12 +431,14 @@ async def screen_report(
         try:
             extracted_data = json.loads(json_str)
         except json.JSONDecodeError:
+            print(f"[DEBUG] JSON parse failed: {json_str}")
             extracted_data = {}
 
         filtered_data = {k: v for k, v in extracted_data.items() if v is not None}
+        print(f"[DEBUG] Filtered extracted data: {json.dumps(filtered_data, indent=2)}")
 
-        # Use optimized evaluation function with comprehensive checks
         evaluation = run_donor_evaluation(filtered_data, gender=gender)
+        print(f"[DEBUG] Final decision: {evaluation['status']}")
 
         return {
             "success": True,
@@ -430,7 +448,7 @@ async def screen_report(
                 "explanation_en": evaluation["explanation_en"],
                 "explanation_ar": evaluation["explanation_ar"],
                 "gender": gender,
-                "thresholds_version": "2.2.0-optimized-comprehensive",
+                "thresholds_version": "2.3.0",
             },
             "raw_model_output": response_text,
         }
@@ -440,107 +458,17 @@ async def screen_report(
         raise HTTPException(status_code=500, detail=f"Error processing report: {str(e)}")
 
 
+# ── Predict alias endpoint ────────────────────────────────────────────────────
 @app.post("/predict")
 async def predict(
     file: UploadFile = File(...),
     gender: str = Form(default="male"),
 ):
-    """
-    Predict donor eligibility from a blood report image.
-    Compatible with the Flutter client's expected response format.
-    """
-    if not file.content_type or not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Please upload a valid image file (JPEG/PNG).")
-
-    contents = await file.read()
-    if not contents:
-        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
-
-    try:
-        image = Image.open(io.BytesIO(contents)).convert("RGB")
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="Invalid image format.") from exc
-
-    if model is None or processor is None:
-        raise HTTPException(status_code=503, detail="Model not loaded. Please try again later.")
-
-    try:
-        prompt = create_extraction_prompt()
-
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image", "image": image},
-                    {"type": "text", "text": prompt},
-                ],
-            }
-        ]
-
-        text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        inputs = processor(
-            text=[text],
-            images=[image],
-            padding=True,
-            return_tensors="pt",
-        ).to(device)
-
-        with torch.no_grad():
-            generated_ids = model.generate(
-                **inputs,
-                max_new_tokens=512,
-                temperature=0.1,
-                do_sample=True,
-                top_p=0.9,
-            )
-
-        generated_ids_trimmed = [
-            out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
-        ]
-
-        response_text = processor.batch_decode(generated_ids_trimmed, skip_special_tokens=True)[0]
-
-        json_str = response_text.strip()
-        if "```json" in json_str:
-            json_str = json_str.split("```json")[1].split("```")[0].strip()
-        elif "```" in json_str:
-            json_str = json_str.split("```")[1].split("```")[0].strip()
-
-        try:
-            extracted_data = json.loads(json_str)
-        except json.JSONDecodeError:
-            extracted_data = {}
-
-        filtered_data = {k: v for k, v in extracted_data.items() if v is not None}
-
-        evaluation = run_donor_evaluation(filtered_data, gender=gender)
-
-        is_eligible = evaluation["status"] == "ELIGIBLE"
-        reasons = evaluation.get("reasons", [])
-
-        # Compute confidence based on how many parameters passed checks
-        total_checked = len(filtered_data)
-        failed_count = len(reasons)
-        passed = total_checked - failed_count
-        confidence = (passed / total_checked * 100) if total_checked > 0 else 0.0
-
-        return {
-            "result": "eligible" if is_eligible else "deferred",
-            "eligible": is_eligible,
-            "confidence": confidence,
-            "raw_probability": confidence / 100.0,
-            "threshold": 0.55,
-            "regression_denormalized": filtered_data,
-            "reasons": reasons,
-        }
-
-    except Exception as e:
-        print(f"Error during prediction: {e}")
-        raise HTTPException(status_code=500, detail=f"Error processing report: {str(e)}")
+    return await screen_report(file=file, gender=gender)
 
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-OPENROUTER_MODEL = "google/gemini-2.0-flash-001"
+OPENROUTER_MODEL = "google/gemini-2.5-flash"
 
 
 class ChatMessage(BaseModel):
@@ -575,8 +503,6 @@ def build_system_prompt(donor_data: dict) -> str:
     return f"""You are a compassionate and highly professional AI Medical Doctor specializing in hematology and blood donation medicine.
 
 You are speaking to a blood donor who has been evaluated for blood donation eligibility.
-
-Your role is to support, reassure, and educate the donor in a calm and friendly way.
 
 Donor Information:
 - Donation Status: **{status}**
