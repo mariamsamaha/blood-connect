@@ -65,3 +65,8 @@ ai-service/__pycache__/
 
 # API local env
 api-backend/.env
+nul
+ai-service/nul
+nul
+ai-service/models/
+ai-service/models/

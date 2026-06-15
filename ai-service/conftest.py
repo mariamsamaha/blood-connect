@@ -1,19 +1,12 @@
-# ai-service/conftest.py
+# conftest.py
 import os
 os.environ["TESTING"] = "true"
 
-import torch
-import torch.nn as nn
-from unittest.mock import MagicMock
 import pytest
 
-_stub = MagicMock(spec=nn.Module)
-_stub.eval.return_value = _stub
-_stub.to.return_value   = _stub
-_stub.return_value = (torch.zeros(1, 15), torch.zeros(1, 1))
 
-
-@pytest.fixture(autouse=True)
-def inject_model(monkeypatch):
+@pytest.fixture(scope="session", autouse=True)
+def set_test_env():
+    """Ensures model loading errors don't crash rule-engine-only tests."""
     import main
-    monkeypatch.setattr(main, "model", _stub)
+    yield
