@@ -58,7 +58,7 @@ class AiPredictionService {
   Future<void> _verifyService(String baseUrl) async {
     try {
       final healthUri = Uri.parse('$baseUrl/health');
-      final response = await http.get(healthUri).timeout(const Duration(seconds: 10));
+      final response = await http.get(healthUri).timeout(const Duration(seconds: 300));
       if (response.statusCode != 200) {
         throw Exception('AI service is not responding correctly (status: ${response.statusCode}). Make sure the Python server is running.');
       }
@@ -95,7 +95,7 @@ class AiPredictionService {
       ),
     );
 
-    final response = await request.send().timeout(const Duration(seconds: 60));
+    final response = await request.send().timeout(const Duration(seconds: 300));
     final body = await response.stream.bytesToString();
 
     debugPrint('[AI] Response status: ${response.statusCode}');

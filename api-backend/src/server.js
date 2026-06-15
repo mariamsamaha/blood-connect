@@ -3058,7 +3058,7 @@ function _callAiModel(baseUrl, payload) {
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(payload),
         },
-        timeout: 8000,
+        timeout: 300000,
       },
       (res2) => {
         let data = '';

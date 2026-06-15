@@ -440,6 +440,105 @@ async def screen_report(
         raise HTTPException(status_code=500, detail=f"Error processing report: {str(e)}")
 
 
+@app.post("/predict")
+async def predict(
+    file: UploadFile = File(...),
+    gender: str = Form(default="male"),
+):
+    """
+    Predict donor eligibility from a blood report image.
+    Compatible with the Flutter client's expected response format.
+    """
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Please upload a valid image file (JPEG/PNG).")
+
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+    try:
+        image = Image.open(io.BytesIO(contents)).convert("RGB")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid image format.") from exc
+
+    if model is None or processor is None:
+        raise HTTPException(status_code=503, detail="Model not loaded. Please try again later.")
+
+    try:
+        prompt = create_extraction_prompt()
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": image},
+                    {"type": "text", "text": prompt},
+                ],
+            }
+        ]
+
+        text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        inputs = processor(
+            text=[text],
+            images=[image],
+            padding=True,
+            return_tensors="pt",
+        ).to(device)
+
+        with torch.no_grad():
+            generated_ids = model.generate(
+                **inputs,
+                max_new_tokens=512,
+                temperature=0.1,
+                do_sample=True,
+                top_p=0.9,
+            )
+
+        generated_ids_trimmed = [
+            out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+        ]
+
+        response_text = processor.batch_decode(generated_ids_trimmed, skip_special_tokens=True)[0]
+
+        json_str = response_text.strip()
+        if "```json" in json_str:
+            json_str = json_str.split("```json")[1].split("```")[0].strip()
+        elif "```" in json_str:
+            json_str = json_str.split("```")[1].split("```")[0].strip()
+
+        try:
+            extracted_data = json.loads(json_str)
+        except json.JSONDecodeError:
+            extracted_data = {}
+
+        filtered_data = {k: v for k, v in extracted_data.items() if v is not None}
+
+        evaluation = run_donor_evaluation(filtered_data, gender=gender)
+
+        is_eligible = evaluation["status"] == "ELIGIBLE"
+        reasons = evaluation.get("reasons", [])
+
+        # Compute confidence based on how many parameters passed checks
+        total_checked = len(filtered_data)
+        failed_count = len(reasons)
+        passed = total_checked - failed_count
+        confidence = (passed / total_checked * 100) if total_checked > 0 else 0.0
+
+        return {
+            "result": "eligible" if is_eligible else "deferred",
+            "eligible": is_eligible,
+            "confidence": confidence,
+            "raw_probability": confidence / 100.0,
+            "threshold": 0.55,
+            "regression_denormalized": filtered_data,
+            "reasons": reasons,
+        }
+
+    except Exception as e:
+        print(f"Error during prediction: {e}")
+        raise HTTPException(status_code=500, detail=f"Error processing report: {str(e)}")
+
+
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_MODEL = "google/gemini-2.0-flash-001"
 

@@ -65,7 +65,7 @@ class _AiPredictionScreenState extends ConsumerState<AiPredictionScreen>
       final service = ref.read(aiPredictionServiceProvider);
       final baseUrl = service.resolveBaseUrlForDebug();
       final healthUri = Uri.parse('$baseUrl/health');
-      final response = await http.get(healthUri).timeout(const Duration(seconds: 5));
+      final response = await http.get(healthUri).timeout(const Duration(seconds: 300));
       if (response.statusCode == 200) {
         final health = jsonDecode(response.body);
         if (health['model_loaded'] == true) {
