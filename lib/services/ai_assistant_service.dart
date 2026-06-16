@@ -9,6 +9,21 @@ class ChatMessage {
   final String content;
 }
 
+/// Service for the AI medical assistant chat (OpenRouter / Gemini backend).
+///
+/// Expects `donorData` to contain:
+/// ```json
+/// {
+///   "status": "ELIGIBLE" | "DEFERRED",
+///   "gender": "male" | "female",
+///   "explanation_en": "...",
+///   "abnormal_findings": [
+///     { "label": "...", "value": 75.1, "unit": "%", "status": "HIGH", "range": [40.0, 75.0] }
+///   ],
+///   "reasons": ["..."],
+///   "confidence": 97.33
+/// }
+/// ```
 class AiAssistantService {
   const AiAssistantService();
 

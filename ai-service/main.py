@@ -1,471 +1,652 @@
+"""
+BloodConnect AI Service  v3.0.1 (Production)
+================================
+Complete 3-stage pipeline:
+  Stage 1: ViT classifier  → Normal / Abnormal
+  Stage 2: OCR + CBC parser → abnormal_findings (only when Abnormal)
+  Stage 3: Donor eligibility → ELIGIBLE / DEFERRED + bilingual reasons
+
+POST /predict            -- main endpoint (Flutter calls this)
+POST /api/v1/screen-report -- alias
+POST /assistant/chat     -- conversational AI (OpenRouter)
+GET  /health
+GET  /status            -- debugging
+"""
+
 from pathlib import Path
 import io
 import os
 import json
+import re
+import cv2
+import numpy as np
+import requests
+from contextlib import asynccontextmanager
+
+import torch
+from torchvision import transforms
+from PIL import Image
+import pytesseract
+
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
-from transformers import AutoProcessor, Qwen2VLForConditionalGeneration, BitsAndBytesConfig
-from peft import PeftModel
-import torch
-from PIL import Image
-import requests
 
 load_dotenv()
 
-MODEL_WEIGHTS_PATH = "./fine_tuned_qwen2_vl_medical"
-BASE_MODEL_NAME = "retal16/Qwen2-VL-2B-Instruct"
+# ─────────────────────────────────────────────────────────────────────────────
+# Tesseract Configuration (WINDOWS)
+# ─────────────────────────────────────────────────────────────────────────────
 
-MALE_MIN_HEMOGLOBIN = 13.5
-FEMALE_MIN_HEMOGLOBIN = 12.5
-MALE_MAX_HEMOGLOBIN = 17.5
-FEMALE_MAX_HEMOGLOBIN = 16.0
+TESSERACT_PATHS = [
+    r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+    r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
+    '/usr/bin/tesseract',
+    '/usr/local/bin/tesseract',
+]
 
-THRESHOLDS = {
-    "hemoglobin": (13.5, 17.5, "g/dL", "Hemoglobin", "Hb"),
-    "tlc": (4.5, 10.5, "x10³/μL", "Total Leukocyte Count", "TLC"),
-    "platelet_count": (180.0, 400.0, "x10³/μL", "Platelet Count", "Plt"),
-    "hematocrit": (38.0, 52.0, "%", "Hematocrit", "Hct"),
-    "red_cell_count": (4.5, 5.5, "x10⁶/μL", "Red Cell Count", "RBC"),
-    "mcv": (80.0, 100.0, "fL", "Mean Corpuscular Volume", "MCV"),
-    "mch": (27.0, 33.0, "pg", "Mean Corpuscular Hemoglobin", "MCH"),
-    "mchc": (32.0, 36.0, "g/dL", "Mean Corpuscular Hemoglobin Concentration", "MCHC"),
-    "rdw": (11.5, 14.5, "%", "Red Cell Distribution Width", "RDW"),
-    "neutrophils": (40.0, 75.0, "%", "Neutrophils", "Neut"),
-    "lymphocytes": (20.0, 45.0, "%", "Lymphocytes", "Lymph"),
-    "monocytes": (2.0, 10.0, "%", "Monocytes", "Mono"),
-    "eosinophils": (1.0, 6.0, "%", "Eosinophils", "Eos"),
-    "basophils": (0.0, 2.0, "%", "Basophils", "Baso"),
-    "segmented": (40.0, 75.0, "%", "Segmented Neutrophils", "Seg"),
+TESSERACT_FOUND = False
+for tess_path in TESSERACT_PATHS:
+    if os.path.exists(tess_path):
+        pytesseract.pytesseract.pytesseract_cmd = tess_path
+        TESSERACT_FOUND = True
+        print(f"[OK] Tesseract: {tess_path}")
+        break
+
+if not TESSERACT_FOUND:
+    print("[WARN] Tesseract not found. Install from: https://github.com/UB-Mannheim/tesseract/wiki")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+
+VIT_WEIGHTS_PATH = os.getenv(
+    "VIT_WEIGHTS_PATH",
+    str(Path(__file__).parent / "model_VIT" / "cbc_vit_best.pt")
+)
+
+IMG_SIZE = 224
+VIT_THRESHOLD = 0.50
+
+MALE_MIN_HB = 13.5
+FEMALE_MIN_HB = 12.5
+MALE_MAX_HB = 17.5
+FEMALE_MAX_HB = 16.0
+
+print(f"[CONFIG] ViT weights: {Path(VIT_WEIGHTS_PATH).resolve()}")
+print(f"[CONFIG] Weights exist: {Path(VIT_WEIGHTS_PATH).exists()}")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Image transforms
+# ─────────────────────────────────────────────────────────────────────────────
+
+VAL_TRANSFORM = transforms.Compose([
+    transforms.Resize((IMG_SIZE, IMG_SIZE)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                         std=[0.229, 0.224, 0.225]),
+])
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OCR Helpers (with bug fixes from production code)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def extract_text(pil_image: Image.Image) -> str:
+    """Run Tesseract OCR on PIL image in memory."""
+    try:
+        img_np = np.array(pil_image.convert("RGB"))
+        gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+        _, gray = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
+        text = pytesseract.image_to_string(gray)
+        if not text.strip():
+            print("[WARN] Tesseract returned empty string")
+            return ""
+        return text
+    except Exception as e:
+        print(f"[ERROR] OCR extraction failed: {e}")
+        raise
+
+
+def normalise_ocr(text: str) -> str:
+    """Fix common Tesseract misreads (BUG-A, BUG-B)."""
+    # BUG-B: decimal comma → decimal point
+    text = re.sub(r"(\d),(\d)", r"\1.\2", text)
+    # BUG-A: garbled unit separator
+    text = re.sub(r"\bg[il|]dL\b", "g/dL", text, flags=re.I)
+    return text
+
+
+def safe_pct_value(token: str):
+    """BUG-C: Validate percentage tokens (strip noise, validate 0-100)."""
+    cleaned = re.sub(r"[^0-9.]", "", token)
+    try:
+        v = float(cleaned) if cleaned else None
+        return v if v is not None and 0.0 <= v <= 100.0 else None
+    except ValueError:
+        return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CBC Parser (with all bug fixes)
+# ─────────────────────────────────────────────────────────────────────────────
+
+DIFF_CELLS = ["neutrophils", "lymphocytes", "monocytes",
+              "eosinophils", "basophils", "stab", "segmented"]
+
+CELL_NAME_PATTERNS = {
+    "neutrophils": r"Neutrophils",
+    "lymphocytes": r"Lymphocytes",
+    "monocytes":   r"Monocytes",
+    "eosinophils": r"Eosinophils",
+    "basophils":   r"Basophils",
+    "stab":        r"Stab",
+    "segmented":   r"Segmented",
 }
 
-EXTRA_RULES = {
-    "temperature": (36.1, 37.5, "celsius", "Temperature", "Temp"),
-    "pulse": (60.0, 100.0, "bpm", "Pulse", "Pulse"),
-    "systolic_bp": (90.0, 140.0, "mmHg", "Systolic BP", "SBP"),
-    "diastolic_bp": (60.0, 90.0, "mmHg", "Diastolic BP", "DBP"),
-    "weight": (50.0, None, "kg", "Weight", "Wt"),
-}
+
+def _line_for(cell_key: str, text: str) -> str:
+    pat = CELL_NAME_PATTERNS[cell_key]
+    m = re.search(rf"^.*{pat}.*$", text, re.IGNORECASE | re.MULTILINE)
+    return m.group(0) if m else ""
 
 
-def normalize_extracted_data(extracted_data: dict) -> dict:
+def _extract_pct_and_abs(line: str):
     """
-    Normalize all extracted keys to lowercase.
-    Fix decimal vs percentage for differential counts.
+    Parse differential row → (pct_value, abs_value).
+    BUG-F: Remove ref-range patterns before extracting absolute values.
     """
-    normalized = {}
+    pct_val = abs_val = None
 
-    DIFFERENTIAL_KEYS = {
-        "neutrophils", "lymphocytes", "monocytes",
-        "eosinophils", "basophils", "segmented"
+    pct_match = re.search(r"([A-Za-z0-9.]+)\s*%", line)
+    if pct_match:
+        pct_val = safe_pct_value(pct_match.group(1))
+
+    after_pct = line[pct_match.end():] if pct_match else line
+    # Remove unit strings like "x10³/µL"
+    after_pct = re.sub(r"x10[^a-zA-Z\s]*[uµ]?[Ll]?", " ", after_pct, flags=re.I)
+    # BUG-F: Remove ref-range patterns "N-N"
+    after_pct = re.sub(r"\d+\.?\d*\s*-\s*\d+\.?\d*", " ", after_pct)
+
+    abs_candidates = [float(t) for t in re.findall(r"\d+\.\d+|\d+", after_pct)
+                      if 0.0 < float(t) < 20.0]
+    if abs_candidates:
+        decimals = [v for v in abs_candidates if v != int(v)]
+        abs_val = decimals[0] if decimals else abs_candidates[0]
+
+    if pct_val is None and abs_val is None:
+        all_nums = [float(t) for t in re.findall(r"\d+\.?\d*", line) if 0 < float(t) < 200]
+        large = [n for n in all_nums if n > 1.0]
+        small = [n for n in all_nums if 0 < n < 20]
+        if large:
+            pct_val = max(large)
+        candidates = [n for n in small if n != pct_val]
+        if candidates:
+            abs_val = min(candidates)
+
+    return pct_val, abs_val
+
+
+def parse_cbc(raw_text: str):
+    """Return (rbc_indices, diff_pct, diff_abs) dicts."""
+    text = normalise_ocr(raw_text)
+
+    def first_float(pattern):
+        m = re.search(pattern, text, re.IGNORECASE)
+        if not m:
+            return None
+        try:
+            return float(m.group(1).replace(",", "."))
+        except ValueError:
+            return None
+
+    # BUG-E: Use \s+ (one-or-more space) between name and value
+    rbc_indices = {
+        "haemoglobin":    first_float(r"H[ae]{1,2}m[oa]globin\s+(\d+\.?\d*)"),
+        "hematocrit":     first_float(r"H[ae]{1,2}matocrit(?:\s*\(PCV\))?\s+(\d+\.?\d*)"),
+        "rbc_count":      first_float(r"(?:RBC[s]?\s*Count|Red\s*cell\s*count)\s+(\d+\.?\d*)"),
+        "MCV":            first_float(r"MCV\s+(\d+\.?\d*)"),
+        "MCH":            first_float(r"\bMCH\b\s+(\d+\.?\d*)"),
+        "MCHC":           first_float(r"MCHC\s+(\d+\.?\d*)"),
+        "RDW":            first_float(r"RDW(?:-CV)?\s+(\d+\.?\d*)"),
+        "platelet_count": first_float(r"Platelet(?:s)?\s*(?:Count)?\s*(?:\([^)]*\))?\s+(\d+\.?\d*)"),
+        "TLC":            first_float(r"(?:T\.?L\.?C|Total\s+Leuc[oa]cytic\s+Count(?:\s*\([^)]*\))?|WBC)\s+(\d+\.?\d*)"),
     }
 
-    for k, v in extracted_data.items():
-        norm_key = k.lower().strip()
+    diff_pct, diff_abs = {}, {}
+    for cell in DIFF_CELLS:
+        line = _line_for(cell, text)
+        diff_pct[cell], diff_abs[cell] = _extract_pct_and_abs(line)
 
-        # Key normalization
-        norm_key = norm_key.replace("haemoglobin", "hemoglobin")
-        norm_key = norm_key.replace("hb", "hemoglobin") if norm_key == "hb" else norm_key
-        norm_key = norm_key.replace("rbc", "red_cell_count") if norm_key == "rbc" else norm_key
-        norm_key = norm_key.replace("red cell count", "red_cell_count")
-        norm_key = norm_key.replace("rdw_cv", "rdw")
-        norm_key = norm_key.replace("platelets", "platelet_count") if norm_key == "platelets" else norm_key
-        norm_key = norm_key.replace("plt", "platelet_count") if norm_key == "plt" else norm_key
-        norm_key = norm_key.replace("platelet count", "platelet_count")
-        norm_key = norm_key.replace("wbc", "tlc") if norm_key == "wbc" else norm_key
-        norm_key = norm_key.replace("leukocytes", "tlc") if norm_key == "leukocytes" else norm_key
-        norm_key = norm_key.replace("total leukocyte count", "tlc")
-        norm_key = norm_key.replace("total leucocyte count", "tlc")
-        norm_key = norm_key.replace("t.l.c", "tlc")
-        norm_key = norm_key.replace("tlc", "tlc")
+    # BUG-D: Use Segmented as neutrophil proxy
+    if diff_pct.get("neutrophils") is None and diff_pct.get("segmented") is not None:
+        diff_pct["neutrophils"] = diff_pct["segmented"]
+    if diff_abs.get("neutrophils") is None and diff_abs.get("segmented") is not None:
+        diff_abs["neutrophils"] = diff_abs["segmented"]
 
-        try:
-            val = float(v)
+    return rbc_indices, diff_pct, diff_abs
 
-            # Fix differential counts: convert decimal to percentage if needed
-            if norm_key in DIFFERENTIAL_KEYS and val < 2.0:
-                val = val * 100
 
-            normalized[norm_key] = val
-        except (ValueError, TypeError):
+# ─────────────────────────────────────────────────────────────────────────────
+# Reference ranges & labels
+# ─────────────────────────────────────────────────────────────────────────────
+
+RANGES_RBC = {
+    "haemoglobin":    (11.5, 17.0),
+    "hematocrit":     (36.0, 50.0),
+    "rbc_count":      (4.0,  6.2),
+    "MCV":            (78.0, 100.0),
+    "MCH":            (26.0, 33.0),
+    "MCHC":           (31.0, 37.0),
+    "RDW":            (11.5, 15.0),
+    "platelet_count": (150,  450),
+    "TLC":            (4.0,  11.0),
+}
+
+RANGES_DIFF_ABS = {
+    "neutrophils": (2.0,  7.0),
+    "lymphocytes": (1.0,  4.8),
+    "monocytes":   (0.2,  1.0),
+    "eosinophils": (0.0,  0.6),
+    "basophils":   (0.0,  0.11),
+}
+
+RANGES_DIFF_PCT = {
+    "neutrophils": (40.0, 75.0),
+    "lymphocytes": (20.0, 45.0),
+    "monocytes":   (1.0,  10.0),
+    "eosinophils": (0.0,  6.0),
+    "basophils":   (0.0,  1.0),
+}
+
+FEATURE_LABELS = {
+    "haemoglobin": "Haemoglobin", "hematocrit": "Hematocrit (PCV)",
+    "rbc_count": "Red Cell Count", "MCV": "MCV", "MCH": "MCH",
+    "MCHC": "MCHC", "RDW": "RDW", "platelet_count": "Platelet Count",
+    "TLC": "Total WBC Count", "neutrophils": "Neutrophils",
+    "lymphocytes": "Lymphocytes", "monocytes": "Monocytes",
+    "eosinophils": "Eosinophils", "basophils": "Basophils",
+}
+
+FEATURE_UNITS = {
+    "haemoglobin": "g/dL", "hematocrit": "%", "rbc_count": "×10⁶/µL",
+    "MCV": "fL", "MCH": "pg", "MCHC": "g/dL", "RDW": "%",
+    "platelet_count": "×10³/µL", "TLC": "×10³/µL",
+    "neutrophils": "×10⁹/L", "lymphocytes": "×10⁹/L",
+    "monocytes": "×10⁹/L", "eosinophils": "×10⁹/L", "basophils": "×10⁹/L",
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Rule engine - produces findings in exact format user expects
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _check(metrics: dict, ranges: dict, value_label: str, unit: str = "") -> list:
+    """Check metrics against ranges. Returns list of issues."""
+    issues = []
+    for k, v in metrics.items():
+        if v is None or k not in ranges:
             continue
+        low, high = ranges[k]
+        status = None
+        if v < low:
+            status = "LOW"
+        elif v > high:
+            status = "HIGH"
+        
+        if status:
+            issues.append({
+                "feature": k,
+                "label": FEATURE_LABELS.get(k, k),
+                "value": round(v, 2) if isinstance(v, float) else v,
+                "unit": FEATURE_UNITS.get(k, unit),
+                "value_type": value_label,
+                "status": status,
+                "range": [low, high],
+            })
+    return issues
 
-    return normalized
+
+def analyze_all(rbc_indices, diff_pct, diff_abs) -> list:
+    """Analyze all CBC metrics. Returns list of abnormal findings."""
+    issues = []
+    issues += _check(rbc_indices, RANGES_RBC, "absolute")
+    issues += _check(diff_abs, RANGES_DIFF_ABS, "absolute (×10⁹/L)", "×10⁹/L")
+    issues += _check(diff_pct, RANGES_DIFF_PCT, "percentage (%)", "%")
+    return issues
 
 
-def run_donor_evaluation(extracted_data: dict, gender: str = "male") -> dict:
+# ─────────────────────────────────────────────────────────────────────────────
+# Donor eligibility engine
+# ─────────────────────────────────────────────────────────────────────────────
+
+def run_donor_evaluation(rbc_indices: dict, diff_pct: dict, gender: str = "male") -> dict:
+    """Evaluate donor eligibility from CBC values."""
     is_deferred = False
     reasons_en = []
     reasons_ar = []
 
-    clean_data = normalize_extracted_data(extracted_data)
+    hb_min = FEMALE_MIN_HB if gender.lower() == "female" else MALE_MIN_HB
+    hb_max = FEMALE_MAX_HB if gender.lower() == "female" else MALE_MAX_HB
 
-    # DEBUG — print what was extracted
-    print(f"[DEBUG] Gender: {gender}")
-    print(f"[DEBUG] Normalized data: {json.dumps(clean_data, indent=2)}")
-
-    # 1. HEMOGLOBIN
-    hb_min = FEMALE_MIN_HEMOGLOBIN if gender.lower() == "female" else MALE_MIN_HEMOGLOBIN
-    hb_max = FEMALE_MAX_HEMOGLOBIN if gender.lower() == "female" else MALE_MAX_HEMOGLOBIN
-
-    if "hemoglobin" in clean_data:
-        hb = clean_data["hemoglobin"]
-        if hb < hb_min:
-            is_deferred = True
-            reasons_en.append(f"Hemoglobin ({hb} g/dL) is below the minimum safe range ({hb_min} g/dL) for {gender} donors. Risk of anemia post-donation.")
-            reasons_ar.append(f"مستوى الهيموغلوبين ({hb} جم/ديسيلتر) أقل من الحد الآمن ({hb_min} جم/ديسيلتر). خطر فقر الدم بعد التبرع.")
-        elif hb > hb_max:
-            is_deferred = True
-            reasons_en.append(f"Hemoglobin ({hb} g/dL) exceeds the maximum safe range ({hb_max} g/dL). Potential blood viscosity concerns.")
-            reasons_ar.append(f"مستوى الهيموغلوبين ({hb} جم/ديسيلتر) يتجاوز الحد الأقصى الآمن ({hb_max} جم/ديسيلتر).")
-    else:
-        # If hemoglobin not extracted at all — defer for safety
+    hb = rbc_indices.get("haemoglobin")
+    if hb is None:
         is_deferred = True
-        reasons_en.append("Hemoglobin value could not be extracted from the report. Manual review required.")
-        reasons_ar.append("لم يتم استخراج قيمة الهيموغلوبين من التقرير. يلزم المراجعة اليدوية.")
+        reasons_en.append("Haemoglobin not extracted — manual review required.")
+        reasons_ar.append("لم يتم استخراج الهيموجلوبين — يلزم المراجعة اليدوية.")
+    elif hb < hb_min:
+        is_deferred = True
+        reasons_en.append(f"Haemoglobin ({hb} g/dL) below safe minimum ({hb_min}) for {gender}.")
+        reasons_ar.append(f"الهيموجلوبين ({hb}) أقل من الحد الآمن ({hb_min}).")
+    elif hb > hb_max:
+        is_deferred = True
+        reasons_en.append(f"Haemoglobin ({hb} g/dL) exceeds safe maximum ({hb_max}).")
+        reasons_ar.append(f"الهيموجلوبين ({hb}) يتجاوز الحد الأقصى ({hb_max}).")
 
-    # 2. TLC
-    if "tlc" in clean_data:
-        tlc = clean_data["tlc"]
-        tlc_min, tlc_max = THRESHOLDS["tlc"][0], THRESHOLDS["tlc"][1]
-        if tlc < tlc_min:
+    tlc = rbc_indices.get("TLC")
+    if tlc is not None:
+        if tlc < 4.5 or tlc > 10.5:
             is_deferred = True
-            reasons_en.append(f"Total Leukocyte Count ({tlc} x10³/μL) is below normal range ({tlc_min}-{tlc_max}). Indicates immunocompromise.")
-            reasons_ar.append(f"عدد خلايا الدم البيضاء ({tlc}) أقل من المعدل الطبيعي.")
-        elif tlc > tlc_max:
-            is_deferred = True
-            reasons_en.append(f"Total Leukocyte Count ({tlc} x10³/μL) is above normal range ({tlc_min}-{tlc_max}). Possible active infection.")
-            reasons_ar.append(f"عدد خلايا الدم البيضاء ({tlc}) يتجاوز المعدل الطبيعي.")
+            issue = "below" if tlc < 4.5 else "above"
+            reasons_en.append(f"TLC ({tlc}) is {issue} normal range.")
+            reasons_ar.append(f"عدد خلايا الدم البيضاء ({tlc}) {issue} المعدل.")
 
-    # 3. PLATELET COUNT
-    if "platelet_count" in clean_data:
-        plt = clean_data["platelet_count"]
-        plt_min, plt_max = THRESHOLDS["platelet_count"][0], THRESHOLDS["platelet_count"][1]
-        if plt < plt_min:
+    plt = rbc_indices.get("platelet_count")
+    if plt is not None:
+        if plt < 150 or plt > 400:
             is_deferred = True
-            reasons_en.append(f"Platelet count ({plt} x10³/μL) is below safe range ({plt_min}-{plt_max}). Risk of bleeding complications.")
-            reasons_ar.append(f"عدد الصفيحات ({plt}) أقل من المعدل الآمن.")
-        elif plt > plt_max:
-            is_deferred = True
-            reasons_en.append(f"Platelet count ({plt} x10³/μL) exceeds safe range ({plt_min}-{plt_max}). Potential thrombotic risk.")
-            reasons_ar.append(f"عدد الصفيحات ({plt}) يتجاوز المعدل الآمن.")
+            issue = "below" if plt < 150 else "exceeds"
+            reasons_en.append(f"Platelet count ({plt}) {issue} safe range.")
+            reasons_ar.append(f"عدد الصفيحات ({plt}) {issue} المعدل الآمن.")
 
-    # 4. HEMATOCRIT
-    if "hematocrit" in clean_data:
-        hct = clean_data["hematocrit"]
-        hct_min, hct_max = THRESHOLDS["hematocrit"][0], THRESHOLDS["hematocrit"][1]
-        if hct < hct_min:
-            is_deferred = True
-            reasons_en.append(f"Hematocrit ({hct}%) is below normal range ({hct_min}-{hct_max}%). Confirms low red blood cells.")
-            reasons_ar.append(f"الهيماتوكريت ({hct}%) أقل من المعدل الطبيعي.")
-        elif hct > hct_max:
-            is_deferred = True
-            reasons_en.append(f"Hematocrit ({hct}%) is above normal range ({hct_min}-{hct_max}%). Possible dehydration.")
-            reasons_ar.append(f"الهيماتوكريت ({hct}%) أعلى من المعدل الطبيعي.")
-
-    # 5. RED BLOOD CELL COUNT
-    if "red_cell_count" in clean_data:
-        rbc = clean_data["red_cell_count"]
-        rbc_min, rbc_max = THRESHOLDS["red_cell_count"][0], THRESHOLDS["red_cell_count"][1]
-        if rbc < rbc_min or rbc > rbc_max:
-            is_deferred = True
-            reasons_en.append(f"Red Cell Count ({rbc} x10⁶/μL) is outside normal range ({rbc_min}-{rbc_max}).")
-            reasons_ar.append(f"عدد خلايا الدم الحمراء ({rbc}) خارج المعدل الطبيعي.")
-
-    # 6. MCHC — important flag in this report
-    if "mchc" in clean_data:
-        mchc = clean_data["mchc"]
-        mchc_min, mchc_max = THRESHOLDS["mchc"][0], THRESHOLDS["mchc"][1]
-        if mchc < mchc_min:
-            is_deferred = True
-            reasons_en.append(f"MCHC ({mchc} g/dL) is below normal range ({mchc_min}-{mchc_max}). Consistent with hypochromic anaemia.")
-            reasons_ar.append(f"MCHC ({mchc} جم/ديسيلتر) أقل من المعدل الطبيعي. يتوافق مع فقر الدم نقص الصبغة.")
-        elif mchc > mchc_max:
-            is_deferred = True
-            reasons_en.append(f"MCHC ({mchc} g/dL) is above normal range ({mchc_min}-{mchc_max}).")
-            reasons_ar.append(f"MCHC ({mchc} جم/ديسيلتر) يتجاوز المعدل الطبيعي.")
-
-    # 7. MCV
-    if "mcv" in clean_data:
-        mcv = clean_data["mcv"]
-        mcv_min, mcv_max = THRESHOLDS["mcv"][0], THRESHOLDS["mcv"][1]
-        if mcv < mcv_min or mcv > mcv_max:
-            is_deferred = True
-            reasons_en.append(f"MCV ({mcv} fL) indicates abnormal cell size.")
-            reasons_ar.append(f"MCV ({mcv} fL) يشير إلى حجم خلايا غير طبيعي.")
-
-    # 8. NEUTROPHILS
-    if "neutrophils" in clean_data:
-        neut = clean_data["neutrophils"]
-        neut_min, neut_max = THRESHOLDS["neutrophils"][0], THRESHOLDS["neutrophils"][1]
-        if neut > neut_max:
-            is_deferred = True
-            reasons_en.append(f"Neutrophils ({neut}%) are elevated. Possible bacterial infection.")
-            reasons_ar.append(f"النيوتروفيل ({neut}%) مرتفع.")
-        elif neut < neut_min:
-            is_deferred = True
-            reasons_en.append(f"Neutrophils ({neut}%) are low. Possible immunodeficiency.")
-            reasons_ar.append(f"النيوتروفيل ({neut}%) منخفض.")
-
-    # 9. LYMPHOCYTES
-    if "lymphocytes" in clean_data:
-        lymph = clean_data["lymphocytes"]
-        lymph_min, lymph_max = THRESHOLDS["lymphocytes"][0], THRESHOLDS["lymphocytes"][1]
-        if lymph > lymph_max:
-            is_deferred = True
-            reasons_en.append(f"Lymphocytes ({lymph}%) are elevated. Possible viral infection.")
-            reasons_ar.append(f"الليمفوسيت ({lymph}%) مرتفع.")
-
-    # FINAL DECISION
     status = "DEFERRED" if is_deferred else "ELIGIBLE"
-
+    
     if status == "ELIGIBLE":
-        explanation_en = "All primary CBC parameters are within the acceptable ranges for blood donation eligibility. The donor is fit to donate blood."
-        explanation_ar = "جميع معايير تحليل الدم الأساسية ضمن النطاقات المقبولية للتبرع بالدم. المتبرع مؤهل للتبرع بالدم."
+        explanation_en = "All CBC parameters within acceptable ranges."
+        explanation_ar = "جميع المعايير ضمن النطاقات المقبولة."
     else:
-        explanation_en = "Deferral based on: " + "; ".join(reasons_en)
-        explanation_ar = "الاستبعاد بناءً على: " + "; ".join(reasons_ar)
+        explanation_en = "Temporary deferral: " + "; ".join(reasons_en)
+        explanation_ar = "تأجيل مؤقت: " + "; ".join(reasons_ar)
 
     return {
         "status": status,
+        "reasons": reasons_en,
+        "reasons_ar": reasons_ar,
         "explanation_en": explanation_en,
         "explanation_ar": explanation_ar,
-        "reasons": reasons_en,
         "gender": gender,
     }
 
 
-def create_extraction_prompt() -> str:
-    return """You are a medical data extraction system.
-Extract ALL numeric CBC values from this lab report image.
-Return ONLY a valid JSON object with snake_case lowercase parameter keys and numeric values.
-Do NOT include units, text, or any explanation.
-Use these exact key names:
-- haemoglobin (or hemoglobin)
-- hematocrit
-- red_cell_count
-- mcv
-- mch
-- mchc
-- rdw
-- platelet_count
-- tlc
-- neutrophils (percentage, not absolute)
-- lymphocytes (percentage, not absolute)
-- monocytes (percentage, not absolute)
-- eosinophils (percentage, not absolute)
-- basophils (percentage, not absolute)
-- segmented (percentage, not absolute)
+# ─────────────────────────────────────────────────────────────────────────────
+# ViT Model
+# ─────────────────────────────────────────────────────────────────────────────
 
-Example output format:
-{
-  "haemoglobin": 13.4,
-  "hematocrit": 46.4,
-  "red_cell_count": 5.61,
-  "mcv": 88.3,
-  "mch": 28.0,
-  "mchc": 35.5,
-  "rdw": 13.7,
-  "platelet_count": 321,
-  "tlc": 6.4,
-  "neutrophils": 58.3,
-  "lymphocytes": 30.6,
-  "monocytes": 5.0,
-  "eosinophils": 3.7,
-  "basophils": 0.8,
-  "segmented": 56.7
-}
-
-IMPORTANT: Extract percentage values for differential counts, NOT absolute counts.
-Extract values exactly as shown in the report."""
+vit_model = None
+vit_device = None
 
 
-app = FastAPI(title="BloodConnect AI Service", version="2.3.0")
+class MedicalViT(torch.nn.Module):
+    def __init__(self, num_classes=2, num_reg=15):
+        super().__init__()
+        import timm
+        self.backbone = timm.create_model(
+            "vit_base_patch16_224", pretrained=False, num_classes=0,
+        )
+        embed_dim = self.backbone.num_features
 
-ALLOWED_ORIGINS = os.environ.get("CORS_ORIGINS", "").split(",") if os.environ.get("CORS_ORIGINS") else ["*"]
+        self.cls_head = torch.nn.Sequential(
+            torch.nn.LayerNorm(embed_dim),
+            torch.nn.Dropout(0.3),
+            torch.nn.Linear(embed_dim, 256),
+            torch.nn.ReLU(inplace=True),
+            torch.nn.Dropout(0.3),
+            torch.nn.Linear(256, num_classes),
+        )
+
+        self.reg_head = torch.nn.Sequential(
+            torch.nn.LayerNorm(embed_dim),
+            torch.nn.Dropout(0.3),
+            torch.nn.Linear(embed_dim, 512),
+            torch.nn.ReLU(inplace=True),
+            torch.nn.Dropout(0.3),
+            torch.nn.Linear(512, 256),
+            torch.nn.Dropout(0.3),
+            torch.nn.Linear(256, num_reg),
+        )
+
+    def forward(self, x):
+        features = self.backbone(x)
+        cls_out = self.cls_head(features)
+        return cls_out, None
+
+
+def load_vit_model():
+    global vit_model, vit_device
+    vit_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"[ViT] Device: {vit_device}")
+
+    weights_path = Path(VIT_WEIGHTS_PATH)
+    print(f"[ViT] Path: {weights_path.resolve()}")
+    
+    if not weights_path.exists():
+        raise FileNotFoundError(f"Weights not found: {weights_path.resolve()}")
+
+    try:
+        checkpoint = torch.load(str(weights_path), map_location=vit_device, weights_only=False)
+    except Exception as e:
+        raise RuntimeError(f"Failed to load checkpoint: {e}")
+
+    if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+        state_dict = checkpoint["model_state_dict"]
+    elif isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+        state_dict = checkpoint["state_dict"]
+    else:
+        state_dict = checkpoint
+
+    model = MedicalViT()
+    filtered = {}
+    for k, v in state_dict.items():
+        if k.startswith("backbone.") or k.startswith("cls_head.") or k.startswith("reg_head."):
+            filtered[k] = v
+
+    missing, unexpected = model.load_state_dict(filtered, strict=False)
+    print(f"[ViT] Loaded {len(filtered)} keys | Missing: {len(missing)} | Unexpected: {len(unexpected)}")
+
+    model.to(vit_device)
+    model.eval()
+    vit_model = model
+    print("[ViT] OK Loaded")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FastAPI App
+# ─────────────────────────────────────────────────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("[STARTUP] Loading models...")
+    testing = os.getenv("TESTING", "false").lower() == "true"
+    if not testing:
+        try:
+            load_vit_model()
+            print("[STARTUP] OK Ready")
+        except Exception as e:
+            print(f"[STARTUP] FAIL Failed: {e}")
+            raise
+    else:
+        print("[STARTUP] Testing mode")
+    yield
+    print("[SHUTDOWN] Cleanup")
+
+
+app = FastAPI(
+    title="BloodConnect AI Service",
+    version="3.0.1",
+    lifespan=lifespan,
+)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(",") if os.environ.get("CORS_ORIGINS") else ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-processor = None
-model = None
-device = None
 
-
-def load_vision_language_model():
-    global processor, model, device
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
-
-    print(f"Loading processor from {BASE_MODEL_NAME}...")
-    processor = AutoProcessor.from_pretrained(BASE_MODEL_NAME)
-
-    print(f"Loading base model from {BASE_MODEL_NAME}...")
-    if torch.cuda.is_available():
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.float16,
-            bnb_4bit_use_double_quant=True,
-        )
-        model = Qwen2VLForConditionalGeneration.from_pretrained(
-            BASE_MODEL_NAME,
-            quantization_config=bnb_config,
-            device_map="auto",
-            torch_dtype=torch.float16,
-        )
-    else:
-        print("CUDA not available. Loading in float32 on CPU (slow)...")
-        model = Qwen2VLForConditionalGeneration.from_pretrained(
-            BASE_MODEL_NAME,
-            torch_dtype=torch.float32,
-            device_map=None,
-        ).to(device)
-
-    adapter_path = Path(MODEL_WEIGHTS_PATH)
-    if adapter_path.exists():
-        print(f"Loading LoRA adapter from {adapter_path}...")
-        model = PeftModel.from_pretrained(model, str(adapter_path))
-        print("LoRA adapter loaded successfully!")
-    else:
-        print(f"WARNING: Adapter path not found at {adapter_path}, using base model only")
-
-    model.eval()
-    print("Model ready!")
-
-
-@app.on_event("startup")
-async def startup_event():
-    testing = os.getenv("TESTING", "false").lower() == "true"
-    if not testing:
-        try:
-            load_vision_language_model()
-        except Exception as e:
-            print(f"ERROR: Failed to load model: {e}")
-            raise
-    else:
-        print("TESTING mode - skipping model load")
-
+# ─────────────────────────────────────────────────────────────────────────────
+# Endpoints
+# ─────────────────────────────────────────────────────────────────────────────
 
 @app.get("/health")
 def health():
     return {
-        "api_status": "ONLINE",
-        "model_loaded": model is not None,
-        "device": str(device) if device else "N/A",
-        "model_path": MODEL_WEIGHTS_PATH,
-        "base_model": BASE_MODEL_NAME,
-        "version": "2.3.0",
-        "thresholds_optimized": True,
+        "status": "ONLINE",
+        "vit_loaded": vit_model is not None,
+        "vit_model_loaded": vit_model is not None,
+        "model_loaded": vit_model is not None,
+        "device": str(vit_device),
+        "weights_exist": Path(VIT_WEIGHTS_PATH).exists(),
+        "tesseract_found": TESSERACT_FOUND,
+        "version": "3.0.1",
     }
 
 
-@app.post("/api/v1/screen-report")
-async def screen_report(
-    file: UploadFile = File(...),
-    gender: str = Form(default="male"),
-):
-    if not file.content_type or not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Please upload a valid image file (JPEG/PNG).")
-
-    contents = await file.read()
-    if not contents:
-        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
-
-    try:
-        image = Image.open(io.BytesIO(contents)).convert("RGB")
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="Invalid image format.") from exc
-
-    if model is None or processor is None:
-        raise HTTPException(status_code=503, detail="Model not loaded. Please try again later.")
-
-    try:
-        prompt = create_extraction_prompt()
-
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image", "image": image},
-                    {"type": "text", "text": prompt},
-                ],
-            }
-        ]
-
-        text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        inputs = processor(
-            text=[text],
-            images=[image],
-            padding=True,
-            return_tensors="pt",
-        ).to(device)
-
-        with torch.no_grad():
-            generated_ids = model.generate(
-                **inputs,
-                max_new_tokens=512,
-                temperature=0.1,
-                do_sample=True,
-                top_p=0.9,
-            )
-
-        generated_ids_trimmed = [
-            out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
-        ]
-
-        response_text = processor.batch_decode(generated_ids_trimmed, skip_special_tokens=True)[0]
-        print(f"[DEBUG] Raw model output: {response_text}")
-
-        json_str = response_text.strip()
-        if "```json" in json_str:
-            json_str = json_str.split("```json")[1].split("```")[0].strip()
-        elif "```" in json_str:
-            json_str = json_str.split("```")[1].split("```")[0].strip()
-
-        try:
-            extracted_data = json.loads(json_str)
-        except json.JSONDecodeError:
-            print(f"[DEBUG] JSON parse failed: {json_str}")
-            extracted_data = {}
-
-        filtered_data = {k: v for k, v in extracted_data.items() if v is not None}
-        print(f"[DEBUG] Filtered extracted data: {json.dumps(filtered_data, indent=2)}")
-
-        evaluation = run_donor_evaluation(filtered_data, gender=gender)
-        print(f"[DEBUG] Final decision: {evaluation['status']}")
-
-        return {
-            "success": True,
-            "extracted_values": filtered_data,
-            "evaluation": {
-                "status": evaluation["status"],
-                "explanation_en": evaluation["explanation_en"],
-                "explanation_ar": evaluation["explanation_ar"],
-                "gender": gender,
-                "thresholds_version": "2.3.0",
-            },
-            "raw_model_output": response_text,
-        }
-
-    except Exception as e:
-        print(f"Error during screening: {e}")
-        raise HTTPException(status_code=500, detail=f"Error processing report: {str(e)}")
+@app.get("/status")
+def status():
+    return {
+        "service": "BloodConnect AI v3.0.1",
+        "vit_loaded": vit_model is not None,
+        "device": str(vit_device),
+        "weights": str(Path(VIT_WEIGHTS_PATH).resolve()),
+        "tesseract": TESSERACT_FOUND,
+    }
 
 
-# ── Predict alias endpoint ────────────────────────────────────────────────────
 @app.post("/predict")
+@app.post("/api/v1/screen-report")
 async def predict(
     file: UploadFile = File(...),
     gender: str = Form(default="male"),
 ):
-    return await screen_report(file=file, gender=gender)
+    """
+    Main prediction endpoint.
+    
+    Stage 1: ViT classification (Normal/Abnormal)
+    Stage 2: OCR + CBC parsing (only if Abnormal)
+    Stage 3: Donor eligibility evaluation
+    """
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Upload valid image (JPEG/PNG).")
 
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="File is empty.")
+
+    try:
+        pil_image = Image.open(io.BytesIO(contents)).convert("RGB")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid image: {exc}")
+
+    if vit_model is None:
+        raise HTTPException(status_code=503, detail="ViT model not loaded.")
+
+    # ────────────────────────────────────────────────────────────────────────
+    # STAGE 1: ViT Classification
+    # ────────────────────────────────────────────────────────────────────────
+    try:
+        tensor = VAL_TRANSFORM(pil_image).unsqueeze(0).to(vit_device)
+        with torch.no_grad():
+            logits = vit_model(tensor)
+            if isinstance(logits, tuple):
+                logits = logits[0]
+            probs = torch.softmax(logits, dim=1)[0]
+            pred = torch.argmax(probs).item()
+            conf = float(probs[pred]) * 100
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ViT inference failed: {e}")
+
+    vit_label = "Abnormal" if pred == 1 else "Normal"
+
+    # Build base response
+    response = {
+        "success": True,
+        "prediction": vit_label,
+        "confidence": round(conf, 2),
+        "eligible": vit_label == "Normal",
+        "result": "ELIGIBLE" if vit_label == "Normal" else "DEFERRED",
+        "raw_probability": round(float(probs[1]), 4),
+        "threshold": VIT_THRESHOLD,
+        "abnormal_findings": [],
+        "metrics": {},
+        "evaluation": {
+            "status": "ELIGIBLE" if vit_label == "Normal" else "DEFERRED",
+            "explanation_en": "ViT indicates normal CBC profile.",
+            "explanation_ar": "يشير المصنف إلى صورة دم طبيعية.",
+            "gender": gender,
+        },
+        "reasons": [],
+    }
+
+    if vit_label == "Normal":
+        return response
+
+    # ────────────────────────────────────────────────────────────────────────
+    # STAGE 2: OCR + CBC Parsing (only when Abnormal)
+    # ────────────────────────────────────────────────────────────────────────
+    try:
+        ocr_text = extract_text(pil_image)
+        rbc_indices, diff_pct, diff_abs = parse_cbc(ocr_text)
+        findings = analyze_all(rbc_indices, diff_pct, diff_abs)
+    except Exception as e:
+        print(f"[WARN] OCR failed: {e}")
+        ocr_text = ""
+        rbc_indices = {}
+        diff_pct = {}
+        diff_abs = {}
+        findings = []
+
+    # ────────────────────────────────────────────────────────────────────────
+    # STAGE 3: Donor Eligibility Evaluation
+    # ────────────────────────────────────────────────────────────────────────
+    eval_result = run_donor_evaluation(rbc_indices, diff_pct, gender=gender)
+
+    flat_metrics = {**rbc_indices}
+    for k, v in diff_pct.items():
+        if v is not None:
+            flat_metrics[f"{k}_pct"] = v
+    for k, v in diff_abs.items():
+        if v is not None:
+            flat_metrics[f"{k}_abs"] = v
+
+    # ────────────────────────────────────────────────────────────────────────
+    # Final Response
+    # ────────────────────────────────────────────────────────────────────────
+    response.update({
+        "eligible": eval_result["status"] == "ELIGIBLE",
+        "result": eval_result["status"],
+        "abnormal_findings": findings,  # List of {feature, label, value, unit, status, range}
+        "ocr_text": ocr_text[:500] if ocr_text else "",
+        "metrics": {
+            "rbc_indices": rbc_indices,
+            "differential_pct": diff_pct,
+            "differential_abs": diff_abs,
+        },
+        "reasons": eval_result["reasons"],
+        "evaluation": {
+            "status": eval_result["status"],
+            "explanation_en": eval_result["explanation_en"],
+            "explanation_ar": eval_result["explanation_ar"],
+            "gender": gender,
+        },
+    })
+
+    return response
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AI Assistant (OpenRouter)
+# ─────────────────────────────────────────────────────────────────────────────
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_MODEL = "google/gemini-2.5-flash"
@@ -481,75 +662,22 @@ class ChatRequest(BaseModel):
     donor_data: dict
 
 
-def build_system_prompt(donor_data: dict) -> str:
-    status = donor_data.get("status", "Unknown")
-    explanation_en = donor_data.get("explanation_en", "No explanation provided")
-    gender = donor_data.get("gender", "not specified")
-    extracted_values = donor_data.get("extracted_values", {})
-
-    values_str = ""
-    for param, value in extracted_values.items():
-        if param in THRESHOLDS:
-            _min, _max, unit, label, _ = THRESHOLDS[param]
-            values_str += f"- {label}: **{value} {unit}**"
-            if _min is not None and value < _min:
-                values_str += f" (below normal range {_min}-{_max})"
-            elif _max is not None and value > _max:
-                values_str += f" (above normal range {_min}-{_max})"
-            else:
-                values_str += " (normal)"
-            values_str += "\n"
-
-    return f"""You are a compassionate and highly professional AI Medical Doctor specializing in hematology and blood donation medicine.
-
-You are speaking to a blood donor who has been evaluated for blood donation eligibility.
-
-Donor Information:
-- Donation Status: **{status}**
-- Gender: **{gender}**
-- Evaluation: {explanation_en}
-
-Extracted Blood Values:
-{values_str if values_str else "No specific values extracted."}
-
-Instructions:
-- Always be calm, warm, and reassuring
-- Explain medical terms in simple everyday language
-- Reference the donor's actual medical values in your answers
-- Emphasize that temporary deferral is common and usually not serious
-- Provide practical and actionable advice when possible
-- Use **bold text** for important values or key points
-- Keep responses structured and easy to read
-- Never be alarming or dramatic
-- Always encourage consulting a real doctor for serious concerns
-"""
-
-
 @app.post("/assistant/chat")
 async def assistant_chat(request: ChatRequest):
+    """Conversational AI for explaining results."""
     api_key = os.environ.get("AI_ASSISTANT_API_KEY")
     if not api_key:
-        raise HTTPException(status_code=500, detail="AI assistant is not configured.")
+        raise HTTPException(status_code=500, detail="AI assistant not configured.")
 
-    if len(request.messages) > 30:
-        raise HTTPException(status_code=400, detail="Conversation too long. Please start a new chat.")
-
-    system_prompt = build_system_prompt(request.donor_data)
+    messages = [{"role": m.role, "content": m.content} for m in request.messages]
 
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://bloodconnect.app",
-        "X-Title": "BloodConnect AI Assistant",
     }
-
-    openrouter_messages = [{"role": "system", "content": system_prompt}]
-    for msg in request.messages:
-        openrouter_messages.append({"role": msg.role, "content": msg.content})
-
     payload = {
         "model": OPENROUTER_MODEL,
-        "messages": openrouter_messages,
+        "messages": messages,
         "max_tokens": 800,
         "temperature": 0.7,
     }
@@ -557,16 +685,17 @@ async def assistant_chat(request: ChatRequest):
     try:
         resp = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=30)
         resp.raise_for_status()
-        data = resp.json()
-        reply = data["choices"][0]["message"]["content"].strip()
+        reply = resp.json()["choices"][0]["message"]["content"].strip()
         return {"reply": reply}
-    except requests.exceptions.Timeout:
-        raise HTTPException(status_code=504, detail="AI assistant request timed out. Please try again.")
-    except requests.exceptions.RequestException as e:
-        print(f"OpenRouter error: {e}")
-        raise HTTPException(status_code=502, detail="Failed to reach AI assistant service. Please try again.")
+    except Exception as e:
+        print(f"[ERROR] OpenRouter: {e}")
+        raise HTTPException(status_code=502, detail="AI assistant unavailable.")
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Entry point
+# ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")

@@ -68,17 +68,17 @@ class _AiPredictionScreenState extends ConsumerState<AiPredictionScreen>
       final response = await http.get(healthUri).timeout(const Duration(seconds: 300));
       if (response.statusCode == 200) {
         final health = jsonDecode(response.body);
-        if (health['model_loaded'] == true) {
+        if (health['vit_model_loaded'] == true || health['model_loaded'] == true) {
           setState(() {
             _serviceConnected = true;
-            _serviceStatus = 'AI Service connected (${health['device']})';
+            _serviceStatus = 'Connected (${health['device']})';
           });
         }
       }
     } catch (e) {
       setState(() {
         _serviceConnected = false;
-        _serviceStatus = 'AI Service unavailable - check Python server';
+        _serviceStatus = 'Service unavailable';
       });
     }
   }
@@ -161,7 +161,18 @@ class _AiPredictionScreenState extends ConsumerState<AiPredictionScreen>
           .toList();
 
       final donorData = {
-        ..._result!.regressionDenormalized,
+        'status': _result!.result,
+        'gender': 'male',
+        'explanation_en': _result!.explanationEn,
+        'abnormal_findings': _result!.abnormalFindings
+            .map((f) => {
+                  'label': f.label,
+                  'value': f.value,
+                  'unit': f.unit,
+                  'status': f.status,
+                  'range': f.range,
+                })
+            .toList(),
         'reasons': _result!.reasons,
         'confidence': _result!.confidence,
       };
@@ -354,7 +365,7 @@ class _AiPredictionScreenState extends ConsumerState<AiPredictionScreen>
         ElevatedButton.icon(
           onPressed: _isLoading ? null : _runPrediction,
           icon: _isLoading
-              ? SizedBox(
+              ? const SizedBox(
                   width: 18,
                   height: 18,
                   child: CircularProgressIndicator(
@@ -443,7 +454,7 @@ class _AiPredictionScreenState extends ConsumerState<AiPredictionScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   'Analysis Failed',
                   style: TextStyle(
                     color: AppColors.error,
@@ -454,7 +465,7 @@ class _AiPredictionScreenState extends ConsumerState<AiPredictionScreen>
                 const SizedBox(height: 4),
                 Text(
                   _error!,
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
                 ),
               ],
             ),
@@ -478,10 +489,7 @@ class _AiPredictionScreenState extends ConsumerState<AiPredictionScreen>
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(AppRadius.lg),
-          border: Border.all(
-            color: AppColors.divider,
-            width: 1.5,
-          ),
+          border: Border.all(color: AppColors.divider, width: 1.5),
           boxShadow: AppShadows.card,
         ),
         child: Center(
@@ -512,7 +520,7 @@ class _AiPredictionScreenState extends ConsumerState<AiPredictionScreen>
                 ),
               ),
               const SizedBox(height: 14),
-              Text(
+              const Text(
                 'No image selected',
                 style: TextStyle(
                   fontSize: 15,
@@ -521,7 +529,7 @@ class _AiPredictionScreenState extends ConsumerState<AiPredictionScreen>
                 ),
               ),
               const SizedBox(height: 4),
-              Text(
+              const Text(
                 'Tap Gallery or Camera to upload your blood report',
                 style: TextStyle(color: AppColors.textTertiary, fontSize: 12),
               ),
@@ -676,7 +684,7 @@ class _AiPredictionScreenState extends ConsumerState<AiPredictionScreen>
                                 ),
                               ),
                               const SizedBox(height: 16),
-                              Text(
+                              const Text(
                                 'Ask me anything about your results',
                                 style: TextStyle(
                                   color: AppColors.textSecondary,
@@ -685,7 +693,7 @@ class _AiPredictionScreenState extends ConsumerState<AiPredictionScreen>
                                 ),
                               ),
                               const SizedBox(height: 6),
-                              Text(
+                              const Text(
                                 'I can explain your blood values and give tips to help you get ready for donation.',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
@@ -709,8 +717,8 @@ class _AiPredictionScreenState extends ConsumerState<AiPredictionScreen>
                       ),
               ),
               if (_chatLoading)
-                Padding(
-                  padding: const EdgeInsets.only(left: 12, bottom: 4),
+                const Padding(
+                  padding: EdgeInsets.only(left: 12, bottom: 4),
                   child: Row(
                     children: [
                       SizedBox(
@@ -718,8 +726,8 @@ class _AiPredictionScreenState extends ConsumerState<AiPredictionScreen>
                         height: 14,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       ),
-                      const SizedBox(width: 8),
-                      const Text('Thinking...', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                      SizedBox(width: 8),
+                      Text('Thinking...', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                     ],
                   ),
                 ),
@@ -736,12 +744,14 @@ class _AiPredictionScreenState extends ConsumerState<AiPredictionScreen>
   }
 }
 
+// ── Chat message model ───────────────────────────────────────────────────────
 class _ChatMsg {
   const _ChatMsg({required this.role, required this.content});
   final String role;
   final String content;
 }
 
+// ── Chat bubble ──────────────────────────────────────────────────────────────
 class _ChatBubble extends StatelessWidget {
   const _ChatBubble({required this.message, required this.isUser});
   final _ChatMsg message;
@@ -776,9 +786,7 @@ class _ChatBubble extends StatelessWidget {
                   ),
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
-                    gradient: isUser
-                        ? AppGradients.primary
-                        : null,
+                    gradient: isUser ? AppGradients.primary : null,
                     color: isUser ? null : Theme.of(context).cardColor,
                     borderRadius: BorderRadius.only(
                       topLeft: const Radius.circular(12),
@@ -831,6 +839,7 @@ class _ChatBubble extends StatelessWidget {
   }
 }
 
+// ── Chat input bar ───────────────────────────────────────────────────────────
 class _ChatInputBar extends StatefulWidget {
   const _ChatInputBar({
     required this.controller,
@@ -931,70 +940,36 @@ class _ChatInputBarState extends State<_ChatInputBar> {
   }
 }
 
+// ── Result card ──────────────────────────────────────────────────────────────
 class _ResultCard extends StatelessWidget {
   const _ResultCard({required this.result});
   final AiPredictionResult result;
 
-  List<_FlaggedValue> _getFlaggedValues() {
-    final flagged = <_FlaggedValue>[];
-    for (final entry in _thresholds.entries) {
-      final param = entry.key;
-      final (minVal, maxVal, unit, label) = entry.value;
-      final value = result.regressionDenormalized[param];
-      if (value == null) continue;
-      final numValue = (value is num) ? value.toDouble() : double.tryParse(value.toString());
-      if (numValue == null) continue;
-
-      String? status;
-      if (minVal != null && numValue < minVal) {
-        status = 'Below normal';
-      } else if (maxVal != null && numValue > maxVal) {
-        status = 'Above normal';
-      }
-
-      if (status != null) {
-        final rangeStr = maxVal != null && minVal != null
-            ? '$minVal - $maxVal'
-            : minVal != null
-                ? '${minVal}+'
-                : '${maxVal}!';
-        flagged.add(_FlaggedValue(
-          name: label,
-          value: numValue.toStringAsFixed(1),
-          unit: unit,
-          range: rangeStr,
-          status: status,
-        ));
-      }
-    }
-    return flagged;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final isEligible = result.eligible;
-    final flagged = _getFlaggedValues();
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (isEligible)
-          _buildEligibleBanner()
+        // ViT Classification banner
+        if (result.isNormal)
+          _buildNormalBanner()
         else
-          _buildDeferredBanner(),
+          _buildAbnormalBanner(),
+        // Deferral reasons
         if (result.reasons.isNotEmpty) ...[
           const SizedBox(height: 12),
-          _buildReasonsCard(isEligible),
+          _buildReasonsCard(),
         ],
-        if (flagged.isNotEmpty) ...[
+        // Abnormal findings from OCR
+        if (result.abnormalFindings.isNotEmpty) ...[
           const SizedBox(height: 18),
-          _buildFlaggedSection(context, flagged),
+          _buildOcrFindingsSection(context),
         ],
       ],
     );
   }
 
-  Widget _buildEligibleBanner() {
+  Widget _buildNormalBanner() {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -1032,7 +1007,7 @@ class _ResultCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Eligible to Donate',
+                  'Normal CBC Profile',
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -1041,8 +1016,8 @@ class _ResultCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Confidence: ${result.confidence.toStringAsFixed(1)}%',
-                  style: const TextStyle(
+                  'All parameters within normal ranges',
+                  style: TextStyle(
                     fontSize: 13,
                     color: AppColors.textSecondary,
                   ),
@@ -1077,7 +1052,7 @@ class _ResultCard extends StatelessWidget {
     );
   }
 
-  Widget _buildDeferredBanner() {
+  Widget _buildAbnormalBanner() {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -1093,100 +1068,113 @@ class _ResultCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
       ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              gradient: AppGradients.warning,
-              borderRadius: BorderRadius.circular(50),
-            ),
-            child: const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 28),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Donation Temporarily Deferred',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.warning,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Confidence: ${result.confidence.toStringAsFixed(1)}%',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: AppColors.warning.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(AppRadius.full),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.info_outline_rounded, size: 14, color: AppColors.warning),
-                const SizedBox(width: 4),
-                Text(
-                  '${result.confidence.toStringAsFixed(0)}%',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.warning,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildReasonsCard(bool isEligible) {
-    final accent = isEligible ? AppColors.success : AppColors.warning;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isEligible
-            ? AppColors.success.withValues(alpha: 0.06)
-            : AppColors.warning.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(
-          color: isEligible
-              ? AppColors.success.withValues(alpha: 0.15)
-              : AppColors.warning.withValues(alpha: 0.15),
-        ),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(
-                isEligible ? Icons.check_circle_outline : Icons.info_outline_rounded,
-                size: 18,
-                color: accent,
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  gradient: AppGradients.warning,
+                  borderRadius: BorderRadius.circular(50),
+                ),
+                child: const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 28),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Abnormal CBC Detected',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.warning,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      result.result == 'DEFERRED' ? 'Donation temporarily deferred' : 'Review required',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(AppRadius.full),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.info_outline_rounded, size: 14, color: AppColors.warning),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${result.confidence.toStringAsFixed(0)}%',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.warning,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (result.explanationEn.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+              ),
+              child: Text(
+                result.explanationEn,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReasonsCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.15)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.info_outline_rounded, size: 18, color: AppColors.warning),
+              SizedBox(width: 8),
               Text(
-                isEligible ? 'Assessment Summary' : 'Why?',
+                'Deferral Reasons',
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
-                  color: accent,
+                  color: AppColors.warning,
                 ),
               ),
             ],
@@ -1202,8 +1190,8 @@ class _ResultCard extends StatelessWidget {
                     margin: const EdgeInsets.only(top: 4),
                     width: 6,
                     height: 6,
-                    decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.5),
+                    decoration: const BoxDecoration(
+                      color: AppColors.warning,
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -1223,7 +1211,7 @@ class _ResultCard extends StatelessWidget {
     );
   }
 
-  Widget _buildFlaggedSection(BuildContext context, List<_FlaggedValue> flagged) {
+  Widget _buildOcrFindingsSection(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1232,70 +1220,58 @@ class _ResultCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: AppColors.warning.withValues(alpha: 0.1),
+                color: AppColors.error.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(AppRadius.xs),
               ),
-              child: const Icon(Icons.flag_outlined, size: 16, color: AppColors.warning),
+              child: const Icon(Icons.bloodtype_outlined, size: 16, color: AppColors.error),
             ),
             const SizedBox(width: 10),
             Text(
-              'Flagged Values',
+              'Abnormal Findings',
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w600,
                 color: AppColors.textPrimary,
               ),
             ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppColors.error.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(AppRadius.full),
+              ),
+              child: Text(
+                '${result.abnormalFindings.length}',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.error,
+                ),
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 10),
-        ...flagged.map((f) => _FlaggedValueTile(flagged: f)),
+        ...result.abnormalFindings.map((f) => _FindingTile(finding: f)),
       ],
     );
   }
 }
 
-class _FlaggedValue {
-  const _FlaggedValue({
-    required this.name,
-    required this.value,
-    required this.unit,
-    required this.range,
-    required this.status,
-  });
-
-  final String name;
-  final String value;
-  final String unit;
-  final String range;
-  final String status;
-}
-
-const Map<String, (double?, double?, String, String)> _thresholds = {
-  'hemoglobin': (11.0, 18.5, 'g/dL', 'Hemoglobin'),
-  'hematocrit': (33.0, 52.0, '%', 'Hematocrit'),
-  'rbc': (3.5, 6.5, 'x10(6)/uL', 'RBC'),
-  'wbc': (3.0, 13.0, 'x10(3)/uL', 'WBC'),
-  'platelets': (100.0, 500.0, 'x10(3)/uL', 'Platelets'),
-  'mcv': (72.0, 108.0, 'fL', 'MCV'),
-  'mchc': (30.0, 38.0, 'g/dL', 'MCHC'),
-  'pulse': (50.0, 110.0, 'bpm', 'Pulse'),
-  'temperature': (35.5, 38.0, 'celsius', 'Temperature'),
-  'weight': (45.0, null, 'kg', 'Weight'),
-  'systolic_bp': (85.0, 175.0, 'mmHg', 'Systolic BP'),
-  'diastolic_bp': (55.0, 105.0, 'mmHg', 'Diastolic BP'),
-  'ferritin': (8.0, 350.0, 'ng/mL', 'Ferritin'),
-  'vdrl': (0.0, 0.80, 'binary', 'VDRL Syphilis'),
-  'chronic_condition': (0.0, 0.80, 'binary', 'Chronic Condition'),
-};
-
-class _FlaggedValueTile extends StatelessWidget {
-  const _FlaggedValueTile({required this.flagged});
-  final _FlaggedValue flagged;
+// ── Individual finding tile ──────────────────────────────────────────────────
+class _FindingTile extends StatelessWidget {
+  const _FindingTile({required this.finding});
+  final AbnormalFinding finding;
 
   @override
   Widget build(BuildContext context) {
-    final isBelow = flagged.status == 'Below normal';
-    final accent = isBelow ? AppColors.warning : AppColors.error;
+    final isLow = finding.isLow;
+    final accent = isLow ? AppColors.info : AppColors.error;
+    final statusLabel = isLow ? 'LOW' : 'HIGH';
+    final refRange = finding.range.length == 2
+        ? '${finding.range[0]}–${finding.range[1]}'
+        : '';
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(14),
@@ -1320,7 +1296,7 @@ class _FlaggedValueTile extends StatelessWidget {
               borderRadius: BorderRadius.circular(AppRadius.sm),
             ),
             child: Icon(
-              isBelow ? Icons.arrow_downward : Icons.arrow_upward,
+              isLow ? Icons.arrow_downward : Icons.arrow_upward,
               color: accent,
               size: 16,
             ),
@@ -1331,7 +1307,7 @@ class _FlaggedValueTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  flagged.name,
+                  finding.label,
                   style: const TextStyle(
                     fontWeight: FontWeight.w600,
                     fontSize: 14,
@@ -1343,26 +1319,23 @@ class _FlaggedValueTile extends StatelessWidget {
                   text: TextSpan(
                     children: [
                       TextSpan(
-                        text: '${flagged.value} ${flagged.unit}',
+                        text: '${finding.value} ${finding.unit}',
                         style: const TextStyle(
                           fontSize: 13,
-                          color: AppColors.textSecondary,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
                         ),
                       ),
-                      TextSpan(
-                        text: '  \u2022  ',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: AppColors.textTertiary,
+                      if (refRange.isNotEmpty) ...[
+                        const TextSpan(
+                          text: '  \u2022  ref: ',
+                          style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
                         ),
-                      ),
-                      TextSpan(
-                        text: 'Normal: ${flagged.range} ${flagged.unit}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textTertiary,
+                        TextSpan(
+                          text: '$refRange ${finding.unit}',
+                          style: const TextStyle(fontSize: 12, color: AppColors.textTertiary),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
@@ -1376,10 +1349,10 @@ class _FlaggedValueTile extends StatelessWidget {
               borderRadius: BorderRadius.circular(AppRadius.full),
             ),
             child: Text(
-              flagged.status,
+              statusLabel,
               style: TextStyle(
                 fontSize: 11,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
                 color: accent,
               ),
             ),
