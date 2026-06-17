@@ -243,10 +243,54 @@ class _HospitalDashboardScreenState
                   const SizedBox(height: 24),
                   SectionHeader(
                     title: 'Blood Inventory',
-                    trailing: TextButton.icon(
-                      onPressed: () => context.push('/hospital/inventory'),
-                      icon: const Icon(Icons.tune, size: 18),
-                      label: const Text('Manage'),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_lowInventoryCount > 0) ...[
+                          GestureDetector(
+                            onTap: () =>
+                                context.push('/hospital/low-inventory-alerts'),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.hospitalAlert.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: AppColors.hospitalAlert.withValues(alpha: 0.3),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.notifications_active_outlined,
+                                    size: 14,
+                                    color: AppColors.hospitalAlert,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '$_lowInventoryCount low',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.hospitalAlert,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        TextButton.icon(
+                          onPressed: () => context.push('/hospital/inventory'),
+                          icon: const Icon(Icons.tune, size: 18),
+                          label: const Text('Manage'),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -478,6 +522,12 @@ class _HospitalDashboardScreenState
       ),
     );
   }
+
+  /// Count of blood types currently below threshold, computed from the
+  /// same is_low flag already used to highlight individual inventory
+  /// cards — no extra API call needed since _inventory is already loaded.
+  int get _lowInventoryCount =>
+      _inventory.where((i) => i['is_low'] as bool? ?? false).length;
 
   Widget _buildInventoryRow() {
     return SizedBox(
