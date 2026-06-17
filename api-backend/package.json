@@ -8,7 +8,11 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "test": "jest --forceExit --detectOpenHandles",
-    "test:e2e": "jest --forceExit --detectOpenHandles --config jest.e2e.config.js"
+    "test:e2e": "jest --forceExit --detectOpenHandles --config jest.e2e.config.js",
+    "lint": "eslint src/ --ext .js --max-warnings 0",
+    "lint:fix": "eslint src/ --ext .js --fix",
+    "lint:report": "eslint src/ --ext .js --format json --output-file coverage/eslint-report.json",
+    "lint:security": "eslint src/ --ext .js --rule \"security/detect-non-literal-regexp: error\" --rule \"security/detect-eval-with-expression: error\" --rule \"security/detect-child-process: error\""
   },
   "jest": {
     "testEnvironment": "node",
@@ -83,6 +87,9 @@
     "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
+    "eslint": "^8.57.1",
+    "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-security": "^3.0.1",
     "jest": "^30.4.2",
     "supertest": "^7.2.2"
   }
