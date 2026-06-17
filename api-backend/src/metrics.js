@@ -72,7 +72,9 @@ const notificationDispatchTotal = new prometheus.Counter({
 });
 
 function metricsMiddleware(req, res, next) {
-  if (req.path === '/metrics' || req.path === '/health' || req.path === '/slo') return next();
+  if (req.path === '/metrics' || req.path === '/slo' || req.path === '/' || req.path === '/health/db') {
+    return next();
+  }
 
   const route = req.route ? req.route.path : req.path;
   const end = httpRequestDuration.startTimer({ method: req.method, route });
@@ -85,7 +87,9 @@ function metricsMiddleware(req, res, next) {
     httpRequestTotal.inc(labels);
     end(labels);
     httpRequestInFlight.dec();
-    slo.recordRequest(res.statusCode, Date.now() - req._startTime);
+    // recordRequest is async (Redis-backed) — fire-and-forget with error handling
+    // so a transient Redis failure can never surface as an unhandled rejection.
+    slo.recordRequest(res.statusCode, Date.now() - req._startTime).catch(() => {});
   });
 
   next();
