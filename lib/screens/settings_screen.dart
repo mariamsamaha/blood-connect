@@ -1,6 +1,5 @@
 import 'package:bloodconnect/main.dart';
 import 'package:bloodconnect/models/user_profile.dart';
-import 'package:bloodconnect/providers/theme_mode_provider.dart';
 import 'package:bloodconnect/theme/app_theme.dart';
 import 'package:bloodconnect/widgets/app_button.dart';
 import 'package:bloodconnect/widgets/section_header.dart';

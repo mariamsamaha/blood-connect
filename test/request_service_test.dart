@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:bloodconnect/models/blood_request.dart';
-import 'package:bloodconnect/models/hospital.dart';
 import 'package:bloodconnect/services/api_client.dart';
 import 'package:bloodconnect/services/request_service.dart';
 import 'package:bloodconnect/services/notification_service.dart';
@@ -249,10 +248,8 @@ void main() {
     group('updateActiveRequest', () {
       test('sends patch and logs audit', () async {
         String? patchedPath;
-        Object? patchedBody;
         mockApi._patchJsonCallback = (path, {body}) {
           patchedPath = path;
-          patchedBody = body;
         };
 
         await service.updateActiveRequest(

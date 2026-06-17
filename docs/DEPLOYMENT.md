@@ -130,6 +130,74 @@ CD publishes images to GHCR and triggers Render/Fly deploy hooks. See [CD Guide]
 | Staging | `https://staging-api.bloodconnect.app` | Supabase staging | Mirrors production |
 | Production | `https://api.bloodconnect.app` | Supabase production | TLS required, minimal logging |
 
+## Canary & Blue-Green Deployment
+
+### Blue-Green Strategy
+
+Maintain two identical environments (blue = live, green = standby).
+
+```bash
+# Blue is live (api.bloodconnect.app), green is staging
+# 1. Deploy green:
+docker compose -f docker-compose.yml -f docker-compose.scale.yml up -d --build
+
+# 2. Smoke-test green:
+curl -f https://staging-api.bloodconnect.app/health/db
+
+# 3. Run E2E suite against green:
+cd api-backend && npm run test:e2e
+
+# 4. Swap DNS / load balancer to point production traffic to green
+#    (e.g., update Render service, AWS ALB target group, or k8s service selector)
+
+# 5. Monitor for 15 min (error rate, latency, SLO violations)
+#    Rollback = swap DNS back to blue if violations spike
+
+# 6. Keep blue running for 24h in case quick rollback is needed
+```
+
+**Readiness gates before promoting:**
+- Health check (`/health/db`) returns 200
+- SLO endpoint (`/slo`) shows no violations
+- E2E smoke tests pass against the new environment
+- Error rate < 1% over 5-minute window
+
+### Canary Strategy (Render / Kubernetes)
+
+Route a small percentage of traffic to the new version before full cutover:
+
+| Step | Traffic % | Duration | Verification |
+|------|-----------|----------|-------------|
+| 1. Deploy canary | 5% | 10 min | Error rate < SLO threshold |
+| 2. Increase canary | 25% | 15 min | p95 latency < 2000ms |
+| 3. Increase canary | 50% | 15 min | No SLO violations |
+| 4. Full rollout | 100% | — | Monitor 30 min |
+
+**Rollback triggers (any of these):**
+- Error rate spikes > 5% in 1-minute window
+- p95 latency exceeds 5000ms
+- Availability drops below 99%
+- Any P1 SLO violation
+
+### Rollback Procedure
+
+```bash
+# Option A: Revert to previous Docker image
+docker tag bloodconnect-api:stable bloodconnect-api:latest
+docker compose up -d --no-build
+
+# Option B: Revert Git + rebuild
+git revert HEAD --no-edit
+docker compose up --build -d --force-recreate
+```
+
+To pre-tag images before each release:
+```bash
+docker tag bloodconnect-api:$IMAGE_TAG bloodconnect-api:stable
+docker tag bloodconnect-notification:$IMAGE_TAG bloodconnect-notification:stable
+docker tag bloodconnect-ai:$IMAGE_TAG bloodconnect-ai:stable
+```
+
 ## Health Checks
 
 After deployment, verify:

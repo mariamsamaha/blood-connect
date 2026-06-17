@@ -47,7 +47,7 @@ app.use((req, res, next) => {
 app.use(require('pino-http')({
   logger,
   genReqId: (req) => req.requestId || randomUUID(),
-  customLogLevel: (res, err) => {
+  customLogLevel: (res, _err) => {
     if (res.statusCode >= 500) return 'error';
     if (res.statusCode >= 400) return 'warn';
     return 'info';
@@ -200,19 +200,6 @@ function profileSelect() {
 }
 
 // ─── Notification helpers ──────────────────────────────────────────────────────
-async function insertNotification({ userId, requestId, notificationType, title, body }, queryFn) {
-  const q = queryFn || query;
-  try {
-    await q(
-      `INSERT INTO notifications (user_id, request_id, notification_type, title, body, delivery_status)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5, 'sent')`,
-      [userId, requestId, notificationType, title, body],
-    );
-  } catch (err) {
-    logger.warn({ err }, 'Failed to insert notification');
-  }
-}
-
 async function insertNotificationsForDonors({ requestId, donorIds, notificationType, title, body }) {
   if (donorIds.length === 0) return;
   try {
@@ -824,7 +811,7 @@ app.get('/api/v1/hospitals', requireFirebaseAuth, async (req, res) => {
          ORDER BY is_far ASC, distance_km ASC`,
         [lat, lng, nearbyM],
       );
-      return res.json(rows.map(({ is_far, ...r }) => r));
+      return res.json(rows.map(({ is_far: _is_far, ...r }) => r));
     }
 
     const rows = await query(
@@ -2139,7 +2126,7 @@ async function notifyNewRequest(request) {
   metrics.notificationDispatchDuration.observe(Date.now() - dispatchStart);
 }
 
-async function notifyDonorAccepted(requestId, donorId) {
+async function notifyDonorAccepted(requestId, _donorId) {
   const backendUrl = process.env.NOTIFICATION_BACKEND_URL;
   const secret = process.env.NOTIFICATION_BACKEND_SECRET;
   if (!backendUrl || !secret) return;
@@ -3203,7 +3190,7 @@ Missing: ${dbConfig.missing.join(', ')}
   } else {
     const http = require('http');
     server = http.createServer(app).listen(port, '0.0.0.0', () => {
-      console.log(
+      logger.info(
         `BloodConnect API listening on HTTP port ${port} (0.0.0.0 — reachable from emulators/LAN)${isProduction ? ' (set TLS_KEY_PATH/TLS_CERT_PATH or terminate TLS at proxy)' : ''}`,
       );
     });

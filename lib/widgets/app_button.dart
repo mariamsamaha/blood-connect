@@ -3,16 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppButton extends StatefulWidget {
-  const AppButton._({
-    super.key,
-    required this.label,
-    this.onPressed,
-    this.icon,
-    this.isLoading = false,
-    required this.variant,
-    this.size = ButtonSize.lg,
-  });
-
   const AppButton.primary({
     super.key,
     required this.label,

@@ -16,9 +16,10 @@ DECLARE
     v_donor UUID;
     v_blood VARCHAR(3);
     v_units INT;
+    v_is_auto_request BOOLEAN;
 BEGIN
-    SELECT br.status, br.hospital_id, br.requester_id, br.blood_type, br.units_needed
-    INTO v_status, v_hospital, v_requester, v_blood, v_units
+    SELECT br.status, br.hospital_id, br.requester_id, br.blood_type, br.units_needed, br.is_auto_request
+    INTO v_status, v_hospital, v_requester, v_blood, v_units, v_is_auto_request
     FROM blood_requests br
     WHERE br.id = p_request_id
     FOR UPDATE;
@@ -66,6 +67,10 @@ BEGIN
     VALUES (p_hospital_user_id, v_blood, 1, p_request_id, '1 unit delivered');
 
     PERFORM increment_hospital_inventory(p_hospital_user_id, v_blood, 1);
+
+    IF v_is_auto_request THEN
+        PERFORM resolve_low_inventory_alerts(p_hospital_user_id, v_blood);
+    END IF;
 
     UPDATE users SET is_recipient = FALSE, updated_at = NOW() WHERE id = v_requester;
 

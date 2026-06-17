@@ -78,7 +78,7 @@ void main() {
     test('debounces connectivity changes', () async {
       final mock = _MockConnectivity();
       int changeCount = 0;
-      final manager = SyncManager(
+      SyncManager(
         connectivity: mock,
         initialStatus: ConnectivityStatus.online,
         onOffline: () { changeCount++; },

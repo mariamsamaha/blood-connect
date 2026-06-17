@@ -24,9 +24,13 @@ import os
 import json
 import re
 import cv2
+import hashlib
+import time
+import logging
 import numpy as np
 import requests
 from contextlib import asynccontextmanager
+from prompts import pick_variant, ab_variant_stats
 
 import torch
 import torch.nn as nn
@@ -34,10 +38,15 @@ from torchvision import transforms
 from PIL import Image
 import pytesseract
 
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
+
+logger = logging.getLogger("bloodconnect-ai")
 
 load_dotenv()
 
@@ -120,6 +129,27 @@ def normalise_ocr(text: str) -> str:
     text = re.sub(r"(\d),(\d)", r"\1.\2", text)
     # BUG-A: garbled unit separator
     text = re.sub(r"\bg[il|]dL\b", "g/dL", text, flags=re.I)
+    return text
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PII Redaction (A1)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_PII_PATTERNS = [
+    (r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", "[IP_REDACTED]"),           # IP
+    (r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", "[EMAIL_REDACTED]"),  # email
+    (r"(?:\+\d{1,3}\s?)?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b", "[PHONE_REDACTED]"),   # phone (with optional country code)
+    (r"\b\d{9,12}\b", "[ID_REDACTED]"),                                       # numeric ID
+    (r"\b(?:M|F|Mr|Mrs|Ms|Dr|Prof)\.?\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b", "[NAME_REDACTED]"),  # name prefix
+    (r"\b\d{1,2}/\d{1,2}/(?:\d{2}|\d{4})\b", "[DATE_REDACTED]"),             # date
+]
+
+
+def redact_pii(text: str) -> str:
+    """Strip PII (IPs, emails, phones, IDs, names, dates) from text."""
+    for pat, replacement in _PII_PATTERNS:
+        text = re.sub(pat, replacement, text)
     return text
 
 
@@ -574,11 +604,49 @@ async def lifespan(app: FastAPI):
     print("[SHUTDOWN] Cleanup")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Prometheus Metrics (A5)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_PREDICTION_COUNT = 0
+_PREDICTION_SUCCESS = 0
+_PREDICTION_FAILURE = 0
+_OCR_FAILURE_COUNT = 0
+_CHAT_REQUEST_COUNT = 0
+_CHAT_FAILURE_COUNT = 0
+_TOTAL_LATENCY_MS = 0
+_TOTAL_PREDICTIONS = 0
+
+
+def _predict_metric(success: bool, latency_ms: float, ocr_failed: bool = False):
+    global _PREDICTION_COUNT, _PREDICTION_SUCCESS, _PREDICTION_FAILURE, _OCR_FAILURE_COUNT, _TOTAL_LATENCY_MS, _TOTAL_PREDICTIONS
+    _PREDICTION_COUNT += 1
+    _TOTAL_LATENCY_MS += latency_ms
+    _TOTAL_PREDICTIONS += 1
+    if success:
+        _PREDICTION_SUCCESS += 1
+    else:
+        _PREDICTION_FAILURE += 1
+    if ocr_failed:
+        _OCR_FAILURE_COUNT += 1
+
+
+def _chat_metric(success: bool):
+    global _CHAT_REQUEST_COUNT, _CHAT_FAILURE_COUNT
+    _CHAT_REQUEST_COUNT += 1
+    if not success:
+        _CHAT_FAILURE_COUNT += 1
+
+
 app = FastAPI(
     title="BloodConnect AI Service",
     version="3.0.2",
     lifespan=lifespan,
 )
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
@@ -596,8 +664,79 @@ app.add_middleware(
 # Endpoints
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Metrics endpoint (A5)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/metrics")
+@limiter.limit("60/minute")
+def metrics(request: Request):
+    return {
+        "predictions_total": _PREDICTION_COUNT,
+        "predictions_success": _PREDICTION_SUCCESS,
+        "predictions_failure": _PREDICTION_FAILURE,
+        "ocr_failures_total": _OCR_FAILURE_COUNT,
+        "chat_requests_total": _CHAT_REQUEST_COUNT,
+        "chat_failures_total": _CHAT_FAILURE_COUNT,
+        "avg_latency_ms": round(_TOTAL_LATENCY_MS / max(_TOTAL_PREDICTIONS, 1), 2),
+        "vit_loaded": vit_model is not None,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Prediction Feedback Store (A6 — in-memory, survives restarts as log)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_PREDICTION_FEEDBACK = []  # list of dicts: {image_hash, prediction, actual, timestamp}
+
+
+@app.post("/api/v1/predictions/feedback")
+@limiter.limit("60/minute")
+async def record_prediction_feedback(request: Request, body: dict):
+    """Record user/clinician feedback on a prediction for accuracy tracking."""
+    image_hash = body.get("image_hash", "")
+    prediction = body.get("prediction", "")
+    actual = body.get("actual", "")  # "Normal" or "Abnormal" from clinician review
+    correct = prediction == actual
+
+    record = {
+        "image_hash": image_hash[:16],
+        "prediction": prediction,
+        "actual": actual,
+        "correct": correct,
+        "timestamp": time.time(),
+    }
+    _PREDICTION_FEEDBACK.append(record)
+    logger.info(f"feedback image={image_hash[:16]} pred={prediction} actual={actual} correct={correct}")
+
+    # Keep only last 10k records in memory
+    if len(_PREDICTION_FEEDBACK) > 10000:
+        _PREDICTION_FEEDBACK[:1000] = []
+
+    return {"ok": True, "correct": correct}
+
+
+@app.get("/api/v1/predictions/accuracy")
+async def prediction_accuracy():
+    """Return accuracy metrics from collected feedback."""
+    total = len(_PREDICTION_FEEDBACK)
+    if total == 0:
+        return {"total": 0, "accuracy": None, "correct": 0}
+
+    correct_count = sum(1 for r in _PREDICTION_FEEDBACK if r["correct"])
+    return {
+        "total": total,
+        "correct": correct_count,
+        "accuracy": round(correct_count / total, 4),
+    }
+
+
 @app.get("/health")
 def health():
+    total_feedback = len(_PREDICTION_FEEDBACK)
+    correct_feedback = sum(1 for r in _PREDICTION_FEEDBACK if r["correct"])
+    accuracy = round(correct_feedback / total_feedback, 4) if total_feedback > 0 else None
+
     return {
         "status":           "ONLINE",
         "vit_loaded":       vit_model is not None,
@@ -607,6 +746,19 @@ def health():
         "weights_exist":    Path(VIT_WEIGHTS_PATH).exists(),
         "tesseract_found":  TESSERACT_FOUND,
         "version":          "3.0.2",
+        "metrics": {
+            "total_predictions": _PREDICTION_COUNT,
+            "success": _PREDICTION_SUCCESS,
+            "failure": _PREDICTION_FAILURE,
+            "ocr_failures": _OCR_FAILURE_COUNT,
+            "chat_requests": _CHAT_REQUEST_COUNT,
+            "chat_failures": _CHAT_FAILURE_COUNT,
+        },
+        "feedback": {
+            "total": total_feedback,
+            "accuracy": accuracy,
+        },
+        "ab_testing": ab_variant_stats(),
     }
 
 
@@ -623,7 +775,9 @@ def status():
 
 @app.post("/predict")
 @app.post("/api/v1/screen-report")
+@limiter.limit("30/minute")
 async def predict(
+    request: Request,
     file:   UploadFile = File(...),
     gender: str        = Form(default="male"),
 ):
@@ -634,12 +788,19 @@ async def predict(
     Stage 2: OCR + CBC parsing  (only if Abnormal)
     Stage 3: Donor eligibility evaluation
     """
+    start_time = time.time()
+    image_hash = ""
+    prediction_error = False
+    ocr_failed = False
+
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Upload valid image (JPEG/PNG).")
 
     contents = await file.read()
     if not contents:
         raise HTTPException(status_code=400, detail="File is empty.")
+
+    image_hash = hashlib.sha256(contents).hexdigest()[:16]
 
     try:
         pil_image = Image.open(io.BytesIO(contents)).convert("RGB")
@@ -653,28 +814,33 @@ async def predict(
     try:
         tensor = VAL_TRANSFORM(pil_image).unsqueeze(0).to(vit_device)
         with torch.no_grad():
-            cls_logits, _cbc_values = vit_model(tensor)   # unpack both heads
+            cls_logits, _cbc_values = vit_model(tensor)
             probs = torch.softmax(cls_logits, dim=1)[0]
             pred  = torch.argmax(probs).item()
             conf  = float(probs[pred]) * 100
     except Exception as e:
+        _predict_metric(success=False, latency_ms=(time.time() - start_time) * 1000)
         raise HTTPException(status_code=500, detail=f"ViT inference failed: {e}")
 
     vit_label = "Abnormal" if pred == 1 else "Normal"
+    low_confidence = conf < VIT_THRESHOLD * 100
 
-    # Base response
+    if low_confidence:
+        vit_label = "Uncertain"
+
     response = {
-        "success":          True,
-        "prediction":       vit_label,
-        "confidence":       round(conf, 2),
-        "eligible":         vit_label == "Normal",
-        "result":           "ELIGIBLE" if vit_label == "Normal" else "DEFERRED",
-        "raw_probability":  round(float(probs[1]), 4),
-        "threshold":        VIT_THRESHOLD,
-        "abnormal_findings": [],
-        "metrics":          {},
+        "success":            True,
+        "prediction":         vit_label,
+        "confidence":         round(conf, 2),
+        "eligible":           vit_label == "Normal",
+        "result":             "ELIGIBLE" if vit_label == "Normal" else ("DEFERRED" if vit_label == "Abnormal" else "NEEDS_REVIEW"),
+        "prediction_flagged": low_confidence,
+        "raw_probability":    round(float(probs[1]), 4),
+        "threshold":          VIT_THRESHOLD,
+        "abnormal_findings":  [],
+        "metrics":            {},
         "evaluation": {
-            "status":         "ELIGIBLE" if vit_label == "Normal" else "DEFERRED",
+            "status":         "ELIGIBLE" if vit_label == "Normal" else ("DEFERRED" if vit_label == "Abnormal" else "NEEDS_REVIEW"),
             "explanation_en": "ViT indicates normal CBC profile.",
             "explanation_ar": "يشير المصنف إلى صورة دم طبيعية.",
             "gender":         gender,
@@ -683,24 +849,26 @@ async def predict(
     }
 
     if vit_label == "Normal":
+        elapsed = (time.time() - start_time) * 1000
+        _predict_metric(success=True, latency_ms=elapsed)
+        logger.info(f"prediction image={image_hash} result=Normal confidence={conf} latency_ms={elapsed:.0f}")
         return response
 
     # ── STAGE 2: OCR + CBC Parsing (Abnormal only) ───────────────────────────
-    ocr_failed = False
     try:
         ocr_text = extract_text(pil_image)
-        rbc_indices, diff_pct, diff_abs = parse_cbc(ocr_text)
+        ocr_text_redacted = redact_pii(ocr_text)
+        rbc_indices, diff_pct, diff_abs = parse_cbc(ocr_text_redacted)
         findings = analyze_all(rbc_indices, diff_pct, diff_abs)
 
-        # Check whether OCR actually extracted any values at all
         any_extracted = any(v is not None for v in rbc_indices.values())
         if not any_extracted:
-            print("[WARN] OCR ran but extracted zero CBC values — treating as OCR failure")
+            logger.warning(f"OCR extracted zero values image={image_hash}")
             ocr_failed = True
 
     except Exception as e:
-        print(f"[WARN] OCR failed: {e}")
-        ocr_text    = ""
+        logger.warning(f"OCR failed image={image_hash} error={e}")
+        ocr_text_redacted = ""
         rbc_indices = {}
         diff_pct    = {}
         diff_abs    = {}
@@ -709,8 +877,6 @@ async def predict(
 
     # ── STAGE 3: Donor Eligibility Evaluation ────────────────────────────────
     if ocr_failed:
-        # OCR could not read the report — do NOT auto-defer.
-        # Report the ViT finding honestly and ask for manual review.
         eval_result = {
             "status":         "NEEDS_REVIEW",
             "reasons":        ["CBC values could not be extracted from the image. Manual review required."],
@@ -738,15 +904,32 @@ async def predict(
         if v is not None:
             flat_metrics[f"{k}_abs"] = v
 
-    final_status = eval_result["status"]   # "ELIGIBLE" | "DEFERRED" | "NEEDS_REVIEW"
+    final_status = eval_result["status"]
 
-    # Final response
+    # Override to NEEDS_REVIEW when ViT confidence is below threshold
+    if low_confidence:
+        final_status = "NEEDS_REVIEW"
+        eval_result = {
+            "status": "NEEDS_REVIEW",
+            "reasons": [f"Low confidence ({conf:.1f}%) below threshold ({VIT_THRESHOLD*100:.0f}%). Manual review required."] + eval_result.get("reasons", []),
+            "reasons_ar": [f"ثقة منخفضة ({conf:.1f}%) — يلزم المراجعة اليدوية."] + eval_result.get("reasons_ar", []),
+            "explanation_en": (
+                f"The AI classifier confidence ({conf:.1f}%) is below the safe threshold "
+                f"({VIT_THRESHOLD*100:.0f}%). The result is flagged for manual review."
+            ),
+            "explanation_ar": (
+                f"ثقة المصنّف ({conf:.1f}%) أقل من الحد الآمن ({VIT_THRESHOLD*100:.0f}%). "
+                "تم وضع علامة على النتيجة للمراجعة اليدوية."
+            ),
+            "gender": gender,
+        }
+
     response.update({
         "eligible":          final_status == "ELIGIBLE",
         "result":            final_status,
         "ocr_failed":        ocr_failed,
         "abnormal_findings": findings,
-        "ocr_text":          ocr_text[:500] if ocr_text else "",
+        "ocr_text":          (ocr_text_redacted[:500] if ocr_text_redacted else ""),
         "metrics": {
             "rbc_indices":       rbc_indices,
             "differential_pct":  diff_pct,
@@ -761,6 +944,14 @@ async def predict(
         },
     })
 
+    elapsed = (time.time() - start_time) * 1000
+    _predict_metric(success=True, latency_ms=elapsed, ocr_failed=ocr_failed)
+    logger.info(
+        f"prediction image={image_hash} result={final_status} "
+        f"vit={vit_label} confidence={conf:.1f} ocr_failed={ocr_failed} "
+        f"findings={len(findings)} latency_ms={elapsed:.0f}"
+    )
+
     return response
 
 
@@ -773,67 +964,127 @@ OPENROUTER_MODEL   = "google/gemini-2.5-flash"
 
 
 class ChatMessage(BaseModel):
-    role:    str
-    content: str
+    role:    str = Field(pattern=r"^(system|user|assistant)$")
+    content: str = Field(max_length=2000)
 
 
 class ChatRequest(BaseModel):
-    messages:   list[ChatMessage]
-    donor_data: dict
+    messages:   list[ChatMessage] = Field(max_length=20)
+    donor_data: dict = Field(default_factory=dict)
+
+
+_MEDICAL_DISCLAIMER = (
+    "\n\n---\n*This explanation is AI-generated and for informational purposes only. "
+    "It does not constitute medical advice. Always consult a qualified healthcare "
+    "professional for medical decisions regarding blood donation.*"
+)
+
+_HARMFUL_PATTERNS = [
+    r"(?i)\bdonate\s+when\s+(?:you\s+)?have\s+(?:a\s+)?fever\b",
+    r"(?i)\bdonate\s+with\s+low\s+hemoglobin\b",
+    r"(?i)\b(?:ignore|disregard)\s+(?:\w+\s+)?(?:doctor|physician|medical)(?:'s)?\s+(?:advice|opinion)\b",
+    r"(?i)\b(?:lie|falsify|fake)\s+(?:about|on)\s+(?:your\s+)?(?:health|symptoms|history)\b",
+]
+
+
+def _contains_harmful_content(text: str) -> bool:
+    for pat in _HARMFUL_PATTERNS:
+        if re.search(pat, text):
+            return True
+    return False
+
+
+def _sanitize_user_input(text: str) -> str:
+    """Strip prompt injection attempts: ignore content that tries to override system role."""
+    stripped = re.sub(r"(?i)(?:(?<=[\n.;])|^)\s*(?:system|assistant)\s*:.*", "", text)
+    return stripped.strip()[:2000]
 
 
 @app.post("/assistant/chat")
-async def assistant_chat(request: ChatRequest):
+@limiter.limit("20/minute")
+async def assistant_chat(request: Request, chat_request: ChatRequest):
     """Conversational AI for explaining results."""
+    start_time = time.time()
     api_key = os.environ.get("AI_ASSISTANT_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="AI assistant not configured.")
 
-    messages = [{"role": m.role, "content": m.content} for m in request.messages]
+    # Input validation — reject empty message list
+    if not chat_request.messages:
+        raise HTTPException(status_code=400, detail="No messages provided.")
 
-    donor_data = request.donor_data
+    # Sanitize user messages for prompt injection attempts (A3)
+    sanitized = []
+    for m in chat_request.messages:
+        clean = _sanitize_user_input(m.content)
+        if clean:
+            sanitized.append({"role": m.role, "content": clean})
+
+    if not sanitized:
+        raise HTTPException(status_code=400, detail="No valid message content after sanitization.")
+
+    # Build system context (A3: system context is server-controlled, not from user input)
+    # A/B test: pick prompt variant (A8)
+    variant = pick_variant()
+    donor_data = chat_request.donor_data
+    system_parts = [variant["system_prompt"]]
     if donor_data:
-        system_context = (
-            "You are a medical AI assistant helping a blood donation center. "
-            "Below is the donor's screening result. Use it to answer questions.\n\n"
-            f"Result: {donor_data.get('status', 'N/A')}\n"
+        system_parts.append(
+            f"Donor Screening Result: {donor_data.get('status', 'N/A')}\n"
             f"Gender: {donor_data.get('gender', 'N/A')}\n"
             f"Confidence: {donor_data.get('confidence', 'N/A')}%\n"
-            f"Explanation: {donor_data.get('explanation_en', 'N/A')}\n"
+            f"Explanation: {donor_data.get('explanation_en', 'N/A')}"
         )
         findings = donor_data.get("abnormal_findings", [])
         if findings:
-            system_context += "\nAbnormal findings:\n"
+            system_parts.append("Abnormal findings:")
             for f in findings:
-                system_context += (
+                system_parts.append(
                     f"- {f.get('label', '?')}: {f.get('value', '?')} "
                     f"{f.get('unit', '')} ({f.get('status', '?')}, "
-                    f"ref: {f.get('range', [None, None])[0]}-{f.get('range', [None, None])[1]})\n"
+                    f"ref: {f.get('range', [None, None])[0]}-{f.get('range', [None, None])[1]})"
                 )
         reasons = donor_data.get("reasons", [])
         if reasons:
-            system_context += "\nReasons:\n" + "\n".join(f"- {r}" for r in reasons)
+            system_parts.append("Reasons:\n" + "\n".join(f"- {r}" for r in reasons))
 
-        messages.insert(0, {"role": "system", "content": system_context})
+    system_context = "\n\n".join(system_parts)
+    sanitized.insert(0, {"role": "system", "content": system_context})
 
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type":  "application/json",
     }
     payload = {
-        "model":      OPENROUTER_MODEL,
-        "messages":   messages,
-        "max_tokens": 800,
-        "temperature": 0.7,
+        "model":       OPENROUTER_MODEL,
+        "messages":    sanitized,
+        "max_tokens":  variant["max_tokens"],
+        "temperature": variant["temperature"],
     }
 
     try:
         resp = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=30)
         resp.raise_for_status()
         reply = resp.json()["choices"][0]["message"]["content"].strip()
+
+        # Content safety filter (A2): block harmful advice
+        if _contains_harmful_content(reply):
+            logger.warning(f"LLM output blocked as potentially harmful")
+            reply = (
+                "I'm unable to provide that information as it may conflict with "
+                "safe blood donation practices. Please consult a healthcare professional "
+                "for medical advice regarding your eligibility."
+            )
+
+        reply += _MEDICAL_DISCLAIMER
+        elapsed = (time.time() - start_time) * 1000
+        _chat_metric(success=True)
+        logger.info(f"chat success variant={variant['id']} latency_ms={elapsed:.0f} messages={len(sanitized)}")
+
         return {"reply": reply}
     except Exception as e:
-        print(f"[ERROR] OpenRouter: {e}")
+        logger.error(f"OpenRouter chat failed: {e}")
+        _chat_metric(success=False)
         raise HTTPException(status_code=502, detail="AI assistant unavailable.")
 
 

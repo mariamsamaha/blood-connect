@@ -288,10 +288,10 @@ class _StoryCardState extends State<_StoryCard>
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(20),
         border: widget.featured
-            ? Border.all(color: AppColors.primaryRed.withOpacity(0.4), width: 1.5)
+            ? Border.all(color: AppColors.primaryRed.withValues(alpha: 0.4), width: 1.5)
             : null,
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 12, offset: const Offset(0, 4)),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 12, offset: const Offset(0, 4)),
         ],
       ),
       child: Column(
@@ -308,7 +308,7 @@ class _StoryCardState extends State<_StoryCard>
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: LinearGradient(
-                      colors: [roleColor.withOpacity(0.8), roleColor],
+                      colors: [roleColor.withValues(alpha: 0.8), roleColor],
                       begin: Alignment.topLeft, end: Alignment.bottomRight,
                     ),
                   ),
@@ -331,7 +331,7 @@ class _StoryCardState extends State<_StoryCard>
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(
-                              color: roleColor.withOpacity(0.12),
+                              color: roleColor.withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
@@ -436,7 +436,7 @@ class _StoryCardState extends State<_StoryCard>
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: AppColors.primaryRed.withOpacity(0.08),
+                      color: AppColors.primaryRed.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(s.bloodType!,
@@ -602,7 +602,7 @@ class _RoleChip extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? AppColors.primaryRed.withOpacity(0.1) : AppColors.background,
+          color: selected ? AppColors.primaryRed.withValues(alpha: 0.1) : AppColors.background,
           border: Border.all(color: selected ? AppColors.primaryRed : AppColors.divider, width: selected ? 2 : 1),
           borderRadius: BorderRadius.circular(12),
         ),

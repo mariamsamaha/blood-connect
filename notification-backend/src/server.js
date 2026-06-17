@@ -10,6 +10,7 @@ const logger = require('./logger');
 admin.initializeApp();
 
 const app = express();
+let server;
 const isProduction = process.env.NODE_ENV === 'production';
 
 if (isProduction) {
@@ -33,7 +34,7 @@ app.use((req, _res, next) => {
 app.use(require('pino-http')({
   logger,
   genReqId: (req) => req.requestId,
-  customLogLevel: (res, err) => {
+  customLogLevel: (res, _err) => {
     if (res.statusCode >= 500) return 'error';
     if (res.statusCode >= 400) return 'warn';
     return 'info';
@@ -233,7 +234,6 @@ if (process.env.NODE_ENV !== 'test') {
   const useTls =
     isProduction && process.env.TLS_KEY_PATH && process.env.TLS_CERT_PATH;
 
-  let server;
   if (useTls) {
     const fs = require('fs');
     const https = require('https');
@@ -246,31 +246,33 @@ if (process.env.NODE_ENV !== 'test') {
         app,
       )
       .listen(port, () => {
-        console.log(`Notification backend listening on HTTPS port ${port}`);
+        logger.info(`Notification backend listening on HTTPS port ${port}`);
       });
   } else {
     const http = require('http');
     server = http.createServer(app).listen(port, () => {
-      console.log(
+      logger.info(
         `Notification backend listening on HTTP port ${port}${isProduction ? ' (terminate TLS at load balancer or set TLS_KEY_PATH/TLS_CERT_PATH)' : ''}`,
       );
     });
   }
 
-  function shutdown(signal) {
-    console.log(`Shutting down gracefully on ${signal}...`);
-    server.close(() => {
-      console.log('Notification server closed');
-      process.exit(0);
-    });
-    setTimeout(() => {
-      console.error('Forced shutdown after timeout');
-      process.exit(1);
-    }, 10_000).unref();
-  }
-
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
+}
+
+function shutdown(signal) {
+  logger.info(`Shutting down gracefully on ${signal}...`);
+  if (server) {
+    server.close(() => {
+      logger.info('Notification server closed');
+      process.exit(0);
+    });
+  }
+  setTimeout(() => {
+    console.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 10_000).unref();
 }
 
 module.exports = app;

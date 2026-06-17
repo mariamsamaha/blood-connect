@@ -24,9 +24,9 @@ class _HospitalDashboardScreenState
   String _code = '';
   HospitalRequestMatch? _match;
   UserProfile? _profile;
-  List<Map<String, dynamic>> _inventory = [];
   Map<String, int> _stats = {'pending': 0, 'today': 0, 'fulfilled': 0};
   List<Map<String, dynamic>> _pendingRequests = [];
+  List<Map<String, dynamic>> _lowInventoryAlerts = [];
   bool _loading = true;
   final FocusNode _codeFocus = FocusNode();
   String _greeting = '';
@@ -77,16 +77,16 @@ class _HospitalDashboardScreenState
 
     if (profile != null) {
       final results = await Future.wait([
-        ref.read(hospitalServiceProvider).getInventory(profile.id),
         ref.read(hospitalServiceProvider).getHospitalStats(profile.id),
         ref.read(hospitalServiceProvider).getPendingRequests(profile.id),
+        ref.read(hospitalServiceProvider).getLowInventoryAlerts(profile.id),
       ]);
       if (!mounted) return;
       setState(() {
         _profile = profile;
-        _inventory = results[0] as List<Map<String, dynamic>>;
-        _stats = results[1] as Map<String, int>;
-        _pendingRequests = results[2] as List<Map<String, dynamic>>;
+        _stats = results[0] as Map<String, int>;
+        _pendingRequests = results[1] as List<Map<String, dynamic>>;
+        _lowInventoryAlerts = results[2] as List<Map<String, dynamic>>;
         _loading = false;
       });
     }
@@ -239,20 +239,11 @@ class _HospitalDashboardScreenState
                 _buildHeader(),
                 const SizedBox(height: 20),
                 _buildStatRow(),
-                if (_inventory.isNotEmpty) ...[
-                  const SizedBox(height: 24),
-                  SectionHeader(
-                    title: 'Blood Inventory',
-                    trailing: TextButton.icon(
-                      onPressed: () => context.push('/hospital/inventory'),
-                      icon: const Icon(Icons.tune, size: 18),
-                      label: const Text('Manage'),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildInventoryRow(),
-                  const SizedBox(height: 24),
+                if (_lowInventoryAlerts.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  _buildLowInventoryBanner(),
                 ],
+                const SizedBox(height: 24),
                 _buildVerifySection(),
                 if (_match != null) ...[
                   const SizedBox(height: 16),
@@ -270,7 +261,7 @@ class _HospitalDashboardScreenState
         currentIndex: 0,
         onTap: (i) {
           if (i == 1) context.go('/stories');
-          if (i == 2) context.go('/profile');
+          if (i == 2) context.go('/hospital/profile');
         },
         items: const [
           BottomNavigationBarItem(
@@ -479,95 +470,58 @@ class _HospitalDashboardScreenState
     );
   }
 
-  Widget _buildInventoryRow() {
-    return SizedBox(
-      height: 110,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: _inventory.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 10),
-        itemBuilder: (context, index) {
-          final i = _inventory[index];
-          final isLow = i['is_low'] as bool? ?? false;
-          final bloodType = '${i['blood_type']}';
-          final units = i['units_available'] as num? ?? 0;
-          final maxUnits = 20.0;
-          final fillRatio = (units / maxUnits).clamp(0.0, 1.0);
-
-          return Container(
-            width: 110,
-            padding: const EdgeInsets.all(14),
+  Widget _buildLowInventoryBanner() {
+    final types = _lowInventoryAlerts.map((a) => '${a['blood_type']}').join(', ');
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.error.withValues(alpha: 0.08),
+            AppColors.warning.withValues(alpha: 0.05),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: isLow
-                    ? [
-                        AppColors.error.withValues(alpha: 0.08),
-                        AppColors.error.withValues(alpha: 0.02),
-                      ]
-                    : [
-                        Theme.of(context).cardColor,
-                        Theme.of(context).cardColor,
-                      ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(AppRadius.lg),
-              border: Border.all(
-                color: isLow
-                    ? AppColors.error.withValues(alpha: 0.3)
-                    : AppColors.divider,
-              ),
+              color: AppColors.error.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(AppRadius.sm),
             ),
+            child: const Icon(Icons.inventory_2_rounded, color: AppColors.error, size: 20),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  bloodType,
+                const Text(
+                  'Low Inventory',
                   style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: isLow
-                        ? AppColors.error
-                        : AppColors.primaryRed,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: AppColors.error,
                   ),
                 ),
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: fillRatio,
-                    minHeight: 6,
-                    backgroundColor: AppColors.divider,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      isLow ? AppColors.error : AppColors.success,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      '$units units',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: isLow
-                            ? AppColors.error
-                            : AppColors.textSecondary,
-                      ),
-                    ),
-                    if (isLow) ...[
-                      const SizedBox(width: 4),
-                      const Icon(Icons.warning_amber_rounded,
-                        size: 12, color: AppColors.error),
-                    ],
-                  ],
+                const SizedBox(height: 2),
+                Text(
+                  '${_lowInventoryAlerts.length} blood type${_lowInventoryAlerts.length == 1 ? '' : 's'} below threshold: $types',
+                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
                 ),
               ],
             ),
-          );
-        },
+          ),
+          TextButton(
+            onPressed: () => context.go('/hospital/profile'),
+            child: const Text('Details'),
+          ),
+        ],
       ),
     );
   }

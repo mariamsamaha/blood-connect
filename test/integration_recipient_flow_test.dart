@@ -25,7 +25,6 @@ class _MockAuth extends Fake implements FirebaseAuth {
 
 class _FakeHttpClient extends http.BaseClient {
   final Map<String, http.Response> _responses = {};
-  final List<http.BaseRequest> _requests = [];
 
   void enqueue(String method, String path, int status, dynamic body) {
     final key = '$method:$path';

@@ -72,7 +72,12 @@ class CircuitBreaker {
     this.lastFailureTime = Date.now();
     this.successCount = 0;
 
-    if (this.state === STATE.HALF_OPEN || this.failureCount >= this.failureThreshold) {
+    if (this.state === STATE.HALF_OPEN) {
+      this.halfOpenRequests = 0;
+      this.state = STATE.OPEN;
+      this.nextAttempt = Date.now() + this.timeoutMs;
+      logger.error({ service: this.name, failureCount: this.failureCount }, 'Circuit breaker opened');
+    } else if (this.failureCount >= this.failureThreshold) {
       this.state = STATE.OPEN;
       this.nextAttempt = Date.now() + this.timeoutMs;
       logger.error({ service: this.name, failureCount: this.failureCount }, 'Circuit breaker opened');
@@ -81,6 +86,7 @@ class CircuitBreaker {
 
   _onSuccess() {
     if (this.state === STATE.HALF_OPEN) {
+      this.halfOpenRequests = 0;
       this.successCount++;
       if (this.successCount >= this.successThreshold) {
         this.state = STATE.CLOSED;

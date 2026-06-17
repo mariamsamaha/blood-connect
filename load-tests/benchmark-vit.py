@@ -1,7 +1,7 @@
 """
 BloodConnect ViT Prediction Benchmark
 
-Measures inference latency and throughput for the Medical ViT model
+Measures inference latency and throughput for the CBCViT model
 on both CPU and GPU (if available).
 
 Usage:
@@ -24,7 +24,7 @@ from torchvision import transforms
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "ai-service"))
 
-from main import MedicalViT, PARAM_ORDER, denormalize  # noqa: E402
+from main import CBCViT  # noqa: E402
 
 
 def create_dummy_image(size=(224, 224)):
@@ -83,22 +83,29 @@ def main():
     args = parser.parse_args()
 
     print("=" * 60)
-    print("BloodConnect ViT Prediction Benchmark")
+    print("BloodConnect CBCViT Prediction Benchmark")
     print("=" * 60)
 
-    model_path = Path(__file__).resolve().parent.parent / "ai-service" / "vit_medical_best.pt"
+    model_path = Path(__file__).resolve().parent.parent / "ai-service" / "model_VIT" / "cbc_vit_best.pt"
     if not model_path.exists():
         print(f"\nModel not found at {model_path}")
-        print("Creating a mock model for benchmarking structure...")
-        model = MedicalViT.create_mock() if hasattr(MedicalViT, 'create_mock') else None
-        if model is None:
-            print("ERROR: Cannot benchmark without model file.")
-            print(f"Place the model at: {model_path}")
-            sys.exit(1)
+        print("Using untrained CBCViT model for structure-only benchmark...")
+        model = CBCViT(freeze_blocks=8, pretrained=False)
     else:
         print(f"\nLoading model from {model_path}...")
-        state_dict = torch.load(model_path, map_location="cpu")
-        model = MedicalViT(state_dict)
+        checkpoint = torch.load(str(model_path), map_location="cpu", weights_only=False)
+
+        if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+            state_dict = checkpoint["model_state_dict"]
+            print(f"  Checkpoint epoch={checkpoint.get('epoch')} "
+                  f"val_acc={checkpoint.get('val_acc', '?'):.4f} "
+                  f"val_f1={checkpoint.get('val_f1', '?'):.4f}")
+        elif isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+            state_dict = checkpoint["state_dict"]
+        else:
+            state_dict = checkpoint
+
+        model = CBCViT(freeze_blocks=8, pretrained=False)
         model.load_state_dict(state_dict, strict=True)
 
     transform = transforms.Compose([
@@ -141,15 +148,15 @@ def main():
         print("\n  No CUDA device found — CPU-only benchmark.")
 
     # Summary table
-    print("\n" + "─" * 60)
+    print("\n" + "\u2500" * 60)
     print("RESULTS")
-    print("─" * 60)
+    print("\u2500" * 60)
     header = f"  {'Device':<8} {'Avg (ms)':<12} {'p50 (ms)':<12} {'p95 (ms)':<12} {'p99 (ms)':<12} {'RPS':<10}"
     print(header)
-    print("  " + "─" * (len(header) - 2))
+    print("  " + "\u2500" * (len(header) - 2))
     for r in results:
         print(f"  {r['device']:<8} {r['avg_ms']:<12} {r['p50_ms']:<12} {r['p95_ms']:<12} {r['p99_ms']:<12} {r['rps']:<10}")
-    print("─" * 60)
+    print("\u2500" * 60)
 
     print("\nMarkdown table:")
     print(f"| Device | Avg (ms) | p50 | p95 | p99 | RPS |")

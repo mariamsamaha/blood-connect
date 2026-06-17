@@ -24,6 +24,7 @@ import 'package:bloodconnect/screens/notification_center_screen.dart';
 import 'package:bloodconnect/screens/inventory_management_screen.dart';
 import 'package:bloodconnect/screens/donor_feedback_submission_screen.dart';
 import 'package:bloodconnect/screens/hospital_feedback_analytics_screen.dart';
+import 'package:bloodconnect/screens/hospital_profile_screen.dart';
 import 'package:bloodconnect/widgets/app_shell.dart';
 
 final _inFlightProfileFetches = <String, Future<UserProfile?>>{};
@@ -134,6 +135,11 @@ GoRouter buildRouter({
             _slideTransition(const HospitalDashboardScreen()),
       ),
       GoRoute(
+        path: '/hospital/profile',
+        pageBuilder: (ctx, s) =>
+            _slideTransition(const HospitalProfileScreen()),
+      ),
+      GoRoute(
         path: '/donor/mission',
         pageBuilder: (ctx, s) => _slideTransition(const DonorMissionScreen()),
       ),
@@ -236,8 +242,8 @@ GoRouter buildRouter({
       final loc = state.matchedLocation;
 
       if (profile.accountType == AccountType.hospital) {
-        if (loc == '/profile' ||
-            loc == '/settings' ||
+        if (loc == '/profile') return '/hospital/profile';
+        if (loc == '/settings' ||
             loc == '/notifications' ||
             loc.startsWith('/hospital/')) return null;
         return '/hospital/dashboard';

@@ -1,4 +1,3 @@
-import 'package:bloodconnect/main.dart';
 import 'package:bloodconnect/models/user_profile.dart';
 import 'package:bloodconnect/screens/ai_prediction_screen.dart';
 import 'package:bloodconnect/theme/app_theme.dart';
@@ -86,7 +85,6 @@ class _AiGateState extends ConsumerState<_AiGate> {
 // ── Step 1: Questions ─────────────────────────────────────────────────────────
 class _QuestionsView extends StatelessWidget {
   const _QuestionsView({
-    super.key,
     required this.feelingWell,
     required this.recentIllness,
     required this.canCheck,

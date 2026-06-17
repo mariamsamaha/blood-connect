@@ -1,4 +1,5 @@
 const Redis = require('ioredis');
+const logger = require('./logger');
 
 const REDIS_URL = process.env.REDIS_URL || '';
 const TOKEN_CACHE_TTL_SEC = parseInt(process.env.TOKEN_CACHE_TTL_SEC || '1800', 10); // 30 min default
@@ -8,7 +9,7 @@ let enabled = false;
 
 function createClient() {
   if (!REDIS_URL) {
-    console.log('Redis: disabled (no REDIS_URL configured)');
+    logger.info('Redis: disabled (no REDIS_URL configured)');
     return null;
   }
 
@@ -22,7 +23,7 @@ function createClient() {
   });
 
   c.on('connect', () => {
-    console.log('Redis: connected');
+    logger.info('Redis: connected');
     enabled = true;
   });
 

@@ -224,6 +224,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_low_inventory_alerts_unique_active
 CREATE INDEX IF NOT EXISTS idx_low_inventory_alerts_created
   ON low_inventory_alerts(created_at DESC);
 
+DROP FUNCTION IF EXISTS check_and_alert_low_inventory();
+
 CREATE OR REPLACE FUNCTION check_and_alert_low_inventory()
 RETURNS TABLE (
     hospital_id UUID,
@@ -263,7 +265,7 @@ BEGIN
                 nearby_donors_count, expires_at, description
             ) VALUES (
                 v_short_id, v_hospital.id, v_inv.blood_type,
-                GREATEST(v_inv.minimum_threshold - v_inv.units_available + 2, 2),
+                1,
                 'urgent', v_hospital.id, v_hospital.hospital_name,
                 (SELECT location FROM users WHERE id = v_hospital.id),
                 'active', TRUE, v_hospital.id,

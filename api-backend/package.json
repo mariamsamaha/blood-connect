@@ -9,6 +9,7 @@
     "dev": "node --watch src/server.js",
     "test": "jest --forceExit --detectOpenHandles",
     "test:e2e": "jest --forceExit --detectOpenHandles --config jest.e2e.config.js",
+    "test:integration": "jest --forceExit --detectOpenHandles --config jest.integration.config.js",
     "lint": "eslint src/ --ext .js --max-warnings 0",
     "lint:fix": "eslint src/ --ext .js --fix",
     "lint:report": "eslint src/ --ext .js --format json --output-file coverage/eslint-report.json",
@@ -31,31 +32,37 @@
     ],
     "coverageThreshold": {
       "global": {
-        "branches": 15,
+        "branches": 18,
         "functions": 15,
-        "lines": 25,
-        "statements": 25
+        "lines": 28,
+        "statements": 28
       },
       "./src/circuit-breaker.js": {
-        "branches": 50,
-        "functions": 80,
-        "lines": 65,
-        "statements": 65
+        "branches": 75,
+        "functions": 90,
+        "lines": 85,
+        "statements": 85
       },
       "./src/errors.js": {
         "branches": 60,
-        "functions": 60,
-        "lines": 60,
-        "statements": 60
+        "functions": 100,
+        "lines": 100,
+        "statements": 100
+      },
+      "./src/auth.js": {
+        "branches": 25,
+        "functions": 15,
+        "lines": 20,
+        "statements": 25
       },
       "./src/db.js": {
         "branches": 80,
-        "functions": 25,
-        "lines": 30,
-        "statements": 30
+        "functions": 50,
+        "lines": 60,
+        "statements": 60
       },
       "./src/metrics.js": {
-        "branches": 20,
+        "branches": 25,
         "functions": 40,
         "lines": 70,
         "statements": 65
@@ -65,6 +72,24 @@
         "functions": 0,
         "lines": 65,
         "statements": 65
+      },
+      "./src/redis.js": {
+        "branches": 55,
+        "functions": 55,
+        "lines": 60,
+        "statements": 60
+      },
+      "./src/slo.js": {
+        "branches": 50,
+        "functions": 60,
+        "lines": 60,
+        "statements": 60
+      },
+      "./src/trace.js": {
+        "branches": 80,
+        "functions": 90,
+        "lines": 85,
+        "statements": 85
       }
     }
   },

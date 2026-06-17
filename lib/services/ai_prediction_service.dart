@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io' show SocketException;
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:bloodconnect/config/app_config.dart';

@@ -226,5 +226,169 @@ describe('API Backend Server', () => {
       expect(res.body.score).toBeCloseTo(0.1);
     });
   });
+
+  describe('GET /api/v1/users/me (not found)', () => {
+    test('returns 404 when user not found in DB', async () => {
+      const db = require('../src/db');
+      db.query.mockResolvedValueOnce([]);
+
+      const res = await request(app)
+        .get('/api/v1/users/me')
+        .set('Authorization', 'Bearer test-token');
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('not_found');
+    });
+  });
+
+  describe('POST /api/v1/users/me/complete', () => {
+    test('returns 400 when dateOfBirth is missing for non-hospital', async () => {
+      const res = await request(app)
+        .post('/api/v1/users/me/complete')
+        .set('Authorization', 'Bearer test-token')
+        .send({ accountType: 'regular' });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('date_of_birth_required');
+    });
+
+    test('returns 400 when dateOfBirth is invalid', async () => {
+      const res = await request(app)
+        .post('/api/v1/users/me/complete')
+        .set('Authorization', 'Bearer test-token')
+        .send({ accountType: 'regular', dateOfBirth: 'not-a-date' });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('invalid_date_of_birth');
+    });
+
+    test('returns 400 when user is under 18', async () => {
+      const res = await request(app)
+        .post('/api/v1/users/me/complete')
+        .set('Authorization', 'Bearer test-token')
+        .send({ accountType: 'regular', dateOfBirth: '2020-01-01' });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('must_be_18_or_older');
+    });
+
+    test('returns 201 when accountType is hospital (no DOB required)', async () => {
+      const db = require('../src/db');
+      db.query
+        .mockResolvedValueOnce([])                           // check by firebase_uid
+        .mockResolvedValueOnce([])                           // check by email
+        .mockResolvedValueOnce([{ id: 'h-new', hospital_name: 'City Hospital' }]);  // INSERT
+
+      const res = await request(app)
+        .post('/api/v1/users/me/complete')
+        .set('Authorization', 'Bearer test-token')
+        .send({
+          accountType: 'hospital',
+          email: 'hosp@test.com',
+          name: 'Test Hosp',
+          hospitalName: 'City Hospital',
+          hospitalCode: 'CH001',
+          latitude: 30.04,
+          longitude: 31.23,
+        });
+      expect(res.status).toBe(201);
+    });
+  });
+
+  describe('PATCH /api/v1/users/me', () => {
+    test('returns 400 when updates is missing', async () => {
+      const res = await request(app)
+        .patch('/api/v1/users/me')
+        .set('Authorization', 'Bearer test-token')
+        .send({});
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('invalid_payload');
+    });
+
+    test('returns 400 when no allowed fields in updates', async () => {
+      const res = await request(app)
+        .patch('/api/v1/users/me')
+        .set('Authorization', 'Bearer test-token')
+        .send({ updates: { disallowed_field: 'value' } });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('no_allowed_fields');
+    });
+  });
+
+  describe('GET /api/v1/hospitals', () => {
+    test('returns hospitals with location-based sorting', async () => {
+      const db = require('../src/db');
+      db.query.mockResolvedValueOnce([{ id: 'h1', hospital_name: 'Test Hosp', distance_km: 5, is_far: 0 }]);
+
+      const res = await request(app)
+        .get('/api/v1/hospitals?lat=30.04&lng=31.23')
+        .set('Authorization', 'Bearer test-token');
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body)).toBe(true);
+      expect(res.body[0].hospital_name).toBe('Test Hosp');
+    });
+  });
+
+  describe('POST /api/v1/requests validation', () => {
+    test('returns 400 for invalid urgency level', async () => {
+      const res = await request(app)
+        .post('/api/v1/requests')
+        .set('Authorization', 'Bearer test-token')
+        .send({
+          requesterId: 'uuid',
+          bloodType: 'O+',
+          unitsNeeded: 1,
+          urgencyLevel: 'invalid',
+          hospitalId: 'uuid',
+          hospitalLat: 30,
+          hospitalLng: 31,
+        });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('invalid_urgency_level');
+    });
+
+    test('returns 400 for negative units', async () => {
+      const res = await request(app)
+        .post('/api/v1/requests')
+        .set('Authorization', 'Bearer test-token')
+        .send({
+          requesterId: 'uuid',
+          bloodType: 'O+',
+          unitsNeeded: -1,
+          urgencyLevel: 'routine',
+          hospitalId: 'uuid',
+          hospitalLat: 30,
+          hospitalLng: 31,
+        });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('unitsNeeded must be a positive integer');
+    });
+  });
+
+  describe('GET /metrics', () => {
+    test('returns Prometheus metrics', async () => {
+      const res = await request(app).get('/metrics');
+      expect(res.status).toBe(200);
+      expect(res.text).toContain('bloodconnect_');
+    });
+  });
+
+  describe('GET /slo', () => {
+    test('returns SLO report with in-memory fallback', async () => {
+      const res = await request(app).get('/slo');
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('targets');
+      expect(res.body).toHaveProperty('windows');
+      expect(res.body.backend).toBe('in-memory-fallback');
+    });
+  });
+
+  describe('Content-Type validation', () => {
+    test('rejects POST with wrong content type', async () => {
+      const res = await request(app)
+        .post('/api/v1/users/me/bootstrap')
+        .set('Authorization', 'Bearer test-token')
+        .set('Content-Type', 'text/plain')
+        .send('raw data');
+      expect(res.status).toBe(415);
+      expect(res.body.error).toBe('unsupported_media_type');
+    });
+  });
 });
 

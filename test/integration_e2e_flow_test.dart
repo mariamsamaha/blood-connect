@@ -4,14 +4,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import 'package:bloodconnect/models/blood_request.dart';
-import 'package:bloodconnect/models/notification_item.dart';
 import 'package:bloodconnect/models/story.dart';
 import 'package:bloodconnect/models/user_profile.dart';
 import 'package:bloodconnect/services/api_client.dart';
 import 'package:bloodconnect/services/donor_service.dart';
 import 'package:bloodconnect/services/hospital_service.dart';
 import 'package:bloodconnect/services/notification_service.dart';
-import 'package:bloodconnect/services/story_service.dart';
 import 'package:bloodconnect/services/user_service.dart';
 
 class _FakeUser extends Fake implements User {
@@ -93,31 +91,6 @@ final _donorProfile = UserProfile.fromJson({
   'date_of_birth': '1990-06-15',
   'total_donations': 0,
   'reward_points': 50,
-});
-
-final _recipientProfile = UserProfile.fromJson({
-  'id': 'recip-1',
-  'firebase_uid': 'fb-recip-1',
-  'email': 'recip@test.com',
-  'name': 'Test Recipient',
-  'blood_type': 'A+',
-  'role': 'recipient',
-  'account_type': 'regular',
-  'donor_status': 'unavailable',
-  'date_of_birth': '1992-03-20',
-});
-
-final _hospitalProfile = UserProfile.fromJson({
-  'id': 'hosp-1',
-  'firebase_uid': 'fb-hosp-1',
-  'email': 'hospital@test.com',
-  'name': 'Test Hospital',
-  'blood_type': '',
-  'role': 'hospital',
-  'account_type': 'hospital',
-  'donor_status': 'unavailable',
-  'hospital_name': 'Test Hospital',
-  'hospital_code': 'TST12345',
 });
 
 final _fakeStory = Story.fromJson({
@@ -217,18 +190,14 @@ void main() {
     late _FakeHttpClient httpClient;
     late ApiClient apiClient;
     late UserService userService;
-    late StoryService storyService;
     late DonorService donorService;
-    late NotificationService notificationService;
     late HospitalService hospitalService;
 
     setUp(() {
       httpClient = _FakeHttpClient();
       apiClient = ApiClient(httpClient: httpClient, auth: _mockAuth);
       userService = UserService(apiClient);
-      storyService = StoryService(apiClient);
       donorService = DonorService(apiClient);
-      notificationService = NotificationService(apiClient);
       hospitalService = HospitalService(apiClient);
     });
 
@@ -269,8 +238,7 @@ void main() {
         '/api/v1/stories/story-1/like',
         body: {},
       );
-      expect(likeResult, isNotNull);
-      expect(likeResult!['liked'], true);
+      expect(likeResult['liked'], true);
 
       // Verify story like count incremented
       final storyResp = await apiClient.getJson('/api/v1/stories/story-1');
@@ -411,7 +379,7 @@ void main() {
 
       // Unlike should return liked: false and NOT create a notification
       expect(result, isNotNull);
-      expect(result!['liked'], false);
+      expect(result['liked'], false);
 
       // No notification related calls should have been made
       // The last enqueued response should be the unlike result

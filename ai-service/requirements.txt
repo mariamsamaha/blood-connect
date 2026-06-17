@@ -3,6 +3,7 @@ uvicorn[standard]==0.29.0
 python-multipart==0.0.9
 python-dotenv>=1.0.1
 requests>=2.31.0
+slowapi>=0.1.9
 Pillow==11.3.0
 torch==2.10.0
 torchvision==0.25.0

@@ -1,6 +1,6 @@
+/* eslint-disable no-console */
 const cluster = require('cluster');
 const os = require('os');
-const path = require('path');
 
 const isProduction = process.env.NODE_ENV === 'production';
 const CLUSTER_ENABLED = process.env.CLUSTER_ENABLED !== 'false' && isProduction;

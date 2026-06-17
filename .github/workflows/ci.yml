@@ -1,0 +1,184 @@
+name: BloodConnect CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  flutter:
+    name: Flutter Analyze & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.x
+      - run: flutter pub get
+      - run: flutter analyze --no-fatal-infos
+      - run: flutter test --coverage
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-coverage
+          path: coverage/
+
+  api-backend:
+    name: API Backend Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api-backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: api-backend/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run lint
+
+  api-e2e-smoke:
+    name: API E2E Smoke Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api-backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: api-backend/package-lock.json
+      - run: npm ci
+      - run: npx jest tests/e2e/ --forceExit
+
+  api-integration:
+    name: API Integration Tests (Postgres + Redis)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api-backend
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: api-backend/package-lock.json
+      - run: npm ci
+      - run: npm run test:integration
+        env:
+          DATABASE_URL: postgres://postgres:test@localhost:5432/test
+          REDIS_URL: redis://localhost:6379
+
+  notification-backend:
+    name: Notification Backend Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: notification-backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: notification-backend/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run lint
+
+  ai-service:
+    name: AI Service Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: ai-service/requirements.txt
+      - run: pip install -r requirements.txt
+      - run: pytest test_main.py -v
+
+  docker-build:
+    name: Docker Image Build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - api-backend
+          - notification-backend
+          - ai-service
+          - gateway
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build ${{ matrix.service }}
+        run: docker build -t bloodconnect-${{ matrix.service }}:ci ./${{ matrix.service }}
+
+  compose-validate:
+    name: Validate Docker Compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose -f docker-compose.yml config
+      - run: docker compose -f docker-compose.gateway.yml config
+
+  secret-scan:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  ci-success:
+    name: CI Gate
+    needs:
+      - flutter
+      - api-backend
+      - api-e2e-smoke
+      - api-integration
+      - notification-backend
+      - ai-service
+      - docker-build
+      - compose-validate
+      - secret-scan
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "All CI checks passed"

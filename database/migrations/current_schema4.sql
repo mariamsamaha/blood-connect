@@ -144,6 +144,20 @@ $$;
 
 
 --
+-- Name: resolve_low_inventory_alerts(uuid, character varying); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.resolve_low_inventory_alerts(p_hospital_id uuid, p_blood_type character varying) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    UPDATE low_inventory_alerts SET alert_status = 'resolved', resolved_at = NOW()
+    WHERE hospital_id = p_hospital_id AND blood_type = p_blood_type AND alert_status IN ('pending', 'notified');
+END;
+$$;
+
+
+--
 -- Name: is_hospital_email(text); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -244,9 +258,10 @@ DECLARE
     v_blood VARCHAR(3);
     v_units INT;
     v_points INT;
+    v_is_auto_request BOOLEAN;
 BEGIN
-    SELECT br.status, br.hospital_id, br.requester_id, br.blood_type, br.units_needed
-    INTO v_status, v_hospital, v_requester, v_blood, v_units
+    SELECT br.status, br.hospital_id, br.requester_id, br.blood_type, br.units_needed, br.is_auto_request
+    INTO v_status, v_hospital, v_requester, v_blood, v_units, v_is_auto_request
     FROM blood_requests br
     WHERE br.id = p_request_id
     FOR UPDATE;
@@ -312,6 +327,10 @@ BEGIN
     VALUES (p_hospital_user_id, v_blood, 1, p_request_id, '1 unit delivered');
 
     PERFORM increment_hospital_inventory(p_hospital_user_id, v_blood, 1);
+
+    IF v_is_auto_request THEN
+        PERFORM resolve_low_inventory_alerts(p_hospital_user_id, v_blood);
+    END IF;
 
     UPDATE users SET
         is_recipient = FALSE,
@@ -447,7 +466,9 @@ CREATE TABLE public.blood_requests (
     CONSTRAINT blood_requests_status_check CHECK ((status = ANY (ARRAY['active'::text, 'in_progress'::text, 'fulfilled'::text, 'cancelled'::text, 'expired'::text]))),
     CONSTRAINT blood_requests_units_fulfilled_check CHECK ((units_fulfilled >= 0)),
     CONSTRAINT blood_requests_units_needed_check CHECK ((units_needed > 0)),
-    CONSTRAINT blood_requests_urgency_level_check CHECK ((urgency_level = ANY (ARRAY['routine'::text, 'urgent'::text, 'critical'::text])))
+    CONSTRAINT blood_requests_urgency_level_check CHECK ((urgency_level = ANY (ARRAY['routine'::text, 'urgent'::text, 'critical'::text]))),
+    is_auto_request boolean DEFAULT false,
+    auto_request_source_hospital_id uuid
 );
 
 
@@ -613,6 +634,26 @@ CREATE TABLE public.inventory_delivery_log (
     note text,
     created_at timestamp without time zone DEFAULT now(),
     CONSTRAINT inventory_delivery_log_units_check CHECK ((units > 0))
+);
+
+
+--
+-- Name: low_inventory_alerts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.low_inventory_alerts (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    hospital_id uuid NOT NULL,
+    blood_type character varying(3) NOT NULL,
+    request_id uuid,
+    units_available_at_alert integer NOT NULL,
+    threshold_at_alert integer NOT NULL,
+    alert_status text DEFAULT 'pending'::text NOT NULL,
+    notified_donors_count integer DEFAULT 0,
+    resolved_at timestamp without time zone,
+    created_at timestamp without time zone DEFAULT now(),
+    CONSTRAINT low_inventory_alerts_alert_status_check CHECK ((alert_status = ANY (ARRAY['pending'::text, 'notified'::text, 'resolved'::text, 'suppressed'::text]))),
+    CONSTRAINT low_inventory_alerts_blood_type_check CHECK (((blood_type)::text = ANY ((ARRAY['A+'::character varying, 'A-'::character varying, 'B+'::character varying, 'B-'::character varying, 'O+'::character varying, 'O-'::character varying, 'AB+'::character varying, 'AB-'::character varying])::text[])))
 );
 
 
@@ -1377,6 +1418,30 @@ ALTER TABLE ONLY public.inventory_delivery_log
 
 ALTER TABLE ONLY public.inventory_delivery_log
     ADD CONSTRAINT inventory_delivery_log_request_id_fkey FOREIGN KEY (request_id) REFERENCES public.blood_requests(id) ON DELETE SET NULL;
+
+
+--
+-- Name: low_inventory_alerts low_inventory_alerts_hospital_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.low_inventory_alerts
+    ADD CONSTRAINT low_inventory_alerts_hospital_id_fkey FOREIGN KEY (hospital_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: low_inventory_alerts low_inventory_alerts_request_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.low_inventory_alerts
+    ADD CONSTRAINT low_inventory_alerts_request_id_fkey FOREIGN KEY (request_id) REFERENCES public.blood_requests(id) ON DELETE SET NULL;
+
+
+--
+-- Name: blood_requests blood_requests_auto_request_source_hospital_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blood_requests
+    ADD CONSTRAINT blood_requests_auto_request_source_hospital_id_fkey FOREIGN KEY (auto_request_source_hospital_id) REFERENCES public.users(id) ON DELETE SET NULL;
 
 
 --

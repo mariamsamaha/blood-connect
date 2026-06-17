@@ -5,7 +5,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import 'package:bloodconnect/services/api_client.dart';
 import 'package:bloodconnect/services/hospital_service.dart';
-import 'package:bloodconnect/models/hospital_request_match.dart';
 
 class _FakeUser extends Fake implements User {
   @override
@@ -25,7 +24,6 @@ class _MockAuth extends Fake implements FirebaseAuth {
 
 class _FakeHttpClient extends http.BaseClient {
   final Map<String, http.Response> _responses = {};
-  final List<http.BaseRequest> _requests = [];
 
   void enqueue(String method, String path, int status, dynamic body) {
     final key = '$method:$path';

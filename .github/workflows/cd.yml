@@ -1,0 +1,109 @@
+name: BloodConnect CD
+
+on:
+  workflow_run:
+    workflows: [BloodConnect CI]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        required: true
+        default: staging
+        options:
+          - staging
+          - production
+      skip_deploy_hooks:
+        description: Skip Render/Fly deploy hooks
+        type: boolean
+        default: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  gate:
+    name: Deployment Gate
+    if: >
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.env.outputs.environment }}
+      skip_hooks: ${{ steps.env.outputs.skip_hooks }}
+    steps:
+      - id: env
+        run: |
+          ENV="${{ github.event.inputs.environment || 'staging' }}"
+          SKIP="${{ github.event.inputs.skip_deploy_hooks || 'false' }}"
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+          echo "skip_hooks=$SKIP" >> $GITHUB_OUTPUT
+
+  publish:
+    name: Publish Images to GHCR
+    needs: gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        service:
+          - api-backend
+          - notification-backend
+          - ai-service
+          - gateway
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./${{ matrix.service }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository }}/bloodconnect-${{ matrix.service }}:${{ env.IMAGE_TAG }}
+            ${{ env.REGISTRY }}/${{ github.repository }}/bloodconnect-${{ matrix.service }}:${{ needs.gate.outputs.environment }}
+            ${{ env.REGISTRY }}/${{ github.repository }}/bloodconnect-${{ matrix.service }}:latest
+
+  deploy:
+    name: Deploy to ${{ needs.gate.outputs.environment }}
+    needs: [gate, publish]
+    runs-on: ubuntu-latest
+    environment: ${{ needs.gate.outputs.environment }}
+    steps:
+      - name: Render Deploy Hook — API
+        if: ${{ needs.gate.outputs.skip_hooks != 'true' && secrets.RENDER_DEPLOY_HOOK_API != '' }}
+        run: curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_API }}"
+      - name: Render Deploy Hook — Notification
+        if: ${{ needs.gate.outputs.skip_hooks != 'true' && secrets.RENDER_DEPLOY_HOOK_NOTIFICATION != '' }}
+        run: curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_NOTIFICATION }}"
+      - name: Render Deploy Hook — AI
+        if: ${{ needs.gate.outputs.skip_hooks != 'true' && secrets.RENDER_DEPLOY_HOOK_AI != '' }}
+        run: curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_AI }}"
+
+  post-deploy:
+    name: Post-Deploy Health Checks
+    needs: [gate, deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for deployment
+        run: sleep 30
+      - name: Check API health
+        run: |
+          curl -f --retry 5 --retry-delay 10 \
+            "${{ vars.DEPLOYED_API_URL || 'http://localhost:8090' }}/health/db" \
+            || (echo "Health check failed" && exit 1)
+      - name: Check API status
+        run: |
+          curl -f --retry 3 \
+            "${{ vars.DEPLOYED_API_URL || 'http://localhost:8090' }}/" \
+            || (echo "Status check failed" && exit 1)

@@ -53,9 +53,9 @@ class DeferredEnqueueMutation {
 
 class _TimeoutClient extends http.BaseClient {
   final http.Client _inner;
-  final Duration timeout;
+  final Duration timeout = const Duration(seconds: 15);
 
-  _TimeoutClient(this._inner, {this.timeout = const Duration(seconds: 15)});
+  _TimeoutClient(this._inner);
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) =>

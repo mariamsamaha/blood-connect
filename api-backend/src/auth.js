@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const admin = require('firebase-admin');
 const redis = require('./redis');
+const logger = require('./logger');
 
 function resolveCredentialPath() {
   const envPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
@@ -57,7 +58,7 @@ function initializeFirebaseAdmin() {
     projectId: resolvedProject,
   });
 
-  console.log(`Firebase Admin ready (project: ${resolvedProject}, key: ${credPath})`);
+  logger.info(`Firebase Admin ready (project: ${resolvedProject}, key: ${credPath})`);
 }
 
 if (process.env.NODE_ENV !== 'test') {

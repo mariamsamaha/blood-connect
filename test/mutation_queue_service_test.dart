@@ -131,11 +131,9 @@ void main() {
         initialStatus: ConnectivityStatus.online,
       );
 
-      int attempts = 0;
       final service = MutationQueueService(
         maxRetries: 0, // immediate dead letter
         executor: (endpoint, method, payload) async {
-          attempts++;
           throw Exception('Simulated failure');
         },
         syncManager: syncManager,

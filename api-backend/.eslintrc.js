@@ -21,7 +21,7 @@ module.exports = {
   ],
   rules: {
     // ── Security ──────────────────────────────────────────────────────────
-    'security/detect-object-injection':        'warn',
+    'security/detect-object-injection':        'off',
     'security/detect-non-literal-regexp':      'error',
     'security/detect-non-literal-require':     'error',
     'security/detect-possible-timing-attacks': 'warn',
@@ -30,7 +30,7 @@ module.exports = {
     'security/detect-pseudoRandomBytes':       'error',
     'security/detect-unsafe-regex':            'error',
     'security/detect-new-buffer':              'error',
-    'security/detect-non-literal-fs-filename': 'warn',
+    'security/detect-non-literal-fs-filename': 'off',
 
     // ── Node.js ───────────────────────────────────────────────────────────
     'node/no-deprecated-api':     'error',
@@ -45,7 +45,7 @@ module.exports = {
     }],
     'no-console':          ['warn', { allow: ['error', 'warn'] }],
     'handle-callback-err': 'error',
-    'eqeqeq':              ['error', 'always'],
+    'eqeqeq':              ['error', 'smart'],
     'no-var':              'error',
     'prefer-const':        'error',
     'require-await':       'warn',

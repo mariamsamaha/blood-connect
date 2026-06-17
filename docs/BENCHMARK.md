@@ -30,37 +30,39 @@ Flow test: 20 sequential flows (3 warmup, 17 measured), single user.
 
 | Step | Avg | p50 | p95 | p99 |
 |------|-----|-----|-----|-----|
-| `POST /api/v1/requests` | — | — | — | — |
-| `GET /api/v1/donor/matches` | — | — | — | — |
-| `POST /api/v1/donor/responses/accept` | — | — | — | — |
-| `POST /api/v1/hospital/verify` | — | — | — | — |
+| `POST /api/v1/requests` | * | * | * | * |
+| `GET /api/v1/donor/matches` | * | * | * | * |
+| `POST /api/v1/donor/responses/accept` | * | * | * | * |
+| `POST /api/v1/hospital/verify` | * | * | * | * |
 
 ### Total Flow
 
 | Metric | Value |
 |--------|-------|
-| Avg | — |
-| p50 | — |
-| p95 | — |
-| p99 | — |
+| Avg | * |
+| p50 | * |
+| p95 | * |
+| p99 | * |
 
+> *Requires live system with Supabase + Firebase credentials.  
 > Run `FIREBASE_TOKEN="<token>" node load-tests/benchmark-e2e.js` to populate.
 
 ---
 
 ## 3. ViT Prediction Endpoint — GPU vs CPU (1.2.3)
 
-Benchmark the Vision Transformer medical image prediction model.
+Benchmark the CBCViT medical image prediction model. See [MODEL_ACCURACY.md](MODEL_ACCURACY.md) for model accuracy metrics.
 
 ### Device Comparison
 
 | Device | Avg (ms) | p50 (ms) | p95 (ms) | p99 (ms) | RPS |
 |--------|----------|----------|----------|----------|-----|
-| CPU | — | — | — | — | — |
-| GPU (CUDA) | — | — | — | — | — |
+| CPU | * | * | * | * | * |
+| GPU (CUDA) | * | * | * | * | * |
 
 ### Speedup
 
+> *Requires model weights file at `ai-service/model_VIT/cbc_vit_best.pt`.  
 > Run `python load-tests/benchmark-vit.py` with the model file present to populate.
 
 ---
@@ -73,23 +75,23 @@ Tested with `DISABLE_RATE_LIMIT=true` to compare auth overhead vs PostGIS query 
 
 | Endpoint | RPS | p50 | p95 | p99 |
 |----------|-----|-----|-----|-----|
-| Unauthenticated — Static JSON | — | — | — | — |
-| Unauthenticated — Health | — | — | — | — |
-| Auth — Users Me | — | — | — | — |
-| Auth — Hospitals | — | — | — | — |
-| Auth — Donor Matches (PostGIS) | — | — | — | — |
-| Auth — AI Eligibility | — | — | — | — |
+| Unauthenticated — Static JSON | * | * | * | * |
+| Unauthenticated — Health | * | * | * | * |
+| Auth — Users Me | * | * | * | * |
+| Auth — Hospitals | * | * | * | * |
+| Auth — Donor Matches (PostGIS) | * | * | * | * |
+| Auth — AI Eligibility | * | * | * | * |
 
 ### Without Rate Limiting (DISABLE_RATE_LIMIT=true)
 
 | Endpoint | RPS | p50 | p95 | p99 |
 |----------|-----|-----|-----|-----|
-| Unauthenticated — Static JSON | — | — | — | — |
-| Unauthenticated — Health | — | — | — | — |
-| Auth — Users Me | — | — | — | — |
-| Auth — Hospitals | — | — | — | — |
-| Auth — Donor Matches (PostGIS) | — | — | — | — |
-| Auth — AI Eligibility | — | — | — | — |
+| Unauthenticated — Static JSON | * | * | * | * |
+| Unauthenticated — Health | * | * | * | * |
+| Auth — Users Me | * | * | * | * |
+| Auth — Hospitals | * | * | * | * |
+| Auth — Donor Matches (PostGIS) | * | * | * | * |
+| Auth — AI Eligibility | * | * | * | * |
 
 ### Observations
 
@@ -117,9 +119,12 @@ The Firebase Admin SDK (`firebase-admin`) internally caches JWK public keys fetc
 
 | Metric | Before (no Redis) | After (with Redis) | Improvement |
 |--------|-------------------|--------------------|-------------|
-| RPS | — | — | — |
-| p50 latency | — | — | — |
-| p95 latency | — | — | — |
+| RPS | * | * | * |
+| p50 latency | * | * | * |
+| p95 latency | * | * | * |
+
+> *Requires running Redis instance + Firebase token.  
+> See `docker-compose.yml` for Redis setup.
 
 ### Setup
 
@@ -169,10 +174,11 @@ Tested with `docker-compose -f docker-compose.yml -f docker-compose.gateway.yml 
 
 | Endpoint | RPS | p50 | p95 | p99 |
 |----------|-----|-----|-----|-----|
-| `GET /` (health) | — | — | — | — |
-| `GET /metrics` | — | — | — | — |
-| `GET /slo` | — | — | — | — |
+| `GET /` (health) | * | * | * | * |
+| `GET /metrics` | * | * | * | * |
+| `GET /slo` | * | * | * | * |
 
+> *Requires scaled Docker stack: `docker compose -f docker-compose.yml -f docker-compose.gateway.yml -f docker-compose.scale.yml up -d`  
 > Run `node load-tests/benchmark-scale.js` with the scaled stack to populate.
 > See `docker-compose.scale.yml` for the replica configuration.
 
@@ -192,9 +198,13 @@ Tested with `docker-compose -f docker-compose.yml -f docker-compose.gateway.yml 
 | Max RPS (health, single worker) | ~500 | 695 | ✅ Exceeds |
 | p95 latency (health) | <50ms | 41ms | ✅ |
 | p99 latency (health) | — | 46ms | ✅ |
-| Auth RPS (single worker, w/ Redis) | — | — | 🟡 TBD |
-| ViT CPU inference latency | — | — | 🟡 TBD |
-| ViT GPU inference latency | — | — | 🟡 TBD |
+| Auth RPS (single worker, w/ Redis) | — | * | 🟡 Needs live run |
+| ViT CPU inference latency | — | * | 🟡 Needs model file |
+| ViT GPU inference latency | — | * | 🟡 Needs GPU + model |
+| E2E flow latency (p95) | — | * | 🟡 Needs Firebase token |
+| Horizontal scaling (3 replicas, health) | — | * | 🟡 Needs scaled stack |
+
+> *Marked items require a live environment with credentials to run. See individual section instructions.
 
 ---
 

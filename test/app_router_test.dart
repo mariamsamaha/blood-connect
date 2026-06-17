@@ -1,8 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:bloodconnect/routing/app_router.dart';
 import 'package:bloodconnect/models/user_profile.dart';
-import 'package:bloodconnect/services/auth_service.dart';
-import 'package:bloodconnect/services/user_service.dart';
 
 void main() {
   group('clearProfileCache', () {

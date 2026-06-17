@@ -380,21 +380,6 @@ class _CreateRequestScreenState extends ConsumerState<CreateRequestScreen> {
     );
   }
 
-  String _stepTitle(int step) {
-    switch (step) {
-      case 0:
-        return 'Blood Type';
-      case 1:
-        return 'Quantity';
-      case 2:
-        return 'Urgency';
-      case 3:
-        return 'Hospital';
-      default:
-        return 'Details';
-    }
-  }
-
   bool _canProceedForStep() => _validationMessageForStep() == null;
 
   String? _validationMessageForStep() {

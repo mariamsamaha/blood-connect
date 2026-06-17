@@ -1,6 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:bloodconnect/models/user_profile.dart';
 import 'package:bloodconnect/services/api_client.dart';
 import 'package:bloodconnect/services/user_service.dart';
 
@@ -11,7 +10,6 @@ class _MockApiClient extends Fake implements ApiClient {
   Map<String, dynamic> _postJsonResult = <String, dynamic>{};
   List<Map<String, dynamic>> _getJsonListResult = [];
   bool? _patchCalled;
-  String? _lastPath;
 
   Future<Map<String, dynamic>?> Function(String, {Map<String, String>? query, bool forceRefresh})? onGetJson;
   Future<Map<String, dynamic>> Function(String, {Object? body})? onPostJson;
@@ -40,7 +38,6 @@ class _MockApiClient extends Fake implements ApiClient {
   @override
   Future<void> patchJson(String path, {Object? body}) async {
     _patchCalled = true;
-    _lastPath = path;
     if (path.contains('fail')) throw Exception('fail');
   }
 }
