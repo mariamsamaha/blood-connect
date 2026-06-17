@@ -25,10 +25,9 @@ def test_health_endpoint():
     r = client.get("/health")
     assert r.status_code == 200
     body = r.json()
-    assert "api_status" in body
-    assert body["api_status"] == "ONLINE"
-    assert body["version"] == "2.2.0"
-    assert body["thresholds_optimized"] is True
+    assert "status" in body
+    assert body["status"] == "ONLINE"
+    assert body["version"] == "3.0.1"
 
 
 # ─── 2. Endpoint Contract ─────────────────────────────────────────────────────

@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY fine_tuned_qwen2_vl_medical/ ./fine_tuned_qwen2_vl_medical/
+COPY model_VIT/ ./model_VIT/
 COPY main.py .
 COPY conftest.py .
 

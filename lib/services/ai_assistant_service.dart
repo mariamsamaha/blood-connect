@@ -51,7 +51,7 @@ class AiAssistantService {
       uri,
       headers: {'Content-Type': 'application/json'},
       body: body,
-    ).timeout(const Duration(seconds: 30));
+    ).timeout(const Duration(seconds: 300));
 
     debugPrint('[AI Assistant] Response: ${response.statusCode}');
 

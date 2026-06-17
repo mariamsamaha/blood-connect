@@ -1,5 +1,5 @@
 """
-BloodConnect AI Service  v3.0.1 (Production)
+BloodConnect AI Service  v3.0.2 (Production)
 ================================
 Complete 3-stage pipeline:
   Stage 1: ViT classifier  → Normal / Abnormal
@@ -11,6 +11,11 @@ POST /api/v1/screen-report -- alias
 POST /assistant/chat     -- conversational AI (OpenRouter)
 GET  /health
 GET  /status            -- debugging
+
+Architecture note:
+  CBCViT matches the training notebook (Cell 6) exactly:
+    - cls_head: LayerNorm → Dropout(0.3) → Linear(768,256) → GELU → Dropout(0.2) → Linear(256,2)
+    - reg_head: LayerNorm → Dropout(0.3) → Linear(768,512) → GELU → Dropout(0.2) → Linear(512,256) → GELU → Linear(256,15)
 """
 
 from pathlib import Path
@@ -24,6 +29,7 @@ import requests
 from contextlib import asynccontextmanager
 
 import torch
+import torch.nn as nn
 from torchvision import transforms
 from PIL import Image
 import pytesseract
@@ -36,7 +42,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Tesseract Configuration (WINDOWS)
+# Tesseract Configuration (WINDOWS / LINUX)
 # ─────────────────────────────────────────────────────────────────────────────
 
 TESSERACT_PATHS = [
@@ -49,7 +55,7 @@ TESSERACT_PATHS = [
 TESSERACT_FOUND = False
 for tess_path in TESSERACT_PATHS:
     if os.path.exists(tess_path):
-        pytesseract.pytesseract.pytesseract_cmd = tess_path
+        pytesseract.pytesseract.tesseract_cmd = tess_path
         TESSERACT_FOUND = True
         print(f"[OK] Tesseract: {tess_path}")
         break
@@ -69,16 +75,16 @@ VIT_WEIGHTS_PATH = os.getenv(
 IMG_SIZE = 224
 VIT_THRESHOLD = 0.50
 
-MALE_MIN_HB = 13.5
+MALE_MIN_HB   = 13.5
 FEMALE_MIN_HB = 12.5
-MALE_MAX_HB = 17.5
+MALE_MAX_HB   = 17.5
 FEMALE_MAX_HB = 16.0
 
 print(f"[CONFIG] ViT weights: {Path(VIT_WEIGHTS_PATH).resolve()}")
 print(f"[CONFIG] Weights exist: {Path(VIT_WEIGHTS_PATH).exists()}")
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Image transforms
+# Image transforms (identical to notebook VAL_TRANSFORM)
 # ─────────────────────────────────────────────────────────────────────────────
 
 VAL_TRANSFORM = transforms.Compose([
@@ -89,7 +95,7 @@ VAL_TRANSFORM = transforms.Compose([
 ])
 
 # ─────────────────────────────────────────────────────────────────────────────
-# OCR Helpers (with bug fixes from production code)
+# OCR Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
 def extract_text(pil_image: Image.Image) -> str:
@@ -128,7 +134,42 @@ def safe_pct_value(token: str):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CBC Parser (with all bug fixes)
+# Plausibility clamp — fixes OCR decimal-drop errors (e.g. "316" → 31.6)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Physiological limits: values outside these are OCR misreads, not real results.
+_PLAUSIBLE = {
+    "haemoglobin":    (4.0,   25.0),
+    "hematocrit":     (10.0,  70.0),
+    "rbc_count":      (1.0,   10.0),
+    "MCV":            (50.0,  130.0),
+    "MCH":            (10.0,  50.0),
+    "MCHC":           (20.0,  45.0),   # e.g. "316" → 31.6
+    "RDW":            (5.0,   30.0),
+    "platelet_count": (10.0,  2000.0), # wide range — don't auto-fix
+    "TLC":            (0.5,   30.0),   # e.g. "49" → 4.9
+}
+
+def _plausibility_fix(key: str, value):
+    """
+    If extracted value is outside physiological range, try dividing by 10.
+    Returns fixed value, or None if still implausible (triggers NEEDS_REVIEW).
+    """
+    if value is None or key not in _PLAUSIBLE:
+        return value
+    lo, hi = _PLAUSIBLE[key]
+    if lo <= value <= hi:
+        return value
+    fixed = round(value / 10, 2)
+    if lo <= fixed <= hi:
+        print(f"[PLAUSIBILITY] {key}: {value} → {fixed} (OCR dropped decimal)")
+        return fixed
+    print(f"[PLAUSIBILITY] {key}: {value} implausible even after /10 → None")
+    return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CBC Parser
 # ─────────────────────────────────────────────────────────────────────────────
 
 DIFF_CELLS = ["neutrophils", "lymphocytes", "monocytes",
@@ -202,9 +243,9 @@ def parse_cbc(raw_text: str):
 
     # BUG-E: Use \s+ (one-or-more space) between name and value
     rbc_indices = {
-        "haemoglobin":    first_float(r"H[ae]{1,2}m[oa]globin\s+(\d+\.?\d*)"),
-        "hematocrit":     first_float(r"H[ae]{1,2}matocrit(?:\s*\(PCV\))?\s+(\d+\.?\d*)"),
-        "rbc_count":      first_float(r"(?:RBC[s]?\s*Count|Red\s*cell\s*count)\s+(\d+\.?\d*)"),
+        "haemoglobin":    first_float(r"H[ae]{1,2}m[oa]globin(?:\s*\([^)]*\))?\s+(\d+\.?\d*)"),
+        "hematocrit":     first_float(r"H[ae]{1,2}matocrit(?:\s*\([^)]*\))?\s+(\d+\.?\d*)"),
+        "rbc_count":      first_float(r"(?:RBC[s]?\s*Count|Red\s*cell\s*count)(?:\s*\([^)]*\))?\s+(\d+\.?\d*)"),
         "MCV":            first_float(r"MCV\s+(\d+\.?\d*)"),
         "MCH":            first_float(r"\bMCH\b\s+(\d+\.?\d*)"),
         "MCHC":           first_float(r"MCHC\s+(\d+\.?\d*)"),
@@ -212,6 +253,8 @@ def parse_cbc(raw_text: str):
         "platelet_count": first_float(r"Platelet(?:s)?\s*(?:Count)?\s*(?:\([^)]*\))?\s+(\d+\.?\d*)"),
         "TLC":            first_float(r"(?:T\.?L\.?C|Total\s+Leuc[oa]cytic\s+Count(?:\s*\([^)]*\))?|WBC)\s+(\d+\.?\d*)"),
     }
+    # Apply plausibility fix to catch OCR decimal-drop errors (e.g. "316"→31.6, "49"→4.9)
+    rbc_indices = {k: _plausibility_fix(k, v) for k, v in rbc_indices.items()}
 
     diff_pct, diff_abs = {}, {}
     for cell in DIFF_CELLS:
@@ -278,7 +321,7 @@ FEATURE_UNITS = {
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Rule engine - produces findings in exact format user expects
+# Rule engine
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _check(metrics: dict, ranges: dict, value_label: str, unit: str = "") -> list:
@@ -293,7 +336,7 @@ def _check(metrics: dict, ranges: dict, value_label: str, unit: str = "") -> lis
             status = "LOW"
         elif v > high:
             status = "HIGH"
-        
+
         if status:
             issues.append({
                 "feature": k,
@@ -311,8 +354,8 @@ def analyze_all(rbc_indices, diff_pct, diff_abs) -> list:
     """Analyze all CBC metrics. Returns list of abnormal findings."""
     issues = []
     issues += _check(rbc_indices, RANGES_RBC, "absolute")
-    issues += _check(diff_abs, RANGES_DIFF_ABS, "absolute (×10⁹/L)", "×10⁹/L")
-    issues += _check(diff_pct, RANGES_DIFF_PCT, "percentage (%)", "%")
+    issues += _check(diff_abs,    RANGES_DIFF_ABS, "absolute (×10⁹/L)", "×10⁹/L")
+    issues += _check(diff_pct,    RANGES_DIFF_PCT, "percentage (%)",     "%")
     return issues
 
 
@@ -323,8 +366,8 @@ def analyze_all(rbc_indices, diff_pct, diff_abs) -> list:
 def run_donor_evaluation(rbc_indices: dict, diff_pct: dict, gender: str = "male") -> dict:
     """Evaluate donor eligibility from CBC values."""
     is_deferred = False
-    reasons_en = []
-    reasons_ar = []
+    reasons_en  = []
+    reasons_ar  = []
 
     hb_min = FEMALE_MIN_HB if gender.lower() == "female" else MALE_MIN_HB
     hb_max = FEMALE_MAX_HB if gender.lower() == "female" else MALE_MAX_HB
@@ -360,7 +403,7 @@ def run_donor_evaluation(rbc_indices: dict, diff_pct: dict, gender: str = "male"
             reasons_ar.append(f"عدد الصفيحات ({plt}) {issue} المعدل الآمن.")
 
     status = "DEFERRED" if is_deferred else "ELIGIBLE"
-    
+
     if status == "ELIGIBLE":
         explanation_en = "All CBC parameters within acceptable ranges."
         explanation_ar = "جميع المعايير ضمن النطاقات المقبولة."
@@ -369,56 +412,103 @@ def run_donor_evaluation(rbc_indices: dict, diff_pct: dict, gender: str = "male"
         explanation_ar = "تأجيل مؤقت: " + "; ".join(reasons_ar)
 
     return {
-        "status": status,
-        "reasons": reasons_en,
-        "reasons_ar": reasons_ar,
+        "status":         status,
+        "reasons":        reasons_en,
+        "reasons_ar":     reasons_ar,
         "explanation_en": explanation_en,
         "explanation_ar": explanation_ar,
-        "gender": gender,
+        "gender":         gender,
     }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ViT Model
+# CBCViT Model — EXACT match to notebook Cell 6
 # ─────────────────────────────────────────────────────────────────────────────
 
-vit_model = None
-vit_device = None
+class CBCViT(nn.Module):
+    """
+    ViT-B/16 backbone with two task heads.
 
+    Architecture
+    ─────────────
+    image (3×224×224)
+      └─ ViT-B/16 → [CLS] token (d=768)
+            ├─ cls_head  → 2   (Normal / Abnormal)
+            └─ reg_head  → 15  (CBC metric values)
 
-class MedicalViT(torch.nn.Module):
-    def __init__(self, num_classes=2, num_reg=15):
+    CBC fields (in order):
+        haemoglobin, hematocrit, red_cell_count,
+        MCV, MCH, MCHC, RDW,
+        platelet_count, TLC,
+        neutrophils, lymphocytes, monocytes,
+        eosinophils, basophils, segmented
+    """
+
+    CBC_FIELDS = [
+        "haemoglobin", "hematocrit", "red_cell_count",
+        "MCV", "MCH", "MCHC", "RDW",
+        "platelet_count", "TLC",
+        "neutrophils", "lymphocytes", "monocytes",
+        "eosinophils", "basophils", "segmented",
+    ]
+    NUM_METRICS = len(CBC_FIELDS)  # 15
+
+    def __init__(self, freeze_blocks: int = 8, pretrained: bool = False):
         super().__init__()
         import timm
+
+        # Backbone — identical call to notebook
         self.backbone = timm.create_model(
-            "vit_base_patch16_224", pretrained=False, num_classes=0,
+            "vit_base_patch16_224",
+            pretrained=pretrained,
+            num_classes=0,        # returns [CLS] embedding (d=768)
         )
-        embed_dim = self.backbone.num_features
+        embed_dim = self.backbone.embed_dim  # 768
 
-        self.cls_head = torch.nn.Sequential(
-            torch.nn.LayerNorm(embed_dim),
-            torch.nn.Dropout(0.3),
-            torch.nn.Linear(embed_dim, 256),
-            torch.nn.ReLU(inplace=True),
-            torch.nn.Dropout(0.3),
-            torch.nn.Linear(256, num_classes),
+        # Freeze patch embed + early blocks (mirrors notebook)
+        for p in self.backbone.patch_embed.parameters():
+            p.requires_grad = False
+        for block in self.backbone.blocks[:freeze_blocks]:
+            for p in block.parameters():
+                p.requires_grad = False
+
+        # Head A — binary classification
+        # Notebook: LayerNorm → Dropout(0.3) → Linear(768,256) → GELU → Dropout(0.2) → Linear(256,2)
+        self.cls_head = nn.Sequential(
+            nn.LayerNorm(embed_dim),
+            nn.Dropout(0.3),
+            nn.Linear(embed_dim, 256),
+            nn.GELU(),
+            nn.Dropout(0.2),
+            nn.Linear(256, 2),
         )
 
-        self.reg_head = torch.nn.Sequential(
-            torch.nn.LayerNorm(embed_dim),
-            torch.nn.Dropout(0.3),
-            torch.nn.Linear(embed_dim, 512),
-            torch.nn.ReLU(inplace=True),
-            torch.nn.Dropout(0.3),
-            torch.nn.Linear(512, 256),
-            torch.nn.Dropout(0.3),
-            torch.nn.Linear(256, num_reg),
+        # Head B — 15-value regression
+        # Notebook: LayerNorm → Dropout(0.3) → Linear(768,512) → GELU → Dropout(0.2) → Linear(512,256) → GELU → Linear(256,15)
+        self.reg_head = nn.Sequential(
+            nn.LayerNorm(embed_dim),
+            nn.Dropout(0.3),
+            nn.Linear(embed_dim, 512),
+            nn.GELU(),
+            nn.Dropout(0.2),
+            nn.Linear(512, 256),
+            nn.GELU(),
+            nn.Linear(256, self.NUM_METRICS),
         )
 
     def forward(self, x):
-        features = self.backbone(x)
-        cls_out = self.cls_head(features)
-        return cls_out, None
+        features   = self.backbone(x)           # (B, 768)
+        cls_logits = self.cls_head(features)    # (B, 2)
+        cbc_values = self.reg_head(features)    # (B, 15)
+        return cls_logits, cbc_values
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Model loading
+# ─────────────────────────────────────────────────────────────────────────────
+
+vit_model  = None
+vit_device = None
 
 
 def load_vit_model():
@@ -428,7 +518,7 @@ def load_vit_model():
 
     weights_path = Path(VIT_WEIGHTS_PATH)
     print(f"[ViT] Path: {weights_path.resolve()}")
-    
+
     if not weights_path.exists():
         raise FileNotFoundError(f"Weights not found: {weights_path.resolve()}")
 
@@ -437,26 +527,30 @@ def load_vit_model():
     except Exception as e:
         raise RuntimeError(f"Failed to load checkpoint: {e}")
 
+    # Notebook saves: {"epoch", "model_state_dict", "optimizer_state_dict", "val_acc", "val_f1"}
     if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
         state_dict = checkpoint["model_state_dict"]
+        print(f"[ViT] Checkpoint epoch={checkpoint.get('epoch')} "
+              f"val_acc={checkpoint.get('val_acc', '?'):.4f} "
+              f"val_f1={checkpoint.get('val_f1', '?'):.4f}")
     elif isinstance(checkpoint, dict) and "state_dict" in checkpoint:
         state_dict = checkpoint["state_dict"]
     else:
-        state_dict = checkpoint
+        state_dict = checkpoint  # bare state dict
 
-    model = MedicalViT()
-    filtered = {}
-    for k, v in state_dict.items():
-        if k.startswith("backbone.") or k.startswith("cls_head.") or k.startswith("reg_head."):
-            filtered[k] = v
+    model = CBCViT(freeze_blocks=8, pretrained=False)
+    missing, unexpected = model.load_state_dict(state_dict, strict=True)
 
-    missing, unexpected = model.load_state_dict(filtered, strict=False)
-    print(f"[ViT] Loaded {len(filtered)} keys | Missing: {len(missing)} | Unexpected: {len(unexpected)}")
+    if missing:
+        print(f"[ViT] WARNING — missing keys ({len(missing)}): {missing[:5]}")
+    if unexpected:
+        print(f"[ViT] WARNING — unexpected keys ({len(unexpected)}): {unexpected[:5]}")
 
     model.to(vit_device)
     model.eval()
     vit_model = model
-    print("[ViT] OK Loaded")
+    total     = sum(p.numel() for p in model.parameters())
+    print(f"[ViT] OK Loaded — {total:,} params")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -475,20 +569,24 @@ async def lifespan(app: FastAPI):
             print(f"[STARTUP] FAIL Failed: {e}")
             raise
     else:
-        print("[STARTUP] Testing mode")
+        print("[STARTUP] Testing mode — model not loaded")
     yield
     print("[SHUTDOWN] Cleanup")
 
 
 app = FastAPI(
     title="BloodConnect AI Service",
-    version="3.0.1",
+    version="3.0.2",
     lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(",") if os.environ.get("CORS_ORIGINS") else ["*"],
+    allow_origins=(
+        os.environ.get("CORS_ORIGINS", "*").split(",")
+        if os.environ.get("CORS_ORIGINS")
+        else ["*"]
+    ),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -501,39 +599,39 @@ app.add_middleware(
 @app.get("/health")
 def health():
     return {
-        "status": "ONLINE",
-        "vit_loaded": vit_model is not None,
+        "status":           "ONLINE",
+        "vit_loaded":       vit_model is not None,
         "vit_model_loaded": vit_model is not None,
-        "model_loaded": vit_model is not None,
-        "device": str(vit_device),
-        "weights_exist": Path(VIT_WEIGHTS_PATH).exists(),
-        "tesseract_found": TESSERACT_FOUND,
-        "version": "3.0.1",
+        "model_loaded":     vit_model is not None,
+        "device":           str(vit_device),
+        "weights_exist":    Path(VIT_WEIGHTS_PATH).exists(),
+        "tesseract_found":  TESSERACT_FOUND,
+        "version":          "3.0.2",
     }
 
 
 @app.get("/status")
 def status():
     return {
-        "service": "BloodConnect AI v3.0.1",
+        "service":    "BloodConnect AI v3.0.2",
         "vit_loaded": vit_model is not None,
-        "device": str(vit_device),
-        "weights": str(Path(VIT_WEIGHTS_PATH).resolve()),
-        "tesseract": TESSERACT_FOUND,
+        "device":     str(vit_device),
+        "weights":    str(Path(VIT_WEIGHTS_PATH).resolve()),
+        "tesseract":  TESSERACT_FOUND,
     }
 
 
 @app.post("/predict")
 @app.post("/api/v1/screen-report")
 async def predict(
-    file: UploadFile = File(...),
-    gender: str = Form(default="male"),
+    file:   UploadFile = File(...),
+    gender: str        = Form(default="male"),
 ):
     """
     Main prediction endpoint.
-    
+
     Stage 1: ViT classification (Normal/Abnormal)
-    Stage 2: OCR + CBC parsing (only if Abnormal)
+    Stage 2: OCR + CBC parsing  (only if Abnormal)
     Stage 3: Donor eligibility evaluation
     """
     if not file.content_type or not file.content_type.startswith("image/"):
@@ -551,39 +649,35 @@ async def predict(
     if vit_model is None:
         raise HTTPException(status_code=503, detail="ViT model not loaded.")
 
-    # ────────────────────────────────────────────────────────────────────────
-    # STAGE 1: ViT Classification
-    # ────────────────────────────────────────────────────────────────────────
+    # ── STAGE 1: ViT Classification ──────────────────────────────────────────
     try:
         tensor = VAL_TRANSFORM(pil_image).unsqueeze(0).to(vit_device)
         with torch.no_grad():
-            logits = vit_model(tensor)
-            if isinstance(logits, tuple):
-                logits = logits[0]
-            probs = torch.softmax(logits, dim=1)[0]
-            pred = torch.argmax(probs).item()
-            conf = float(probs[pred]) * 100
+            cls_logits, _cbc_values = vit_model(tensor)   # unpack both heads
+            probs = torch.softmax(cls_logits, dim=1)[0]
+            pred  = torch.argmax(probs).item()
+            conf  = float(probs[pred]) * 100
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ViT inference failed: {e}")
 
     vit_label = "Abnormal" if pred == 1 else "Normal"
 
-    # Build base response
+    # Base response
     response = {
-        "success": True,
-        "prediction": vit_label,
-        "confidence": round(conf, 2),
-        "eligible": vit_label == "Normal",
-        "result": "ELIGIBLE" if vit_label == "Normal" else "DEFERRED",
-        "raw_probability": round(float(probs[1]), 4),
-        "threshold": VIT_THRESHOLD,
+        "success":          True,
+        "prediction":       vit_label,
+        "confidence":       round(conf, 2),
+        "eligible":         vit_label == "Normal",
+        "result":           "ELIGIBLE" if vit_label == "Normal" else "DEFERRED",
+        "raw_probability":  round(float(probs[1]), 4),
+        "threshold":        VIT_THRESHOLD,
         "abnormal_findings": [],
-        "metrics": {},
+        "metrics":          {},
         "evaluation": {
-            "status": "ELIGIBLE" if vit_label == "Normal" else "DEFERRED",
+            "status":         "ELIGIBLE" if vit_label == "Normal" else "DEFERRED",
             "explanation_en": "ViT indicates normal CBC profile.",
             "explanation_ar": "يشير المصنف إلى صورة دم طبيعية.",
-            "gender": gender,
+            "gender":         gender,
         },
         "reasons": [],
     }
@@ -591,25 +685,50 @@ async def predict(
     if vit_label == "Normal":
         return response
 
-    # ────────────────────────────────────────────────────────────────────────
-    # STAGE 2: OCR + CBC Parsing (only when Abnormal)
-    # ────────────────────────────────────────────────────────────────────────
+    # ── STAGE 2: OCR + CBC Parsing (Abnormal only) ───────────────────────────
+    ocr_failed = False
     try:
         ocr_text = extract_text(pil_image)
         rbc_indices, diff_pct, diff_abs = parse_cbc(ocr_text)
         findings = analyze_all(rbc_indices, diff_pct, diff_abs)
+
+        # Check whether OCR actually extracted any values at all
+        any_extracted = any(v is not None for v in rbc_indices.values())
+        if not any_extracted:
+            print("[WARN] OCR ran but extracted zero CBC values — treating as OCR failure")
+            ocr_failed = True
+
     except Exception as e:
         print(f"[WARN] OCR failed: {e}")
-        ocr_text = ""
+        ocr_text    = ""
         rbc_indices = {}
-        diff_pct = {}
-        diff_abs = {}
-        findings = []
+        diff_pct    = {}
+        diff_abs    = {}
+        findings    = []
+        ocr_failed  = True
 
-    # ────────────────────────────────────────────────────────────────────────
-    # STAGE 3: Donor Eligibility Evaluation
-    # ────────────────────────────────────────────────────────────────────────
-    eval_result = run_donor_evaluation(rbc_indices, diff_pct, gender=gender)
+    # ── STAGE 3: Donor Eligibility Evaluation ────────────────────────────────
+    if ocr_failed:
+        # OCR could not read the report — do NOT auto-defer.
+        # Report the ViT finding honestly and ask for manual review.
+        eval_result = {
+            "status":         "NEEDS_REVIEW",
+            "reasons":        ["CBC values could not be extracted from the image. Manual review required."],
+            "reasons_ar":     ["تعذّر استخراج قيم الفحص من الصورة — يلزم المراجعة اليدوية."],
+            "explanation_en": (
+                "The AI classifier detected an abnormal CBC profile, but OCR could not extract "
+                "numeric values from this image (image may be blurry, low-contrast, or the report "
+                "format is unsupported). Please have a clinician review the original report."
+            ),
+            "explanation_ar": (
+                "اكتشف المصنّف صورة دم غير طبيعية، لكن تعذّر استخراج القيم الرقمية من الصورة "
+                "(قد تكون الصورة ضبابية أو منخفضة التباين أو بتنسيق غير مدعوم). "
+                "يُرجى مراجعة التقرير الأصلي من قِبل أخصائي."
+            ),
+            "gender": gender,
+        }
+    else:
+        eval_result = run_donor_evaluation(rbc_indices, diff_pct, gender=gender)
 
     flat_metrics = {**rbc_indices}
     for k, v in diff_pct.items():
@@ -619,25 +738,26 @@ async def predict(
         if v is not None:
             flat_metrics[f"{k}_abs"] = v
 
-    # ────────────────────────────────────────────────────────────────────────
-    # Final Response
-    # ────────────────────────────────────────────────────────────────────────
+    final_status = eval_result["status"]   # "ELIGIBLE" | "DEFERRED" | "NEEDS_REVIEW"
+
+    # Final response
     response.update({
-        "eligible": eval_result["status"] == "ELIGIBLE",
-        "result": eval_result["status"],
-        "abnormal_findings": findings,  # List of {feature, label, value, unit, status, range}
-        "ocr_text": ocr_text[:500] if ocr_text else "",
+        "eligible":          final_status == "ELIGIBLE",
+        "result":            final_status,
+        "ocr_failed":        ocr_failed,
+        "abnormal_findings": findings,
+        "ocr_text":          ocr_text[:500] if ocr_text else "",
         "metrics": {
-            "rbc_indices": rbc_indices,
-            "differential_pct": diff_pct,
-            "differential_abs": diff_abs,
+            "rbc_indices":       rbc_indices,
+            "differential_pct":  diff_pct,
+            "differential_abs":  diff_abs,
         },
         "reasons": eval_result["reasons"],
         "evaluation": {
-            "status": eval_result["status"],
+            "status":         final_status,
             "explanation_en": eval_result["explanation_en"],
             "explanation_ar": eval_result["explanation_ar"],
-            "gender": gender,
+            "gender":         gender,
         },
     })
 
@@ -649,16 +769,16 @@ async def predict(
 # ─────────────────────────────────────────────────────────────────────────────
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-OPENROUTER_MODEL = "google/gemini-2.5-flash"
+OPENROUTER_MODEL   = "google/gemini-2.5-flash"
 
 
 class ChatMessage(BaseModel):
-    role: str
+    role:    str
     content: str
 
 
 class ChatRequest(BaseModel):
-    messages: list[ChatMessage]
+    messages:   list[ChatMessage]
     donor_data: dict
 
 
@@ -671,13 +791,38 @@ async def assistant_chat(request: ChatRequest):
 
     messages = [{"role": m.role, "content": m.content} for m in request.messages]
 
+    donor_data = request.donor_data
+    if donor_data:
+        system_context = (
+            "You are a medical AI assistant helping a blood donation center. "
+            "Below is the donor's screening result. Use it to answer questions.\n\n"
+            f"Result: {donor_data.get('status', 'N/A')}\n"
+            f"Gender: {donor_data.get('gender', 'N/A')}\n"
+            f"Confidence: {donor_data.get('confidence', 'N/A')}%\n"
+            f"Explanation: {donor_data.get('explanation_en', 'N/A')}\n"
+        )
+        findings = donor_data.get("abnormal_findings", [])
+        if findings:
+            system_context += "\nAbnormal findings:\n"
+            for f in findings:
+                system_context += (
+                    f"- {f.get('label', '?')}: {f.get('value', '?')} "
+                    f"{f.get('unit', '')} ({f.get('status', '?')}, "
+                    f"ref: {f.get('range', [None, None])[0]}-{f.get('range', [None, None])[1]})\n"
+                )
+        reasons = donor_data.get("reasons", [])
+        if reasons:
+            system_context += "\nReasons:\n" + "\n".join(f"- {r}" for r in reasons)
+
+        messages.insert(0, {"role": "system", "content": system_context})
+
     headers = {
         "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
+        "Content-Type":  "application/json",
     }
     payload = {
-        "model": OPENROUTER_MODEL,
-        "messages": messages,
+        "model":      OPENROUTER_MODEL,
+        "messages":   messages,
         "max_tokens": 800,
         "temperature": 0.7,
     }
