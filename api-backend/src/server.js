@@ -126,6 +126,19 @@ app.use('/api/', (req, res, next) => {
   return next();
 });
 
+app.use('/api/', (req, res, next) => {
+  if (['POST', 'PATCH', 'PUT'].includes(req.method)) {
+    const ct = req.headers['content-type'] || '';
+    if (!ct.includes('application/json') && !ct.includes('multipart/form-data')) {
+      return res.status(415).json({
+        error: 'unsupported_media_type',
+        detail: 'Content-Type must be application/json',
+      });
+    }
+  }
+  return next();
+});
+
 function uid(req) {
   return req.firebaseUser.uid;
 }
@@ -133,10 +146,48 @@ function uid(req) {
 const VALID_BLOOD_TYPES = new Set(['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-']);
 const VALID_URGENCY = new Set(['routine', 'urgent', 'critical']);
 
+// ── Field length limits ───────────────────────────────────────────────────────
+const FIELD_MAX_LENGTHS = {
+  name:          100,
+  email:         254,
+  phone:          20,
+  description:   500,
+  patient_name:  100,
+  hospital_name: 200,
+  city_area:     100,
+  hospitalName:  200,
+  hospitalCode:   20,
+  title:         200,
+  body:         1000,
+  content:      5000,
+};
+
+const PHONE_REGEX = /^[+\d\s\-().]{7,20}$/;
+
 function requireFields(body, fields) {
   const missing = fields.filter((f) => body[f] == null || String(body[f]).trim() === '');
   if (missing.length > 0) {
     return { ok: false, error: `missing_fields: ${missing.join(', ')}` };
+  }
+  return { ok: true };
+}
+
+function validateFieldLengths(body, fields) {
+  for (const field of fields) {
+    const value = body[field];
+    if (value === null || value === undefined) continue;
+    const max = FIELD_MAX_LENGTHS[field];
+    if (max && String(value).length > max) {
+      return { ok: false, error: 'field_too_long', field, max };
+    }
+  }
+  return { ok: true };
+}
+
+function validatePhone(phone) {
+  if (!phone) return { ok: true };
+  if (!PHONE_REGEX.test(String(phone))) {
+    return { ok: false, error: 'invalid_phone_format' };
   }
   return { ok: true };
 }
@@ -852,6 +903,12 @@ app.post('/api/v1/requests', requireFirebaseAuth, async (req, res) => {
     if (!VALID_BLOOD_TYPES.has(b.bloodType)) return res.status(400).json({ error: 'invalid_blood_type' });
     if (!VALID_URGENCY.has(b.urgencyLevel)) return res.status(400).json({ error: 'invalid_urgency_level' });
     if (!Number.isInteger(b.unitsNeeded) || b.unitsNeeded < 1) return res.status(400).json({ error: 'unitsNeeded must be a positive integer' });
+
+    const lengthCheck = validateFieldLengths(b, ['description', 'patient_name', 'hospital_name']);
+    if (!lengthCheck.ok) return res.status(400).json({ error: lengthCheck.error, field: lengthCheck.field, max: lengthCheck.max });
+
+    const phoneCheck = validatePhone(b.contactPhone);
+    if (!phoneCheck.ok) return res.status(400).json({ error: phoneCheck.error });
 
     const hospitalResult = await query(
       `SELECT hospital_code, hospital_name FROM users

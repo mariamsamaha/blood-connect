@@ -114,7 +114,9 @@ describe('Edge Cases', () => {
     });
 
     test('PUT returns 404', async () => {
-      const res = await request(app).put('/api/v1/users/me');
+      const res = await request(app)
+        .put('/api/v1/users/me')
+        .set('Content-Type', 'application/json');
       expect(res.status).toBe(404);
     });
 
@@ -129,6 +131,7 @@ describe('Edge Cases', () => {
       const res = await request(app)
         .post('/api/v1/users/me/bootstrap')
         .set('Authorization', 'Bearer test-token')
+        .set('Content-Type', 'application/json')
         .send();
       expect([201, 400, 500]).toContain(res.status);
     });
