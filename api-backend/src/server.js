@@ -1943,6 +1943,30 @@ async function withRetry(fn, { maxRetries = 3, baseDelayMs = 500, label = 'opera
   throw lastError;
 }
 
+/**
+ * Purge stale FCM tokens returned by the notification backend.
+ * Called after every FCM dispatch that returns a stale_tokens array.
+ *
+ * Sets fcm_token = NULL for all users whose token is no longer valid.
+ * Firebase returns UNREGISTERED / INVALID_ARGUMENT error codes when a
+ * device token has expired or been revoked — the notification backend
+ * surfaces those as stale_tokens in its response.
+ *
+ * @param {string[]} staleTokens
+ */
+async function purgeStaleTokens(staleTokens) {
+  if (!Array.isArray(staleTokens) || staleTokens.length === 0) return;
+  try {
+    const result = await query(
+      'UPDATE users SET fcm_token = NULL, updated_at = NOW() WHERE fcm_token = ANY($1::text[]) RETURNING id',
+      [staleTokens],
+    );
+    logger.info({ purged: result.length, stale: staleTokens.length }, 'Stale FCM tokens purged');
+  } catch (err) {
+    logger.warn({ err, count: staleTokens.length }, 'Failed to purge stale FCM tokens');
+  }
+}
+
 // ─── Push notifications (server-side donor query) ─────────────────────────────
 const DONOR_TYPES_MAP = {
   'O-': ['O-'],
@@ -2043,14 +2067,8 @@ async function notifyNewRequest(request) {
         }
 
         const body = await response.json();
-        const stale = body.stale_tokens;
-        if (Array.isArray(stale) && stale.length > 0) {
-          logger.info({ count: stale.length }, 'Cleaning up stale FCM tokens');
-          await query(
-            'UPDATE users SET fcm_token = NULL WHERE fcm_token = ANY($1::text[])',
-            [stale],
-          );
-        }
+        // Purge stale tokens returned by the notification backend.
+        await purgeStaleTokens(body.stale_tokens);
         logger.info({ sent: body.sent, failed: body.failed }, 'Push notification result');
         metrics.notificationDispatchTotal.inc({ status: 'success' });
       }, { maxRetries: 3, baseDelayMs: 500, label: 'notifyNewRequest' });
@@ -2089,7 +2107,7 @@ async function notifyDonorAccepted(requestId, donorId) {
 
   try {
     const url = new URL('/sendNotification', backendUrl.replace(/\/$/, ''));
-    await fetch(url, {
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -2106,6 +2124,10 @@ async function notifyDonorAccepted(requestId, donorId) {
       }),
       signal: AbortSignal.timeout(10000),
     });
+    if (response.ok) {
+      const body = await response.json();
+      await purgeStaleTokens(body.stale_tokens);
+    }
   } catch (err) {
     logger.warn({ err, requestId }, 'Failed to push acceptance notification');
   }
