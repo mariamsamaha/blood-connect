@@ -91,6 +91,48 @@ function metricsMiddleware(req, res, next) {
   next();
 }
 
+/**
+ * Defense-in-depth: restrict /metrics and /slo to internal callers even at
+ * the app layer, in case a request reaches the process without going through
+ * Nginx (e.g. direct container port access during development).
+ *
+ * Two ways to pass:
+ *   1. Request comes from a private/loopback IP (Docker internal network).
+ *   2. METRICS_TOKEN env var is set AND the Authorization header matches.
+ *
+ * To enable token auth for remote Prometheus or Grafana Cloud:
+ *   METRICS_TOKEN=$(openssl rand -hex 32)   # in api-backend/.env
+ *   # prometheus.yml: bearer_token: <same value>
+ */
+function metricsAuthMiddleware(req, res, next) {
+  const metricsToken = process.env.METRICS_TOKEN;
+
+  if (metricsToken) {
+    const authHeader = req.headers.authorization || '';
+    if (authHeader === `Bearer ${metricsToken}`) return next();
+  }
+
+  const ip =
+    req.headers['x-real-ip'] ||
+    req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+    req.socket.remoteAddress ||
+    '';
+
+  const isPrivate =
+    ip === '127.0.0.1' ||
+    ip === '::1' ||
+    ip.startsWith('10.') ||
+    ip.startsWith('172.') ||
+    ip.startsWith('192.168.');
+
+  if (isPrivate) return next();
+
+  return res.status(403).json({
+    error: 'forbidden',
+    detail: 'metrics endpoint is restricted to internal network',
+  });
+}
+
 function trackDbQuery(operation, durationMs) {
   dbQueryDuration.observe({ operation }, durationMs);
 }
@@ -109,6 +151,7 @@ async function metricsHandler(_req, res) {
 module.exports = {
   register,
   metricsMiddleware,
+  metricsAuthMiddleware,
   trackDbQuery,
   updatePoolStats,
   metricsHandler,
