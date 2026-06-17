@@ -243,8 +243,8 @@ DECLARE
     v_short_id TEXT;
     v_donor_count INTEGER;
 BEGIN
-    FOR v_hospital IN SELECT id, hospital_name, hospital_code FROM users WHERE account_type = 'hospital' AND is_active = TRUE LOOP
-        FOR v_inv IN SELECT blood_type, units_available, minimum_threshold
+    FOR v_hospital IN SELECT id, users.hospital_name, hospital_code FROM users WHERE account_type = 'hospital' AND is_active = TRUE LOOP
+        FOR v_inv IN SELECT hospital_inventory.blood_type, units_available, minimum_threshold
                      FROM hospital_inventory
                      WHERE hospital_id = v_hospital.id AND units_available < minimum_threshold AND units_available >= 0
         LOOP

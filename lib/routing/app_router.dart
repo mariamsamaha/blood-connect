@@ -22,6 +22,7 @@ import 'package:bloodconnect/screens/coupons_screen.dart';
 import 'package:bloodconnect/screens/map_discover_screen.dart';
 import 'package:bloodconnect/screens/notification_center_screen.dart';
 import 'package:bloodconnect/screens/inventory_management_screen.dart';
+import 'package:bloodconnect/screens/low_inventory_alerts_screen.dart';
 import 'package:bloodconnect/screens/donor_feedback_submission_screen.dart';
 import 'package:bloodconnect/screens/hospital_feedback_analytics_screen.dart';
 import 'package:bloodconnect/screens/hospital_profile_screen.dart';
@@ -183,6 +184,11 @@ GoRouter buildRouter({
         path: '/hospital/inventory',
         pageBuilder: (ctx, s) =>
             _slideTransition(const InventoryManagementScreen()),
+      ),
+      GoRoute(
+        path: '/hospital/low-inventory-alerts',
+        pageBuilder: (ctx, s) =>
+            _slideTransition(const LowInventoryAlertsScreen()),
       ),
       GoRoute(
         path: '/hospital/feedback',

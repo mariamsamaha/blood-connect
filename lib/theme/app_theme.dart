@@ -25,6 +25,12 @@ class AppColors {
   static const softBlue = Color(0xFFEFF6FF);
   static const softAmber = Color(0xFFFFFBEB);
   static const darkSurfaceCard = Color(0xFF1E1E20);
+
+  /// Used exclusively for hospital-initiated low-inventory stock alerts,
+  /// so they're visually distinct from any patient/recipient request
+  /// regardless of urgency level (which already uses red/amber/blue).
+  static const hospitalAlert = Color(0xFF7C3AED);
+  static const softHospitalAlert = Color(0xFFF5F3FF);
 }
 
 class AppGradients {

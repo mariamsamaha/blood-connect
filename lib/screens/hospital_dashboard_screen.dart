@@ -518,7 +518,7 @@ class _HospitalDashboardScreenState
             ),
           ),
           TextButton(
-            onPressed: () => context.go('/hospital/profile'),
+            onPressed: () => context.push('/hospital/low-inventory-alerts'),
             child: const Text('Details'),
           ),
         ],

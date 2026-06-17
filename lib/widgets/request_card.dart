@@ -155,6 +155,42 @@ class _RequestCardState extends State<RequestCard>
                       ],
                     ),
                     const SizedBox(height: 14),
+                    if (widget.request.isAutoRequest) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.softHospitalAlert,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: AppColors.hospitalAlert.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.inventory_2_outlined,
+                              size: 13,
+                              color: AppColors.hospitalAlert,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              'Hospital Stock Alert',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.hospitalAlert,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
                     Row(
                       children: [
                         Icon(
@@ -197,6 +233,21 @@ class _RequestCardState extends State<RequestCard>
                         ],
                       ],
                     ),
+                    if (widget.request.isAutoRequest &&
+                        widget.request.description != null &&
+                        widget.request.description!.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        widget.request.description!,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: AppColors.textSecondary,
+                          height: 1.4,
+                        ),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     Wrap(
                       spacing: 8,

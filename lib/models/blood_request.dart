@@ -29,6 +29,14 @@ class BloodRequest {
   /// Distance from donor to hospital (km). Set when request is loaded for a donor.
   final double? distanceKm;
 
+  /// True when this request was created automatically by the hospital
+  /// low-inventory check (not a human patient/recipient request).
+  final bool isAutoRequest;
+
+  /// Free-text detail. For hospital auto-requests this explains which
+  /// blood type is low and by how much.
+  final String? description;
+
   const BloodRequest({
     required this.id,
     required this.shortId,
@@ -48,6 +56,8 @@ class BloodRequest {
     required this.createdAt,
     required this.expiresAt,
     this.distanceKm,
+    this.isAutoRequest = false,
+    this.description,
   });
 
   factory BloodRequest.fromJson(Map<String, dynamic> json) {
@@ -80,6 +90,8 @@ class BloodRequest {
           ? json['expires_at'] as DateTime
           : DateTime.tryParse(json['expires_at']?.toString() ?? '') ?? DateTime.now().add(const Duration(hours: 24)),
       distanceKm: (json['distance_km'] as num?)?.toDouble(),
+      isAutoRequest: json['is_auto_request'] == true,
+      description: json['description'] == null ? null : safeString(json['description']),
     );
   }
 
