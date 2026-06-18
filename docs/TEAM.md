@@ -4,28 +4,27 @@
 
 | Person | Role | Areas |
 |--------|------|-------|
-| @mariamsamaha | Lead Developer | Architecture, API backend, Flutter, AI service, deployment |
-| @MME517 | Developer | Flutter UI, notification backend, testing |
-| @retalali16 | Developer | API backend, AI service, database, matching logic |
+| @mariamsamaha | Lead Developer | Architecture,database, Flutter UI, deployment, matching logic |
+| @MME517 | LEAD Developer | Flutter UI,API backend, notification backend, testing, matching logic |
+| @retalali16 | AI Developer | AI service|
 
 ## Responsibilities
 
 | Area | Primary | Secondary |
 |------|---------|-----------|
 | Flutter app (`lib/`, `test/`) | @mariamsamaha | @MME517 |
-| API backend (`api-backend/`) | @mariamsamaha | @retalali16 |
-| AI service (`ai-service/`) | @retalali16 | @mariamsamaha |
+| API backend (`api-backend/`) | @MME517 | @mariamsamaha |
+| AI service (`ai-service/`) | @retalali16 | @MME517 |
 | Notification backend (`notification-backend/`) | @MME517 | @mariamsamaha |
-| Database (`database/`, `supabase/`) | @mariamsamaha | @retalali16 |
-| Infrastructure (Docker, CI/CD) | @mariamsamaha | — |
-| Gateway (`gateway/`) | @mariamsamaha | — |
-| Documentation (`docs/`) | @mariamsamaha | All |
+| Database (`database/`, `supabase/`) | @mariamsamaha | @MME517 |
+| Infrastructure (Docker, CI/CD) | @mariamsamaha | @MME517 |
+| Gateway (`gateway/`) | @mariamsamaha | @MME517 |
+| Documentation (`docs/`) | @MME517 | All |
 
-## Code review expectations
+## Code review
 
 - Every PR needs at least one approval from a secondary owner of the area
-- Infrastructure changes require @mariamsamaha review
-- No direct pushes to `main` — all changes via PR
+- Infrastructure changes require @mariamsamaha and @MME517 review
 
 ## Communication
 
