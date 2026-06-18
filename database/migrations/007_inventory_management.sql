@@ -61,7 +61,7 @@ BEGIN
         expiration_date = COALESCE(p_expiration_date, hospital_inventory.expiration_date),
         last_updated = NOW(),
         updated_by = v_actor
-    RETURNING units_available INTO v_units_after;
+    RETURNING hospital_inventory.units_available INTO v_units_after;
     INSERT INTO inventory_change_log (hospital_id, blood_type, change_type, units_before, units_after, units_changed, reason, changed_by)
     VALUES (p_hospital_id, p_blood_type, 'added', v_units_before, v_units_after, p_units, p_reason, v_actor);
     RETURN QUERY SELECT TRUE, NULL::TEXT, v_units_after;
@@ -96,11 +96,11 @@ BEGIN
         RETURN;
     END IF;
     UPDATE hospital_inventory SET
-        units_available = units_available - p_units,
+        units_available = hospital_inventory.units_available - p_units,
         last_updated = NOW(),
         updated_by = v_actor
     WHERE hospital_id = p_hospital_id AND blood_type = p_blood_type
-    RETURNING units_available INTO v_units_after;
+    RETURNING hospital_inventory.units_available INTO v_units_after;
     INSERT INTO inventory_change_log (hospital_id, blood_type, change_type, units_before, units_after, units_changed, reason, changed_by)
     VALUES (p_hospital_id, p_blood_type, 'removed', v_units_before, v_units_after, -p_units, p_reason, v_actor);
     RETURN QUERY SELECT TRUE, NULL::TEXT, v_units_after;
@@ -137,7 +137,7 @@ BEGIN
         units_available = p_units,
         last_updated = NOW(),
         updated_by = v_actor
-    RETURNING units_available INTO v_units_after;
+    RETURNING hospital_inventory.units_available INTO v_units_after;
     INSERT INTO inventory_change_log (hospital_id, blood_type, change_type, units_before, units_after, units_changed, reason, changed_by)
     VALUES (p_hospital_id, p_blood_type, 'adjusted', v_units_before, v_units_after, p_units - v_units_before, p_reason, v_actor);
     RETURN QUERY SELECT TRUE, NULL::TEXT, v_units_after;
@@ -181,6 +181,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE VIEW inventory_history_view AS
 SELECT
     icl.id,
+    icl.hospital_id,
     u.name AS hospital_name,
     icl.blood_type,
     icl.change_type,
@@ -244,16 +245,16 @@ DECLARE
     v_donor_count INTEGER;
 BEGIN
     FOR v_hospital IN SELECT id, users.hospital_name, hospital_code FROM users WHERE account_type = 'hospital' AND is_active = TRUE LOOP
-        FOR v_inv IN SELECT hospital_inventory.blood_type, units_available, minimum_threshold
+        FOR v_inv IN SELECT hospital_inventory.blood_type, hospital_inventory.units_available, hospital_inventory.minimum_threshold
                      FROM hospital_inventory
-                     WHERE hospital_id = v_hospital.id AND units_available < minimum_threshold AND units_available >= 0
+                     WHERE hospital_inventory.hospital_id = v_hospital.id AND hospital_inventory.units_available < hospital_inventory.minimum_threshold AND hospital_inventory.units_available >= 0
         LOOP
             SELECT COUNT(*) INTO v_existing_alert
             FROM low_inventory_alerts
-            WHERE hospital_id = v_hospital.id
-              AND blood_type = v_inv.blood_type
-              AND alert_status IN ('pending', 'notified')
-              AND created_at > NOW() - INTERVAL '24 hours';
+            WHERE low_inventory_alerts.hospital_id = v_hospital.id
+              AND low_inventory_alerts.blood_type = v_inv.blood_type
+              AND low_inventory_alerts.alert_status IN ('pending', 'notified')
+              AND low_inventory_alerts.created_at > NOW() - INTERVAL '24 hours';
             CONTINUE WHEN v_existing_alert > 0;
 
             SELECT generate_short_request_id(v_hospital.hospital_code) INTO v_short_id;

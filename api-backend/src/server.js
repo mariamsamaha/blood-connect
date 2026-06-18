@@ -1482,17 +1482,27 @@ app.get('/api/v1/donor/mission', requireFirebaseAuth, async (req, res) => {
     const { donorId } = req.query;
     const rows = await query(
       `SELECT br.id, br.short_id, br.requester_id, br.blood_type, br.units_needed,
-        br.urgency_level, br.hospital_name,
+        br.urgency_level, br.hospital_name, br.hospital_id,
         ST_Y(br.hospital_location::geometry) AS hospital_lat,
         ST_X(br.hospital_location::geometry) AS hospital_lng,
         ST_Y(br.requester_location::geometry) AS requester_lat,
         ST_X(br.requester_location::geometry) AS requester_lng,
         br.status, br.nearby_donors_count, br.total_eligible_count,
-        br.created_at, br.expires_at
+        br.is_auto_request, br.description,
+        br.created_at, br.expires_at,
+        d.id AS donation_id
        FROM blood_requests br
        INNER JOIN donor_responses dr ON dr.request_id = br.id AND dr.donor_id = $1::uuid
-       WHERE dr.response_type = 'accepted' AND br.status IN ('active', 'in_progress')
-       ORDER BY br.created_at DESC LIMIT 1`,
+       LEFT JOIN donations d ON d.request_id = br.id AND d.donor_id = $1::uuid
+       WHERE dr.response_type = 'accepted' AND br.status IN ('active', 'in_progress', 'fulfilled')
+       ORDER BY
+         CASE br.status
+           WHEN 'in_progress' THEN 1
+           WHEN 'active' THEN 2
+           WHEN 'fulfilled' THEN 3
+         END,
+         br.created_at DESC
+       LIMIT 1`,
       [donorId],
     );
     return res.json(rows[0] ?? null);

@@ -12,6 +12,7 @@ class BloodRequest {
   final UrgencyLevel urgencyLevel;
 
   final String hospitalName;
+  final String? hospitalId;
   final double hospitalLat;
   final double hospitalLng;
   
@@ -46,6 +47,7 @@ class BloodRequest {
     required this.unitsNeeded,
     required this.urgencyLevel,
     required this.hospitalName,
+    this.hospitalId,
     required this.hospitalLat,
     required this.hospitalLng,
     this.requesterLat,      
@@ -72,6 +74,7 @@ class BloodRequest {
       unitsNeeded: (json['units_needed'] is int) ? json['units_needed'] as int : int.tryParse(json['units_needed']?.toString() ?? '1') ?? 1,
       urgencyLevel: UrgencyLevel.values.byName((json['urgency_level'] ?? 'urgent').toString()),
       hospitalName: safeString(json['hospital_name']),
+      hospitalId: json['hospital_id']?.toString(),
       hospitalLat: (json['hospital_lat'] as num?)?.toDouble() ?? 0.0,
       hospitalLng: (json['hospital_lng'] as num?)?.toDouble() ?? 0.0,
       requesterLat: (json['requester_lat'] as num?)?.toDouble(),

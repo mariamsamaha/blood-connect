@@ -66,6 +66,10 @@ class _HospitalProfileScreenState extends ConsumerState<HospitalProfileScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+          onPressed: () => context.go('/hospital/dashboard'),
+        ),
         title: const Text('Hospital Profile'),
         actions: [
           Stack(
