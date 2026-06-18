@@ -7,8 +7,21 @@ const logger = require('./logger');
 // which causes timezone shifting when the server runs in a non-UTC timezone.
 types.setTypeParser(types.builtins.TIMESTAMP, (val) => new Date(val + 'Z'));
 
-function supabaseSsl() {
+function isLocalDatabaseUrl(connectionString) {
+  try {
+    const url = new URL(connectionString);
+    return ['localhost', '127.0.0.1', '::1'].includes(url.hostname)
+      || url.searchParams.get('sslmode') === 'disable';
+  } catch {
+    return false;
+  }
+}
+
+function supabaseSsl(connectionString) {
   if ((process.env.SUPABASE_REQUIRE_SSL || 'true').toLowerCase() === 'false') {
+    return false;
+  }
+  if (connectionString && isLocalDatabaseUrl(connectionString)) {
     return false;
   }
   // Supabase pooler uses certs that often fail strict Node verification.
@@ -27,7 +40,7 @@ function buildPoolConfig() {
   if (process.env.DATABASE_URL) {
     return {
       connectionString: process.env.DATABASE_URL,
-      ssl: supabaseSsl(),
+      ssl: supabaseSsl(process.env.DATABASE_URL),
       ...timeouts,
     };
   }

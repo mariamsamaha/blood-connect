@@ -39,6 +39,51 @@ describe('db.js', () => {
     jest.clearAllMocks();
   });
 
+  describe('pool SSL config', () => {
+    const origEnv = { ...process.env };
+
+    afterEach(() => {
+      jest.resetModules();
+      process.env = { ...origEnv };
+    });
+
+    function loadPoolConfigs(env) {
+      jest.resetModules();
+      process.env = { ...origEnv, ...env };
+      const pg = require('pg');
+      pg.Pool.mockClear();
+      require('../src/db');
+      return pg.Pool.mock.calls.map(([config]) => config);
+    }
+
+    test('does not force SSL for local DATABASE_URL connections', () => {
+      const configs = loadPoolConfigs({
+        DATABASE_URL: 'postgres://postgres:test@localhost:5432/test',
+      });
+
+      expect(configs[0].ssl).toBe(false);
+      expect(configs[1].ssl).toBe(false);
+    });
+
+    test('does not force SSL when DATABASE_URL disables sslmode', () => {
+      const configs = loadPoolConfigs({
+        DATABASE_URL: 'postgres://postgres:test@db.example.com:5432/test?sslmode=disable',
+      });
+
+      expect(configs[0].ssl).toBe(false);
+      expect(configs[1].ssl).toBe(false);
+    });
+
+    test('keeps SSL enabled by default for remote DATABASE_URL connections', () => {
+      const configs = loadPoolConfigs({
+        DATABASE_URL: 'postgres://postgres:test@db.example.com:5432/test',
+      });
+
+      expect(configs[0].ssl).toEqual({ rejectUnauthorized: false });
+      expect(configs[1].ssl).toEqual({ rejectUnauthorized: false });
+    });
+  });
+
   describe('validateDbConfig', () => {
     const origEnv = { ...process.env };
 
