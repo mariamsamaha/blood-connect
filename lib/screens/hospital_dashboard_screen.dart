@@ -471,55 +471,214 @@ class _HospitalDashboardScreenState
   }
 
   Widget _buildLowInventoryBanner() {
-    final types = _lowInventoryAlerts.map((a) => '${a['blood_type']}').join(', ');
+    final count = _lowInventoryAlerts.length;
+    final critical = _lowInventoryAlerts.where((a) {
+      final units = (a['units_available_at_alert'] as num?)?.toInt() ?? 0;
+      return units <= 0;
+    }).length;
+
     return Container(
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppColors.error.withValues(alpha: 0.08),
-            AppColors.warning.withValues(alpha: 0.05),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+        boxShadow: AppShadows.card,
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // ── Alert header ──────────────────────────────────────────────
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
             decoration: BoxDecoration(
-              color: AppColors.error.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(AppRadius.sm),
+              color: AppColors.error.withValues(alpha: 0.08),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(AppRadius.lg),
+                topRight: Radius.circular(AppRadius.lg),
+              ),
+              border: Border(
+                top: BorderSide(color: AppColors.error.withValues(alpha: 0.25)),
+                left: BorderSide(color: AppColors.error.withValues(alpha: 0.25)),
+                right: BorderSide(color: AppColors.error.withValues(alpha: 0.25)),
+              ),
             ),
-            child: const Icon(Icons.inventory_2_rounded, color: AppColors.error, size: 20),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                const Text(
-                  'Low Inventory',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.error.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                  ),
+                  child: const Icon(
+                    Icons.inventory_2_rounded,
                     color: AppColors.error,
+                    size: 20,
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  '${_lowInventoryAlerts.length} blood type${_lowInventoryAlerts.length == 1 ? '' : 's'} below threshold: $types',
-                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Low Inventory Alert',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                          color: AppColors.error,
+                        ),
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        '$count blood type${count == 1 ? '' : 's'} below threshold',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppColors.error.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(AppRadius.full),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.warning_amber_rounded, size: 13, color: AppColors.error),
+                      const SizedBox(width: 4),
+                      Text(
+                        '$count',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                          color: AppColors.error,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
           ),
-          TextButton(
-            onPressed: () => context.push('/hospital/low-inventory-alerts'),
-            child: const Text('Details'),
+
+          // ── Alert body – blood type chips ─────────────────────────────
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+            decoration: BoxDecoration(
+              color: Theme.of(context).cardColor,
+              borderRadius: const BorderRadius.only(
+                bottomLeft: Radius.circular(AppRadius.lg),
+                bottomRight: Radius.circular(AppRadius.lg),
+              ),
+              border: Border(
+                left: BorderSide(color: AppColors.error.withValues(alpha: 0.25)),
+                right: BorderSide(color: AppColors.error.withValues(alpha: 0.25)),
+                bottom: BorderSide(color: AppColors.error.withValues(alpha: 0.25)),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Severity summary line
+                if (critical > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Row(
+                      children: [
+                        Icon(Icons.emergency_rounded, size: 14, color: AppColors.error),
+                        const SizedBox(width: 6),
+                        Text(
+                          '$critical blood type${critical == 1 ? '' : 's'} critically low',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.error,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                // Blood type chips
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _lowInventoryAlerts.map((alert) {
+                    final bloodType = alert['blood_type'] as String? ?? '';
+                    final units = (alert['units_available_at_alert'] as num?)?.toInt() ?? 0;
+                    final threshold = (alert['threshold_at_alert'] as num?)?.toInt() ?? 0;
+                    final isCritical = units <= 0;
+                    final color = isCritical ? AppColors.error : AppColors.warning;
+                    final bgColor = isCritical
+                        ? AppColors.error.withValues(alpha: 0.08)
+                        : AppColors.warning.withValues(alpha: 0.08);
+
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: bgColor,
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
+                        border: Border.all(color: color.withValues(alpha: 0.2)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            bloodType,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                              color: color,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            width: 4,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: color.withValues(alpha: 0.4),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '$units / $threshold',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: color.withValues(alpha: 0.85),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+
+                const SizedBox(height: 14),
+
+                // ── CTA ─────────────────────────────────────────────────
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => context.push('/hospital/low-inventory-alerts'),
+                    icon: const Icon(Icons.visibility_rounded, size: 16),
+                    label: const Text('View Details'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.error,
+                      side: BorderSide(color: AppColors.error.withValues(alpha: 0.3)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.md),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

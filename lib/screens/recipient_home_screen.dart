@@ -5,7 +5,6 @@ import 'package:bloodconnect/models/blood_request.dart';
 import 'package:bloodconnect/providers/notification_provider.dart';
 import 'package:bloodconnect/theme/app_theme.dart';
 import 'package:bloodconnect/widgets/app_button.dart';
-import 'package:bloodconnect/widgets/section_header.dart';
 import 'package:bloodconnect/widgets/shimmer_loading.dart';
 import 'package:bloodconnect/widgets/sync_status_indicator.dart';
 import 'package:flutter/material.dart';
@@ -21,7 +20,6 @@ class RecipientHomeScreen extends ConsumerStatefulWidget {
 
 class _RecipientHomeScreenState extends ConsumerState<RecipientHomeScreen> {
   BloodRequest? _active;
-  List<BloodRequest> _history = const [];
   bool _loading = true;
   Timer? _timer;
 
@@ -51,12 +49,9 @@ class _RecipientHomeScreenState extends ConsumerState<RecipientHomeScreen> {
       final profile = await userService.getProfileByFirebaseUid(user.uid);
       if (profile == null) return;
       final active = await requestService.getActiveRequest(profile.id);
-      final all = await requestService.getMyRequests(profile.id);
       if (!mounted) return;
       setState(() {
         _active = active;
-        _history =
-            all.where((e) => active == null || e.id != active.id).toList();
         _loading = false;
       });
     } catch (_) {
@@ -150,13 +145,6 @@ class _RecipientHomeScreenState extends ConsumerState<RecipientHomeScreen> {
                       onCancel: _cancel,
                     ),
                   ],
-                  const SizedBox(height: 24),
-                  const SectionHeader(title: 'Request History'),
-                  const SizedBox(height: 12),
-                  if (_history.isEmpty)
-                    const _HistoryEmpty()
-                  else
-                    ..._history.map((r) => _HistoryItem(request: r)),
                 ],
               ),
       ),
@@ -173,17 +161,6 @@ class _RecipientHomeScreenState extends ConsumerState<RecipientHomeScreen> {
             child: Card(),
           ),
         ),
-        const SizedBox(height: 24),
-        const ShimmerLoading(
-          child: SectionHeader(title: 'Request History'),
-        ),
-        const SizedBox(height: 12),
-        ...List.generate(3, (_) => const ShimmerLoading(
-          child: Padding(
-            padding: EdgeInsets.only(bottom: 10),
-            child: SkeletonListItem(),
-          ),
-        )),
       ],
     );
   }
@@ -555,105 +532,4 @@ class _DetailChip extends StatelessWidget {
   }
 }
 
-class _HistoryItem extends StatelessWidget {
-  const _HistoryItem({required this.request});
-  final BloodRequest request;
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.divider),
-        boxShadow: AppShadows.card,
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: AppColors.primaryRed.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(AppRadius.sm),
-            ),
-            child: const Icon(
-              Icons.bloodtype_rounded,
-              size: 18,
-              color: AppColors.primaryRed,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  request.shortId,
-                  style: const TextStyle(fontWeight: FontWeight.w500),
-                ),
-                Text(
-                  request.hospitalName,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: request.status == RequestStatus.fulfilled
-                  ? AppColors.success.withValues(alpha: 0.1)
-                  : AppColors.textSecondary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(AppRadius.sm),
-            ),
-            child: Text(
-              request.status.name,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: request.status == RequestStatus.fulfilled
-                    ? AppColors.success
-                    : AppColors.textSecondary,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HistoryEmpty extends StatelessWidget {
-  const _HistoryEmpty();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(32),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: AppColors.divider),
-      ),
-      child: const Column(
-        children: [
-          Icon(
-            Icons.inbox_rounded,
-            size: 40,
-            color: AppColors.textTertiary,
-          ),
-          SizedBox(height: 8),
-          Text(
-            'No previous requests yet',
-            style: TextStyle(color: AppColors.textSecondary),
-          ),
-        ],
-      ),
-    );
-  }
-}

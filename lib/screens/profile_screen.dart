@@ -1,4 +1,5 @@
 import 'package:bloodconnect/main.dart';
+import 'package:bloodconnect/models/blood_request.dart';
 import 'package:bloodconnect/models/donor_response_entry.dart';
 import 'package:bloodconnect/models/user_profile.dart';
 import 'package:bloodconnect/theme/app_theme.dart';
@@ -21,6 +22,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   UserProfile? _profile;
   List<Map<String, dynamic>> _badges = const [];
   List<DonorResponseEntry> _history = const [];
+  List<BloodRequest> _requestHistory = const [];
   bool _loading = true;
   @override
   void initState() {
@@ -34,15 +36,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (auth == null) return;
     final userService = ref.read(userServiceProvider);
     final donorService = ref.read(donorServiceProvider);
+    final requestService = ref.read(requestServiceProvider);
     final p = await userService.getProfileByFirebaseUid(auth.uid);
     if (p == null) return;
     final badges = await userService.getAllBadgesWithProgress(p.id);
     final history = await donorService.getDonorResponseHistory(p.id);
+    List<BloodRequest> reqHistory = const [];
+    if (p.role == UserRole.recipient) {
+      reqHistory = await requestService.getMyRequests(p.id);
+    }
     if (!mounted) return;
     setState(() {
       _profile = p;
       _badges = badges;
       _history = history;
+      _requestHistory = reqHistory;
       _loading = false;
     });
   }
@@ -233,9 +241,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 children: [
                   Expanded(
                     child: StatCard(
-                      title: 'Requests',
-                      value: '${profile.totalDonations}',
+                      title: 'Total Requests',
+                      value: '${_requestHistory.length}',
                       icon: Icons.bloodtype_rounded,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: StatCard(
+                      title: 'Fulfilled',
+                      value: '${_requestHistory.where((r) => r.status == RequestStatus.fulfilled).length}',
+                      icon: Icons.check_circle_rounded,
+                      color: AppColors.success,
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -249,6 +266,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ),
                 ],
               ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  const Expanded(
+                    child: SectionHeader(title: 'Request History'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (_requestHistory.isEmpty)
+                _EmptySection(
+                  icon: Icons.history_rounded,
+                  message: 'No previous requests yet',
+                )
+              else
+                ..._requestHistory.map((r) => _RecipientHistoryItem(request: r)),
             ] else ...[
               Row(
                 children: [
@@ -354,6 +387,79 @@ class _HistoryTile extends StatelessWidget {
   }
 }
 
+class _RecipientHistoryItem extends StatelessWidget {
+  const _RecipientHistoryItem({required this.request});
+  final BloodRequest request;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.divider),
+        boxShadow: AppShadows.card,
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.primaryRed.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+            ),
+            child: const Icon(
+              Icons.bloodtype_rounded,
+              size: 18,
+              color: AppColors.primaryRed,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  request.shortId,
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+                Text(
+                  request.hospitalName,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: request.status == RequestStatus.fulfilled
+                  ? AppColors.success.withValues(alpha: 0.1)
+                  : AppColors.textSecondary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+            ),
+            child: Text(
+              request.status.name,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: request.status == RequestStatus.fulfilled
+                    ? AppColors.success
+                    : AppColors.textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _EmptySection extends StatelessWidget {
   const _EmptySection({
     required this.icon,
@@ -439,6 +545,42 @@ class _ProfileHead extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
+          if (profile.phone.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.phone_rounded, size: 14, color: AppColors.textSecondary),
+                  const SizedBox(width: 6),
+                  Text(
+                    profile.phone,
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (profile.cityArea.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.location_on_outlined, size: 14, color: AppColors.textSecondary),
+                  const SizedBox(width: 6),
+                  Text(
+                    profile.cityArea,
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Wrap(
             spacing: 8,
             runSpacing: 8,
