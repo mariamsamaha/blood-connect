@@ -41,20 +41,13 @@ jobs:
           HF_USERNAME: ${{ github.event.inputs.hf_username }}
           SPACE_NAME: ${{ github.event.inputs.space_name }}
         run: |
-          set -eux
+          set -eo pipefail
 
-          # Use GIT_ASKPASS to handle tokens with special characters
-          export GIT_ASKPASS=/tmp/git-askpass.sh
-          cat > /tmp/git-askpass.sh << 'GITEOF'
-#!/bin/sh
-case "$1" in
-  *Username*) echo "oauth" ;;
-  *Password*) echo "$HF_TOKEN" ;;
-esac
-GITEOF
-          chmod +x /tmp/git-askpass.sh
+          # URL-encode the token to avoid special character issues
+          HF_TOKEN_ENCODED=$(python3 -c "import urllib.parse, os; print(urllib.parse.quote(os.environ['HF_TOKEN'], safe=''))")
+          GIT_CREDENTIALS="https://oauth:${HF_TOKEN_ENCODED}@huggingface.co"
 
-          git clone "https://huggingface.co/spaces/${HF_USERNAME}/${SPACE_NAME}" hf-space
+          git clone "${GIT_CREDENTIALS}/spaces/${HF_USERNAME}/${SPACE_NAME}" hf-space
 
           # Remove everything in the Space repo
           cd hf-space
