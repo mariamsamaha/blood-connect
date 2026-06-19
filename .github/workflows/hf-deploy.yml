@@ -43,9 +43,17 @@ jobs:
         run: |
           set -eux
 
-          # Clone the target Space (use git-credential to avoid URL encoding issues)
-          git config --global credential.helper store
-          echo "https://user:${HF_TOKEN}@huggingface.co" > ~/.git-credentials
+          # Use GIT_ASKPASS to handle tokens with special characters
+          export GIT_ASKPASS=/tmp/git-askpass.sh
+          cat > /tmp/git-askpass.sh << 'GITEOF'
+#!/bin/sh
+case "$1" in
+  *Username*) echo "oauth" ;;
+  *Password*) echo "$HF_TOKEN" ;;
+esac
+GITEOF
+          chmod +x /tmp/git-askpass.sh
+
           git clone "https://huggingface.co/spaces/${HF_USERNAME}/${SPACE_NAME}" hf-space
 
           # Remove everything in the Space repo
