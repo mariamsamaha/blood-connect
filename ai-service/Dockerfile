@@ -13,6 +13,11 @@ COPY model_VIT/ ./model_VIT/
 COPY main.py .
 COPY conftest.py .
 
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup && \
+    chown -R appuser:appgroup /app
+
+USER appuser
+
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
