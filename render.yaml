@@ -4,7 +4,7 @@ services:
     runtime: docker
     dockerfilePath: ./api-backend/Dockerfile
     dockerContext: ./api-backend
-    plan: starter
+    plan: free
     healthCheckPath: /health/db
     envVars:
       - key: NODE_ENV
@@ -21,61 +21,5 @@ services:
         sync: false
       - key: GOOGLE_APPLICATION_CREDENTIALS
         value: /etc/secrets/firebase-adminsdk.json
-      - key: NOTIFICATION_BACKEND_URL
-        fromService:
-          name: bloodconnect-notification
-          type: web
-          property: hostport
-      - key: NOTIFICATION_BACKEND_SECRET
-        generateValue: true
       - key: AI_SERVICE_URL
-        fromService:
-          name: bloodconnect-ai
-          type: web
-          property: hostport
-      - key: REDIS_URL
-        fromService:
-          name: bloodconnect-redis
-          type: redis
-          property: connectionString
-
-  - type: web
-    name: bloodconnect-notification
-    runtime: docker
-    dockerfilePath: ./notification-backend/Dockerfile
-    dockerContext: ./notification-backend
-    plan: starter
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: PORT
-        value: "8080"
-      - key: INTERNAL_SECRET
-        fromService:
-          name: bloodconnect-api
-          type: web
-          envVarKey: NOTIFICATION_BACKEND_SECRET
-      - key: FIREBASE_PROJECT_ID
         sync: false
-      - key: GOOGLE_APPLICATION_CREDENTIALS
-        value: /etc/secrets/firebase-adminsdk.json
-
-  - type: web
-    name: bloodconnect-ai
-    runtime: docker
-    dockerfilePath: ./ai-service/Dockerfile
-    dockerContext: ./ai-service
-    plan: starter
-    envVars:
-      - key: PORT
-        value: "8000"
-      - key: TESTING
-        value: "false"
-      - key: AI_ASSISTANT_API_KEY
-        sync: false
-
-  - type: redis
-    name: bloodconnect-redis
-    plan: starter
-    maxmemoryPolicy: allkeys-lru
-    ipAllowList: []
