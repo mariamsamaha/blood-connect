@@ -13,7 +13,7 @@ COPY model_VIT/ ./model_VIT/
 COPY main.py .
 COPY conftest.py .
 
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup && \
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser && \
     chown -R appuser:appgroup /app
 
 USER appuser

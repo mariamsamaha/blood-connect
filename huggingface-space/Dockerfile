@@ -13,7 +13,7 @@ COPY ai-service/model_VIT/ ./model_VIT/
 COPY ai-service/main.py .
 COPY ai-service/conftest.py .
 
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup && \
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser && \
     chown -R appuser:appgroup /app
 
 USER appuser
