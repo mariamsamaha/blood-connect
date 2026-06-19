@@ -35,6 +35,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Debug token presence
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          echo "Token length: ${#HF_TOKEN}"
+          curl -s -H "Authorization: Bearer ${HF_TOKEN}" https://huggingface.co/api/whoami-v2
+
       - name: Push AI service files to HF Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
