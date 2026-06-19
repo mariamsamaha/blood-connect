@@ -79,11 +79,11 @@ pool.on('error', (err) => {
 });
 
 // Bulkhead pool — reserved for health / metrics so they can never starve.
-// Guarantees at least 2 connections are available for health checks
+// Guarantees at least 10 connections are available for health checks
 // even when the main pool is saturated.
 const bulkheadPool = new Pool({
   ...buildPoolConfig(),
-  max: 2,
+  max: 10,
 });
 
 bulkheadPool.on('error', (err) => {

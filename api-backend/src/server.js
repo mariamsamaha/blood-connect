@@ -99,12 +99,13 @@ if (isProduction) {
   });
 }
 
-// Global limit (unauthenticated traffic, health checks)
+// Global limit (unauthenticated traffic)
 const globalLimiter = rateLimit({
   windowMs: 60_000,
   max: process.env.DISABLE_RATE_LIMIT === 'true' ? 100_000 : 200,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.path === '/' || req.path === '/health/db',
   ...(rateLimitStore && { store: rateLimitStore }),
 });
 
