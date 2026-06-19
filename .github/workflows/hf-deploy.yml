@@ -45,9 +45,8 @@ jobs:
 
           # URL-encode the token to avoid special character issues
           HF_TOKEN_ENCODED=$(python3 -c "import urllib.parse, os; print(urllib.parse.quote(os.environ['HF_TOKEN'], safe=''))")
-          GIT_CREDENTIALS="https://oauth:${HF_TOKEN_ENCODED}@huggingface.co"
 
-          git clone "${GIT_CREDENTIALS}/spaces/${HF_USERNAME}/${SPACE_NAME}" hf-space
+          git clone "https://${HF_USERNAME}:${HF_TOKEN_ENCODED}@huggingface.co/spaces/${HF_USERNAME}/${SPACE_NAME}" hf-space
 
           # Remove everything in the Space repo
           cd hf-space
