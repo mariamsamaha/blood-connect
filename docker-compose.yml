@@ -20,11 +20,17 @@ services:
       - ./.env
     environment:
       - NODE_ENV=production
+      - PORT=8090
       - NOTIFICATION_BACKEND_URL=http://notification-backend:8080
       - REDIS_URL=redis://redis:6379
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
+      - OTEL_SERVICE_NAME=bloodconnect-api
+      - OTEL_LOG_LEVEL=${OTEL_LOG_LEVEL:-}
     depends_on:
       notification-backend:
         condition: service_healthy
+      otel-collector:
+        condition: service_started
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8090/health/db"]
       interval: 30s
@@ -45,6 +51,13 @@ services:
       - ./.env
     environment:
       - NODE_ENV=production
+      - PORT=8080
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
+      - OTEL_SERVICE_NAME=bloodconnect-notification
+      - OTEL_LOG_LEVEL=${OTEL_LOG_LEVEL:-}
+    depends_on:
+      otel-collector:
+        condition: service_started
     healthcheck:
       test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:8080/ | grep -q running"]
       interval: 10s
@@ -70,6 +83,17 @@ services:
       timeout: 10s
       start_period: 60s
       retries: 3
+    restart: unless-stopped
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.119.0
+    ports:
+      - "4318:4318"
+      - "4317:4317"
+    volumes:
+      - ./monitoring/otel-collector-config.yml:/etc/otel-collector-config.yml:ro
+    command:
+      - '--config=/etc/otel-collector-config.yml'
     restart: unless-stopped
 
   prometheus:

@@ -8,6 +8,9 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 
+// Initialize OpenTelemetry before any instrumented modules
+require('./tracing');
+
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const { randomUUID } = require('crypto');

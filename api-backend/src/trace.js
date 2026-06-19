@@ -1,11 +1,19 @@
 const { randomUUID } = require('crypto');
+const { context, trace, propagation } = require('@opentelemetry/api');
 
 function traceMiddleware(req, res, next) {
-  const traceId = req.headers['x-trace-id'] || randomUUID();
-  const parentSpanId = req.headers['x-span-id'];
-  const spanId = randomUUID().split('-')[0];
+  const activeContext = propagation.extract(context.active(), req.headers);
+  const spanContext = trace.getSpanContext(activeContext);
 
-  req.trace = { traceId, spanId, parentSpanId };
+  const traceId = spanContext?.traceId
+    ? spanContext.traceId.padStart(32, '0')
+    : (req.headers['x-trace-id'] || randomUUID().replace(/-/g, '')).padStart(32, '0');
+
+  const spanId = spanContext?.spanId
+    ? spanContext.spanId.padStart(16, '0')
+    : randomUUID().split('-')[0].padStart(16, '0');
+
+  req.trace = { traceId, spanId };
   req.requestId = req.requestId || traceId;
 
   res.setHeader('x-trace-id', traceId);
