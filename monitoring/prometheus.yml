@@ -2,9 +2,24 @@ global:
   scrape_interval:     15s
   evaluation_interval: 15s
 
+rule_files:
+  - /etc/prometheus/alert_rules.yml
+
 scrape_configs:
   - job_name: 'api-backend'
     static_configs:
       - targets: ['api-backend:8090']
+    metrics_path: /metrics
+    scrape_interval: 15s
+
+  - job_name: 'notification-backend'
+    static_configs:
+      - targets: ['notification-backend:8080']
+    metrics_path: /metrics
+    scrape_interval: 15s
+
+  - job_name: 'ai-service'
+    static_configs:
+      - targets: ['ai-service:8000']
     metrics_path: /metrics
     scrape_interval: 15s

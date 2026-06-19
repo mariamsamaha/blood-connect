@@ -234,10 +234,9 @@ def test_sanitize_enforces_max_length():
 def test_metrics_endpoint():
     r = client.get("/metrics")
     assert r.status_code == 200
-    body = r.json()
-    assert "predictions_total" in body
-    assert "predictions_success" in body
-    assert "avg_latency_ms" in body
+    assert r.headers["content-type"].startswith("text/plain")
+    assert "bloodconnect_predictions_total" in r.text
+    assert "bloodconnect_prediction_latency_ms" in r.text
 
 
 # ─── 12. A/B Prompt Variant Tests (A8) ───────────────────────────────────────

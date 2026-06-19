@@ -129,7 +129,18 @@ describe('Notification Backend', () => {
     });
   });
 
-  describe('sendWithRetry', () => {
+  describe('GET /metrics', () => {
+  test('returns 200 with Prometheus metric names', async () => {
+    const res = await request(app).get('/metrics');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('bloodconnect_notification_dispatches_total');
+    expect(res.text).toContain('bloodconnect_notification_dispatch_duration_ms');
+    expect(res.text).toContain('bloodconnect_http_requests_total');
+    expect(res.headers['content-type']).toMatch(/^text\/plain/);
+  });
+});
+
+describe('sendWithRetry', () => {
     test('retries on failure and eventually succeeds', async () => {
       mockSendEachForMulticast
         .mockRejectedValueOnce(new Error('network error'))

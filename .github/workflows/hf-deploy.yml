@@ -1,0 +1,74 @@
+# Deploy AI Service to Hugging Face Spaces
+#
+# This is a secondary/demo deployment target — it does NOT replace the
+# Render-based CD pipeline in cd.yml. Trigger manually when you want to
+# update the demo Space.
+#
+# Prerequisites (manual — cannot be created from code):
+#   1. GitHub secret HF_TOKEN — a Hugging Face access token with write
+#      permission on the target Space. Create at https://huggingface.co/settings/tokens
+#      and add as a repository secret in GitHub repo Settings → Secrets and variables → Actions.
+#   2. The target Hugging Face Space must already exist with SDK = Docker.
+#      Create at https://huggingface.co/new-space
+#   3. The Space must be empty or already have the correct contents — this
+#      workflow overwrites everything in it with the current ai-service/ files.
+
+name: Deploy AI Service to Hugging Face Spaces
+
+on:
+  workflow_dispatch:
+    inputs:
+      space_name:
+        description: 'Hugging Face Space name (e.g., bloodconnect-ai)'
+        required: true
+        default: 'bloodconnect-ai'
+      hf_username:
+        description: 'Hugging Face username or organization'
+        required: true
+
+jobs:
+  deploy:
+    name: Push to Hugging Face Space
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push AI service files to HF Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_USERNAME: ${{ github.event.inputs.hf_username }}
+          SPACE_NAME: ${{ github.event.inputs.space_name }}
+        run: |
+          set -eux
+
+          SPACE_URL="https://huggingface.co/spaces/${HF_USERNAME}/${SPACE_NAME}"
+
+          # Clone the target Space
+          git clone "https://user:${HF_TOKEN}@huggingface.co/spaces/${HF_USERNAME}/${SPACE_NAME}" hf-space
+
+          # Remove everything in the Space repo
+          cd hf-space
+          rm -rf ./*
+          cd ..
+
+          # Copy over the Hugging Face-specific Dockerfile (as the root Dockerfile)
+          cp huggingface-space/Dockerfile hf-space/Dockerfile
+          cp huggingface-space/README.md hf-space/README.md
+
+          # Copy the actual application code (the COPY instructions in the
+          # Dockerfile reference ai-service/ from the build context root)
+          cp -r ai-service hf-space/ai-service
+
+          # Commit and push
+          cd hf-space
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add .
+          if git diff --quiet && git diff --staged --quiet; then
+            echo "Nothing to push — Space is already up to date."
+            exit 0
+          fi
+          git commit -m "Deploy blood-connect/ai-service@${GITHUB_SHA}"
+          git push

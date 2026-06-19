@@ -1,0 +1,31 @@
+groups:
+  - name: bloodconnect_slo
+    rules:
+      - alert: HighErrorRate
+        expr: rate(bloodconnect_http_requests_total{status_code=~"5.."}[5m])
+              / rate(bloodconnect_http_requests_total[5m]) > 0.05
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "Error rate above 5% for 5 minutes"
+
+      - alert: CircuitBreakerOpen
+        expr: bloodconnect_circuit_breaker_state > 0
+        for: 1m
+        labels: { severity: warning }
+        annotations:
+          summary: "Circuit breaker {{ $labels.service }} is OPEN or HALF_OPEN"
+
+      - alert: ServiceDown
+        expr: up == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.job }} has been down for 2+ minutes"
+
+      - alert: HighP95Latency
+        expr: histogram_quantile(0.95, rate(bloodconnect_http_request_duration_ms_bucket[5m])) > 2000
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "p95 latency above 2s SLO target for 5 minutes"

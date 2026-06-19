@@ -38,7 +38,7 @@ from torchvision import transforms
 from PIL import Image
 import pytesseract
 
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -608,6 +608,8 @@ async def lifespan(app: FastAPI):
 # Prometheus Metrics (A5)
 # ─────────────────────────────────────────────────────────────────────────────
 
+from prometheus_client import Counter, Histogram, Gauge, generate_latest
+
 _PREDICTION_COUNT = 0
 _PREDICTION_SUCCESS = 0
 _PREDICTION_FAILURE = 0
@@ -617,23 +619,35 @@ _CHAT_FAILURE_COUNT = 0
 _TOTAL_LATENCY_MS = 0
 _TOTAL_PREDICTIONS = 0
 
+prom_prediction_count = Counter('bloodconnect_predictions_total', 'Total predictions', labelnames=['status'])
+prom_prediction_latency = Histogram('bloodconnect_prediction_latency_ms', 'Prediction latency in ms',
+    buckets=[50, 100, 200, 500, 1000, 2000, 5000])
+prom_ocr_failures = Counter('bloodconnect_ocr_failures_total', 'Total OCR failures')
+prom_chat_requests = Counter('bloodconnect_chat_requests_total', 'Total chat requests', labelnames=['status'])
+
 
 def _predict_metric(success: bool, latency_ms: float, ocr_failed: bool = False):
     global _PREDICTION_COUNT, _PREDICTION_SUCCESS, _PREDICTION_FAILURE, _OCR_FAILURE_COUNT, _TOTAL_LATENCY_MS, _TOTAL_PREDICTIONS
     _PREDICTION_COUNT += 1
     _TOTAL_LATENCY_MS += latency_ms
     _TOTAL_PREDICTIONS += 1
+    status = 'success' if success else 'failure'
+    prom_prediction_count.labels(status=status).inc()
+    prom_prediction_latency.observe(latency_ms)
     if success:
         _PREDICTION_SUCCESS += 1
     else:
         _PREDICTION_FAILURE += 1
     if ocr_failed:
         _OCR_FAILURE_COUNT += 1
+        prom_ocr_failures.inc()
 
 
 def _chat_metric(success: bool):
     global _CHAT_REQUEST_COUNT, _CHAT_FAILURE_COUNT
     _CHAT_REQUEST_COUNT += 1
+    status = 'success' if success else 'failure'
+    prom_chat_requests.labels(status=status).inc()
     if not success:
         _CHAT_FAILURE_COUNT += 1
 
@@ -671,16 +685,10 @@ app.add_middleware(
 @app.get("/metrics")
 @limiter.limit("60/minute")
 def metrics(request: Request):
-    return {
-        "predictions_total": _PREDICTION_COUNT,
-        "predictions_success": _PREDICTION_SUCCESS,
-        "predictions_failure": _PREDICTION_FAILURE,
-        "ocr_failures_total": _OCR_FAILURE_COUNT,
-        "chat_requests_total": _CHAT_REQUEST_COUNT,
-        "chat_failures_total": _CHAT_FAILURE_COUNT,
-        "avg_latency_ms": round(_TOTAL_LATENCY_MS / max(_TOTAL_PREDICTIONS, 1), 2),
-        "vit_loaded": vit_model is not None,
-    }
+    return Response(
+        content=generate_latest(),
+        media_type="text/plain; version=0.0.4; charset=utf-8",
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -765,11 +773,18 @@ def health():
 @app.get("/status")
 def status():
     return {
-        "service":    "BloodConnect AI v3.0.2",
-        "vit_loaded": vit_model is not None,
-        "device":     str(vit_device),
-        "weights":    str(Path(VIT_WEIGHTS_PATH).resolve()),
-        "tesseract":  TESSERACT_FOUND,
+        "service":            "BloodConnect AI v3.0.2",
+        "vit_loaded":         vit_model is not None,
+        "device":             str(vit_device),
+        "weights":            str(Path(VIT_WEIGHTS_PATH).resolve()),
+        "tesseract":          TESSERACT_FOUND,
+        "predictions_total":  _PREDICTION_COUNT,
+        "predictions_success": _PREDICTION_SUCCESS,
+        "predictions_failure": _PREDICTION_FAILURE,
+        "ocr_failures_total": _OCR_FAILURE_COUNT,
+        "chat_requests_total": _CHAT_REQUEST_COUNT,
+        "chat_failures_total": _CHAT_FAILURE_COUNT,
+        "avg_latency_ms":     round(_TOTAL_LATENCY_MS / max(_TOTAL_PREDICTIONS, 1), 2),
     }
 
 

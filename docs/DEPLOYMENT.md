@@ -218,4 +218,38 @@ curl http://localhost:8090/api/docs.json
 # Notification backend
 curl http://localhost:8080/
 # → "Notification backend is running"
-```
+
+## Alternative: Hugging Face Spaces (AI service only)
+
+> **Secondary / demo deployment target.** Render remains the primary
+> production deployment for all four services. This Space exists solely
+> to demonstrate multi-cloud portability of the AI service.
+
+A `huggingface-space/` directory at the repo root contains a Dockerfile and
+README for deploying the AI service on Hugging Face Spaces with the Docker
+SDK. The Dockerfile COPYs directly from the existing `ai-service/` source
+directory — there is no duplicated application code.
+
+**Target tier:** CPU free tier (default). The Dockerfile installs CPU-only
+PyTorch wheels from `ai-service/requirements.txt`. GPU inference would
+require a paid HF Spaces GPU tier and a separate requirements file; this
+config does not assume GPU access.
+
+**Manual setup steps:**
+
+1. Create a Space at https://huggingface.co/new-space with **SDK = Docker**.
+   Name it e.g. `bloodconnect-ai`.
+2. Add a Hugging Face access token with **write** permission as a repository
+   secret named `HF_TOKEN` in the GitHub repo settings (Settings → Secrets
+   and variables → Actions).
+3. Run the **Deploy AI Service to Hugging Face Spaces** workflow from
+   GitHub Actions (`workflow_dispatch`), providing the Space name and your
+   HF username/organization.
+4. Verify the deployment:
+   ```bash
+   curl https://huggingface.co/spaces/<user>/<space>/health
+   # → {"status":"healthy"}
+   ```
+
+The workflow is defined in `.github/workflows/hf-deploy.yml` and is
+triggered manually only — it does NOT run on every push to `main`.

@@ -6,6 +6,7 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const admin = require('firebase-admin');
 const logger = require('./logger');
+const metrics = require('./metrics');
 
 async function sendWithRetry(fn, { maxRetries = 3, baseDelayMs = 500, label = 'send' } = {}) {
   let lastError;
@@ -43,6 +44,8 @@ if (isProduction) {
 }
 
 app.use(express.json());
+
+app.use(metrics.metricsMiddleware);
 
 app.use((req, _res, next) => {
   req.requestId = req.headers['x-request-id'] || require('crypto').randomUUID();
@@ -94,6 +97,8 @@ app.get('/', (_req, res) => {
   res.status(200).send('Notification backend is running');
 });
 
+app.get('/metrics', metrics.metricsHandler);
+
 // Main endpoint called from the Flutter app.
 // Expects body:
 // {
@@ -115,6 +120,7 @@ app.get('/', (_req, res) => {
 //   "tokens": ["fcmToken1", ...]
 // }
 app.post('/sendNotification', requireSecret, async (req, res) => {
+  const dispatchStart = Date.now();
   try {
     const { title, body, data, tokens } = req.body || {};
 
@@ -169,15 +175,23 @@ app.post('/sendNotification', requireSecret, async (req, res) => {
       logger.warn({ count: staleTokens.length }, 'Stale tokens to purge');
     }
 
+    const elapsed = Date.now() - dispatchStart;
+    metrics.notificationDispatchDuration.observe({ route: '/sendNotification' }, elapsed);
+    metrics.notificationDispatchesTotal.inc({ route: '/sendNotification', status: 'success' }, successCount);
+    metrics.notificationDispatchesTotal.inc({ route: '/sendNotification', status: 'failure' }, failureCount);
+
     logger.info({ sent: successCount, total: cleanTokens.length }, 'Push sent');
     return res.status(200).json({ sent: successCount, failed: failureCount, stale_tokens: staleTokens });
   } catch (err) {
+    const elapsed = Date.now() - dispatchStart;
+    metrics.notificationDispatchDuration.observe({ route: '/sendNotification' }, elapsed);
     console.error('Error in /sendNotification', err);
     return res.status(500).json({ error: 'internal_error' });
   }
 });
 
 app.post('/sendNewRequest', requireSecret, async (req, res) => {
+  const dispatchStart = Date.now();
   try {
     const { request, tokens } = req.body || {};
 
@@ -245,9 +259,16 @@ app.post('/sendNewRequest', requireSecret, async (req, res) => {
       logger.warn({ count: staleTokens.length }, 'Stale tokens to purge');
     }
 
+    const elapsed = Date.now() - dispatchStart;
+    metrics.notificationDispatchDuration.observe({ route: '/sendNewRequest' }, elapsed);
+    metrics.notificationDispatchesTotal.inc({ route: '/sendNewRequest', status: 'success' }, successCount);
+    metrics.notificationDispatchesTotal.inc({ route: '/sendNewRequest', status: 'failure' }, failureCount);
+
     logger.info({ sent: successCount, total: cleanTokens.length, shortId: request.short_id }, 'Push sent');
     return res.status(200).json({ sent: successCount, failed: failureCount, stale_tokens: staleTokens });
   } catch (err) {
+    const elapsed = Date.now() - dispatchStart;
+    metrics.notificationDispatchDuration.observe({ route: '/sendNewRequest' }, elapsed);
     console.error('Error in /sendNewRequest', err);
     return res.status(500).json({ error: 'internal_error' });
   }
