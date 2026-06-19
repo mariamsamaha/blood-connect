@@ -25,10 +25,10 @@ BloodConnect uses a **hybrid architecture** — an Express.js API BFF (Backend-f
 
 | Approach | Chosen? | Why |
 |----------|---------|-----|
-| Direct Supabase from Flutter | ❌ | Exposes DB credentials in app; no server-side validation; harder to enforce RLS per-user |
-| Full monolith (single server) | ❌ | Notification dispatch is I/O-heavy (FCM HTTP calls); separating it keeps the main API responsive |
-| Microservices (many services) | ❌ | Premature complexity for a small team; 2 services is the right split |
-| **Hybrid BFF + Notification service** | ✅ | Best balance: server-side auth/validation, isolated notification dispatch, shared DB |
+| Direct Supabase from Flutter | NO | Exposes DB credentials in app; no server-side validation; harder to enforce RLS per-user |
+| Full monolith (single server) | NO | Notification dispatch is I/O-heavy (FCM HTTP calls); separating it keeps the main API responsive |
+| Microservices (many services) | NO | Premature complexity for a small team; 2 services is the right split |
+| **Hybrid BFF + Notification service** | Yes | Best balance: server-side auth/validation, isolated notification dispatch, shared DB |
 
 ### Main Components
 
