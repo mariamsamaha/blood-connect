@@ -2,6 +2,8 @@
 // Uses Firebase Admin SDK and the service account pointed to by
 // GOOGLE_APPLICATION_CREDENTIALS in your environment.
 
+require('./tracing');
+
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const admin = require('firebase-admin');
