@@ -43,10 +43,10 @@ jobs:
         run: |
           set -eux
 
-          SPACE_URL="https://huggingface.co/spaces/${HF_USERNAME}/${SPACE_NAME}"
-
-          # Clone the target Space
-          git clone "https://user:${HF_TOKEN}@huggingface.co/spaces/${HF_USERNAME}/${SPACE_NAME}" hf-space
+          # Clone the target Space (use git-credential to avoid URL encoding issues)
+          git config --global credential.helper store
+          echo "https://user:${HF_TOKEN}@huggingface.co" > ~/.git-credentials
+          git clone "https://huggingface.co/spaces/${HF_USERNAME}/${SPACE_NAME}" hf-space
 
           # Remove everything in the Space repo
           cd hf-space
