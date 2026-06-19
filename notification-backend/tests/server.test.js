@@ -14,14 +14,16 @@ jest.mock('pino-http', () => () => (req, _res, next) => {
   next();
 });
 
+const mockSendEachForMulticast = jest.fn().mockResolvedValue({
+  successCount: 2,
+  failureCount: 0,
+  responses: [],
+});
+
 jest.mock('firebase-admin', () => ({
   initializeApp: jest.fn(),
   messaging: () => ({
-    sendEachForMulticast: jest.fn().mockResolvedValue({
-      successCount: 2,
-      failureCount: 0,
-      responses: [],
-    }),
+    sendEachForMulticast: mockSendEachForMulticast,
   }),
 }));
 
@@ -38,6 +40,10 @@ describe('Notification Backend', () => {
 
   afterAll(() => {
     process.env = { ...origEnv };
+  });
+
+  beforeEach(() => {
+    mockSendEachForMulticast.mockClear();
   });
 
   describe('GET /', () => {
@@ -120,6 +126,31 @@ describe('Notification Backend', () => {
       expect(res.body).toHaveProperty('sent');
       expect(res.body).toHaveProperty('failed');
       expect(res.body).toHaveProperty('stale_tokens');
+    });
+  });
+
+  describe('sendWithRetry', () => {
+    test('retries on failure and eventually succeeds', async () => {
+      mockSendEachForMulticast
+        .mockRejectedValueOnce(new Error('network error'))
+        .mockRejectedValueOnce(new Error('network error'))
+        .mockResolvedValueOnce({
+          successCount: 1,
+          failureCount: 0,
+          responses: [],
+        });
+
+      const res = await request(app)
+        .post('/sendNotification')
+        .set('x-internal-secret', 'test-secret')
+        .send({
+          title: 'Test',
+          body: 'Test body',
+          tokens: ['token1'],
+        });
+
+      expect(res.status).toBe(200);
+      expect(mockSendEachForMulticast).toHaveBeenCalledTimes(3);
     });
   });
 });

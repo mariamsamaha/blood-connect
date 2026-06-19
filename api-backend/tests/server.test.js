@@ -29,7 +29,7 @@ jest.mock('firebase-admin', () => ({
   }),
 }));
 
-jest.mock('../src/db', () => ({
+const mockDb = {
   query: jest.fn(),
   withTransaction: jest.fn(),
   testConnection: jest.fn().mockResolvedValue(true),
@@ -47,7 +47,9 @@ jest.mock('../src/db', () => ({
     waitingCount: 0,
     on: jest.fn(),
   },
-}));
+};
+
+jest.mock('../src/db', () => mockDb);
 
 describe('API Backend Server', () => {
   let app;
@@ -388,6 +390,42 @@ describe('API Backend Server', () => {
         .send('raw data');
       expect(res.status).toBe(415);
       expect(res.body.error).toBe('unsupported_media_type');
+    });
+  });
+
+  describe('POST /api/v1/hospital/verify authorization', () => {
+    test('returns 403 for donor role', async () => {
+      // Role lookup returns 'donor' — not allowed
+      mockDb.query.mockResolvedValue([{ id: 'user-uuid', role: 'donor' }]);
+
+      const res = await request(app)
+        .post('/api/v1/hospital/verify')
+        .set('Authorization', 'Bearer test-token')
+        .send({ requestId: 'req-uuid', staffName: 'Dr. Test' });
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('forbidden_role');
+    });
+
+    test('returns 403 for recipient role', async () => {
+      mockDb.query.mockResolvedValue([{ id: 'user-uuid', role: 'recipient' }]);
+
+      const res = await request(app)
+        .post('/api/v1/hospital/verify')
+        .set('Authorization', 'Bearer test-token')
+        .send({ requestId: 'req-uuid', staffName: 'Dr. Test' });
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('forbidden_role');
+    });
+
+    test('returns 404 when user not found in DB', async () => {
+      mockDb.query.mockResolvedValue([]);
+
+      const res = await request(app)
+        .post('/api/v1/hospital/verify')
+        .set('Authorization', 'Bearer test-token')
+        .send({ requestId: 'req-uuid' });
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('user_not_found');
     });
   });
 });

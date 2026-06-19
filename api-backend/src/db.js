@@ -30,7 +30,7 @@ function supabaseSsl(connectionString) {
 
 function buildPoolConfig() {
   const timeouts = {
-    max: 10,
+    max: 18,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 5_000,
     statement_timeout: 10_000,
@@ -83,7 +83,7 @@ pool.on('error', (err) => {
 // even when the main pool is saturated.
 const bulkheadPool = new Pool({
   ...buildPoolConfig(),
-  max: 10,
+  max: 2,
 });
 
 bulkheadPool.on('error', (err) => {

@@ -20,7 +20,7 @@ Estimated monthly cost to run BloodConnect in production.
 | **Database** | Supabase Pro (8GB, 10GB disk) | $25 | PostgreSQL + PostGIS, includes auth |
 | **Authentication** | Firebase Auth (Blaze) | $0-10 | 10K MAU free tier, beyond is ~$0.01/MAU |
 | **Push Notifications** | Firebase Cloud Messaging | $0 | Free tier |
-| **AI Assistant Chat** | OpenRouter (Gemini 2.0 Flash) | $5-20 | ~500 conversations/month, ~$0.15/1M input tokens |
+| **AI Assistant Chat** | OpenRouter (Gemini 2.5 Flash) | $5-20 | ~500 conversations/month, ~$0.15/1M input tokens |
 | **File Storage** | Supabase Storage (1GB) | $0-5 | For blood report images |
 | **CI/CD** | GitHub Actions | $0 | 2,000 min/month free |
 | **Monitoring** | Self-hosted or Grafana Cloud free tier | $0-10 | |

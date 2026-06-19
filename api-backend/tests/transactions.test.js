@@ -233,6 +233,9 @@ describe('Wrapped Transaction Tests', () => {
 
   describe('Hospital verify uses explicit transaction', () => {
     test('POST /api/v1/hospital/verify writes verification + notifications atomically', async () => {
+      mockDb.query
+        .mockResolvedValueOnce([{ id: 'h1', role: 'hospital' }]);
+
       mockQ
         .mockResolvedValueOnce([{ success: true, error_message: null }])
         .mockResolvedValueOnce([{
@@ -246,7 +249,6 @@ describe('Wrapped Transaction Tests', () => {
         .post('/api/v1/hospital/verify')
         .set('Authorization', 'Bearer test-token')
         .send({
-          hospitalUserId: 'h1',
           requestId: 'req-1',
           staffName: 'Dr. Smith',
         });
@@ -260,6 +262,9 @@ describe('Wrapped Transaction Tests', () => {
     });
 
     test('rollback when notification insert fails after verification', async () => {
+      mockDb.query
+        .mockResolvedValueOnce([{ id: 'h1', role: 'hospital' }]);
+
       mockQ
         .mockResolvedValueOnce([{ success: true, error_message: null }])
         .mockResolvedValueOnce([{
@@ -272,7 +277,6 @@ describe('Wrapped Transaction Tests', () => {
         .post('/api/v1/hospital/verify')
         .set('Authorization', 'Bearer test-token')
         .send({
-          hospitalUserId: 'h1',
           requestId: 'req-1',
           staffName: 'Dr. Smith',
         });

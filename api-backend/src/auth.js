@@ -3,6 +3,7 @@ const path = require('path');
 const admin = require('firebase-admin');
 const redis = require('./redis');
 const logger = require('./logger');
+const { query } = require('./db');
 
 function resolveCredentialPath() {
   const envPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
@@ -115,4 +116,30 @@ async function requireFirebaseAuth(req, res, next) {
   }
 }
 
-module.exports = { admin, requireFirebaseAuth };
+function requireRole(...allowedRoles) {
+  return async (req, res, next) => {
+    if (!req.firebaseUser) {
+      return res.status(401).json({ error: 'missing_token' });
+    }
+    try {
+      const rows = await query(
+        'SELECT id, role FROM users WHERE firebase_uid = $1',
+        [req.firebaseUser.uid],
+      );
+      if (rows.length === 0) {
+        return res.status(404).json({ error: 'user_not_found' });
+      }
+      const { id, role } = rows[0];
+      if (!allowedRoles.includes(role)) {
+        return res.status(403).json({ error: 'forbidden_role' });
+      }
+      req.appUser = { id, role };
+      return next();
+    } catch (err) {
+      logger.error({ err }, 'requireRole query failed');
+      return res.status(500).json({ error: 'internal_error' });
+    }
+  };
+}
+
+module.exports = { admin, requireFirebaseAuth, requireRole };

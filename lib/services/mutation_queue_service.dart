@@ -47,7 +47,7 @@ class MutationQueueService {
     required MutationExecutor executor,
     required SyncManager syncManager,
     required String storagePath,
-    int maxRetries = 5,
+    int maxRetries = 3,
     CacheService? cacheService,
     CacheMetricsService? metrics,
   })  : _executor = executor,

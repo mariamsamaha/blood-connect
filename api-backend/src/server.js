@@ -18,7 +18,7 @@ const metrics = require('./metrics');
 const { CircuitBreaker } = require('./circuit-breaker');
 const { traceMiddleware } = require('./trace');
 const { pool, bulkheadPool, query, withTransaction, testConnection, healthQuery, validateDbConfig } = require('./db');
-const { requireFirebaseAuth } = require('./auth');
+const { requireFirebaseAuth, requireRole } = require('./auth');
 const { serverError } = require('./errors');
 
 const app = express();
@@ -662,18 +662,27 @@ app.delete('/api/v1/users/me', requireFirebaseAuth, async (req, res) => {
     if (user.length === 0) return res.status(404).json({ error: 'not_found' });
 
     const userId = user[0].id;
-    await query('DELETE FROM user_badges WHERE user_id = $1::uuid', [userId]);
-    await query('DELETE FROM donor_responses WHERE donor_id = $1::uuid', [userId]);
-    await query('DELETE FROM medical_records WHERE user_id = $1::uuid', [userId]);
-    await query('UPDATE blood_requests SET requester_id = NULL WHERE requester_id = $1::uuid', [userId]);
-    await query('DELETE FROM donations WHERE donor_id = $1::uuid', [userId]);
-    await query('DELETE FROM users WHERE id = $1::uuid', [userId]);
+
+    await withTransaction(async (q) => {
+      await q('DELETE FROM notifications WHERE user_id = $1::uuid', [userId]);
+      await q('DELETE FROM request_audit_log WHERE actor_user_id = $1::uuid', [userId]);
+      await q('DELETE FROM user_stories WHERE author_id = $1::uuid', [userId]);
+      await q('DELETE FROM story_likes WHERE user_id = $1::uuid', [userId]);
+      await q('DELETE FROM user_coupons WHERE user_id = $1::uuid', [userId]);
+      await q('DELETE FROM donor_feedback WHERE donor_id = $1::uuid', [userId]);
+      await q('DELETE FROM user_badges WHERE user_id = $1::uuid', [userId]);
+      await q('DELETE FROM donor_responses WHERE donor_id = $1::uuid', [userId]);
+      await q('DELETE FROM medical_records WHERE user_id = $1::uuid', [userId]);
+      await q('UPDATE blood_requests SET requester_id = NULL WHERE requester_id = $1::uuid', [userId]);
+      await q('DELETE FROM donations WHERE donor_id = $1::uuid', [userId]);
+      await q('DELETE FROM users WHERE id = $1::uuid', [userId]);
+    });
 
     try {
       const firebaseAdmin = require('firebase-admin');
       await firebaseAdmin.auth().deleteUser(fbUid);
     } catch (fbErr) {
-      logger.warn({ err: fbErr }, 'Firebase user deletion failed (may already be deleted)');
+      logger.error({ err: fbErr }, 'Firebase user deletion failed (DB and auth provider out of sync)');
     }
 
     return res.status(204).send();
@@ -1773,9 +1782,10 @@ app.get('/api/v1/hospital/search', requireFirebaseAuth, async (req, res) => {
  *       200:
  *         description: Verification result
  */
-app.post('/api/v1/hospital/verify', requireFirebaseAuth, async (req, res) => {
+app.post('/api/v1/hospital/verify', requireFirebaseAuth, requireRole('hospital'), async (req, res) => {
   try {
-    const { hospitalUserId, requestId, staffName } = req.body || {};
+    const { requestId, staffName } = req.body || {};
+    const hospitalUserId = req.appUser.id;
     let result;
     await withTransaction(async (q) => {
       const rows = await q(
@@ -2667,7 +2677,7 @@ app.post('/api/v1/ai/eligibility', requireFirebaseAuth, async (req, res) => {
  *               reason: { type: string }
  *               expirationDate: { type: string, format: date }
  */
-app.post('/api/v1/hospital/inventory/add', requireFirebaseAuth, async (req, res) => {
+app.post('/api/v1/hospital/inventory/add', requireFirebaseAuth, requireRole('hospital'), async (req, res) => {
   try {
     const { hospitalId, bloodType, units, reason, expirationDate } = req.body;
     if (!hospitalId || !bloodType || !units) {
@@ -2702,7 +2712,7 @@ app.post('/api/v1/hospital/inventory/add', requireFirebaseAuth, async (req, res)
  *     security:
  *       - bearerAuth: []
  */
-app.post('/api/v1/hospital/inventory/remove', requireFirebaseAuth, async (req, res) => {
+app.post('/api/v1/hospital/inventory/remove', requireFirebaseAuth, requireRole('hospital'), async (req, res) => {
   try {
     const { hospitalId, bloodType, units, reason } = req.body;
     if (!hospitalId || !bloodType || !units) {
@@ -2737,7 +2747,7 @@ app.post('/api/v1/hospital/inventory/remove', requireFirebaseAuth, async (req, r
  *     security:
  *       - bearerAuth: []
  */
-app.post('/api/v1/hospital/inventory/set', requireFirebaseAuth, async (req, res) => {
+app.post('/api/v1/hospital/inventory/set', requireFirebaseAuth, requireRole('hospital'), async (req, res) => {
   try {
     const { hospitalId, bloodType, units, reason } = req.body;
     if (!hospitalId || !bloodType || units === undefined) {
@@ -2772,7 +2782,7 @@ app.post('/api/v1/hospital/inventory/set', requireFirebaseAuth, async (req, res)
  *     security:
  *       - bearerAuth: []
  */
-app.post('/api/v1/hospital/inventory/threshold', requireFirebaseAuth, async (req, res) => {
+app.post('/api/v1/hospital/inventory/threshold', requireFirebaseAuth, requireRole('hospital'), async (req, res) => {
   try {
     const { hospitalId, bloodType, threshold } = req.body;
     if (!hospitalId || !bloodType || threshold === undefined) {
@@ -2842,7 +2852,7 @@ app.get('/api/v1/hospital/inventory/history', requireFirebaseAuth, async (req, r
  *     security:
  *       - bearerAuth: []
  */
-app.post('/api/v1/hospital/low-inventory/check', requireFirebaseAuth, async (req, res) => {
+app.post('/api/v1/hospital/low-inventory/check', requireFirebaseAuth, requireRole('hospital'), async (req, res) => {
   try {
     const rows = await query(`SELECT * FROM check_and_alert_low_inventory()`, []);
     return res.json({ checked: true, alerts_created: rows.length, details: rows });
@@ -2889,7 +2899,7 @@ app.get('/api/v1/hospital/low-inventory/alerts', requireFirebaseAuth, async (req
  *     security:
  *       - bearerAuth: []
  */
-app.post('/api/v1/hospital/low-inventory/resolve', requireFirebaseAuth, async (req, res) => {
+app.post('/api/v1/hospital/low-inventory/resolve', requireFirebaseAuth, requireRole('hospital'), async (req, res) => {
   try {
     const { hospitalId, bloodType } = req.body;
     if (!hospitalId || !bloodType) {

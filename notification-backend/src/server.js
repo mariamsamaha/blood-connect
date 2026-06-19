@@ -7,6 +7,24 @@ const rateLimit = require('express-rate-limit');
 const admin = require('firebase-admin');
 const logger = require('./logger');
 
+async function sendWithRetry(fn, { maxRetries = 3, baseDelayMs = 500, label = 'send' } = {}) {
+  let lastError;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      logger.warn({ err, attempt, maxRetries, label }, 'sendWithRetry failed');
+      if (attempt < maxRetries) {
+        const delay = baseDelayMs * Math.pow(2, attempt - 1) + Math.random() * 200;
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+  }
+  logger.error({ err: lastError, label, maxRetries }, 'sendWithRetry exhausted');
+  throw lastError;
+}
+
 admin.initializeApp();
 
 const app = express();
@@ -122,10 +140,13 @@ app.post('/sendNotification', requireSecret, async (req, res) => {
 
     for (let i = 0; i < cleanTokens.length; i += CHUNK) {
       const chunk = cleanTokens.slice(i, i + CHUNK);
-      const response = await admin.messaging().sendEachForMulticast({
-        ...message,
-        tokens: chunk,
-      });
+      const response = await sendWithRetry(
+        () => admin.messaging().sendEachForMulticast({
+          ...message,
+          tokens: chunk,
+        }),
+        { label: 'sendNotification' },
+      );
 
       successCount += response.successCount;
       failureCount += response.failureCount;
@@ -195,10 +216,13 @@ app.post('/sendNewRequest', requireSecret, async (req, res) => {
 
     for (let i = 0; i < cleanTokens.length; i += CHUNK) {
       const chunk = cleanTokens.slice(i, i + CHUNK);
-      const response = await admin.messaging().sendEachForMulticast({
-        ...message,
-        tokens: chunk,
-      });
+      const response = await sendWithRetry(
+        () => admin.messaging().sendEachForMulticast({
+          ...message,
+          tokens: chunk,
+        }),
+        { label: 'sendNewRequest' },
+      );
 
       successCount += response.successCount;
       failureCount += response.failureCount;

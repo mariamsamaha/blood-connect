@@ -47,7 +47,7 @@ const circuitBreakerState = new prometheus.Gauge({
   labelNames: ['service'],
   registers: [register],
 });
-circuitBreakerState.set({ service: 'fcm' }, 0); // 0 = CLOSED
+circuitBreakerState.set({ service: 'notification-backend' }, 0); // 0 = CLOSED
 circuitBreakerState.set({ service: 'ai' }, 0);
 
 const circuitBreakerFailures = new prometheus.Counter({
