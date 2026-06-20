@@ -19,11 +19,9 @@ on:
         description: Skip Render/Fly deploy hooks
         type: boolean
         default: false
-
 env:
   REGISTRY: ghcr.io
   IMAGE_TAG: ${{ github.sha }}
-
 jobs:
   gate:
     name: Deployment Gate
@@ -41,7 +39,6 @@ jobs:
           SKIP="${{ github.event.inputs.skip_deploy_hooks || 'false' }}"
           echo "environment=$ENV" >> $GITHUB_OUTPUT
           echo "skip_hooks=$SKIP" >> $GITHUB_OUTPUT
-
   publish:
     name: Publish Images to GHCR
     needs: gate
@@ -73,23 +70,25 @@ jobs:
             ${{ env.REGISTRY }}/${{ github.repository }}/bloodconnect-${{ matrix.service }}:${{ env.IMAGE_TAG }}
             ${{ env.REGISTRY }}/${{ github.repository }}/bloodconnect-${{ matrix.service }}:${{ needs.gate.outputs.environment }}
             ${{ env.REGISTRY }}/${{ github.repository }}/bloodconnect-${{ matrix.service }}:latest
-
   deploy:
     name: Deploy to ${{ needs.gate.outputs.environment }}
     needs: [gate, publish]
     runs-on: ubuntu-latest
     environment: ${{ needs.gate.outputs.environment }}
+    env:
+      HOOK_API: ${{ secrets.RENDER_DEPLOY_HOOK_API }}
+      HOOK_NOTIFICATION: ${{ secrets.RENDER_DEPLOY_HOOK_NOTIFICATION }}
+      HOOK_AI: ${{ secrets.RENDER_DEPLOY_HOOK_AI }}
     steps:
       - name: Render Deploy Hook — API
-        if: ${{ needs.gate.outputs.skip_hooks != 'true' && secrets.RENDER_DEPLOY_HOOK_API != '' }}
-        run: curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_API }}"
+        if: ${{ needs.gate.outputs.skip_hooks != 'true' && env.HOOK_API != '' }}
+        run: curl -X POST "$HOOK_API"
       - name: Render Deploy Hook — Notification
-        if: ${{ needs.gate.outputs.skip_hooks != 'true' && secrets.RENDER_DEPLOY_HOOK_NOTIFICATION != '' }}
-        run: curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_NOTIFICATION }}"
+        if: ${{ needs.gate.outputs.skip_hooks != 'true' && env.HOOK_NOTIFICATION != '' }}
+        run: curl -X POST "$HOOK_NOTIFICATION"
       - name: Render Deploy Hook — AI
-        if: ${{ needs.gate.outputs.skip_hooks != 'true' && secrets.RENDER_DEPLOY_HOOK_AI != '' }}
-        run: curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_AI }}"
-
+        if: ${{ needs.gate.outputs.skip_hooks != 'true' && env.HOOK_AI != '' }}
+        run: curl -X POST "$HOOK_AI"
   post-deploy:
     name: Post-Deploy Health Checks
     needs: [gate, deploy]
