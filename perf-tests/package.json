@@ -1,0 +1,19 @@
+{
+  "name": "bloodconnect-perf-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Performance-only test suite for BloodConnect (API backend, notification backend, AI service). No functional/unit/integration tests included by design.",
+  "scripts": {
+    "test:api": "node scripts/load_api_backend.js",
+    "test:notification": "node scripts/load_notification_backend.js",
+    "test:db": "node scripts/db_performance.js",
+    "report": "node scripts/build_report.js"
+  },
+  "dependencies": {
+    "autocannon": "^7.15.0",
+    "dotenv": "^17.4.2",
+    "firebase-admin": "^13.0.2",
+    "node-fetch": "^2.7.0",
+    "pg": "^8.13.1"
+  }
+}

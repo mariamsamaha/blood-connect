@@ -1,0 +1,71 @@
+{
+  "generatedAt": "2026-06-20T02:54:11.001Z",
+  "target": "http://127.0.0.1:8090",
+  "endpoint": "GET /health/db",
+  "steps": [
+    {
+      "connections": 10,
+      "requestsPerSec": 26.74,
+      "totalRequests": 401,
+      "latencyP50": 357,
+      "latencyP95": 563,
+      "latencyP99": 700,
+      "latencyMax": 835,
+      "errors": 0,
+      "timeouts": 0,
+      "errorRatePercent": 0
+    },
+    {
+      "connections": 25,
+      "requestsPerSec": 27.14,
+      "totalRequests": 407,
+      "latencyP50": 900,
+      "latencyP95": 1093,
+      "latencyP99": 1101,
+      "latencyMax": 1187,
+      "errors": 0,
+      "timeouts": 0,
+      "errorRatePercent": 0
+    },
+    {
+      "connections": 50,
+      "requestsPerSec": 25.4,
+      "totalRequests": 381,
+      "latencyP50": 1819,
+      "latencyP95": 2291,
+      "latencyP99": 2505,
+      "latencyMax": 2607,
+      "errors": 0,
+      "timeouts": 0,
+      "errorRatePercent": 0
+    },
+    {
+      "connections": 100,
+      "requestsPerSec": 23.67,
+      "totalRequests": 355,
+      "latencyP50": 3900,
+      "latencyP95": 5030,
+      "latencyP99": 5048,
+      "latencyMax": 5101,
+      "errors": 0,
+      "timeouts": 0,
+      "errorRatePercent": 0
+    },
+    {
+      "connections": 150,
+      "requestsPerSec": 29.2,
+      "totalRequests": 438,
+      "latencyP50": 4916,
+      "latencyP95": 5087,
+      "latencyP99": 5090,
+      "latencyMax": 5339,
+      "errors": 0,
+      "timeouts": 0,
+      "errorRatePercent": 0
+    }
+  ],
+  "breakingPoint": {
+    "connections": 50,
+    "reason": "p99_latency_doubled_vs_baseline"
+  }
+}

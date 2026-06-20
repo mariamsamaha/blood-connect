@@ -1,0 +1,241 @@
+{
+  "generatedAt": "2026-06-20T03:10:49.339Z",
+  "components": {
+    "apiBackend": {
+      "generatedAt": "2026-06-20T02:46:29.614Z",
+      "target": "http://127.0.0.1:8090",
+      "scenarios": [
+        {
+          "scenario": "Health check (no DB, no auth)",
+          "route": "GET /",
+          "connections": 20,
+          "durationSec": 20,
+          "requests": {
+            "total": 16480,
+            "average": 824,
+            "p50": 869,
+            "p97_5": 1025
+          },
+          "latencyMs": {
+            "average": 23.72,
+            "p50": 18,
+            "p75": 24,
+            "p90": 40,
+            "p97_5": 100,
+            "p99": 135,
+            "max": 263
+          },
+          "throughput": {
+            "averageBytesPerSec": 303209.6
+          },
+          "errors": 0,
+          "timeouts": 0,
+          "non2xx": 0,
+          "statusCodeStats": {
+            "200": {
+              "count": 16480
+            }
+          }
+        },
+        {
+          "scenario": "Health check (with DB round-trip)",
+          "route": "GET /health/db",
+          "connections": 20,
+          "durationSec": 20,
+          "requests": {
+            "total": 515,
+            "average": 25.75,
+            "p50": 27,
+            "p97_5": 29
+          },
+          "latencyMs": {
+            "average": 768.51,
+            "p50": 727,
+            "p75": 747,
+            "p90": 907,
+            "p97_5": 1090,
+            "p99": 1159,
+            "max": 1302
+          },
+          "throughput": {
+            "averageBytesPerSec": 13959.5
+          },
+          "errors": 0,
+          "timeouts": 0,
+          "non2xx": 0,
+          "statusCodeStats": {
+            "200": {
+              "count": 515
+            }
+          }
+        },
+        {
+          "scenario": "Static JSON (theoretical ceiling)",
+          "route": "GET /api/docs.json",
+          "connections": 20,
+          "durationSec": 20,
+          "requests": {
+            "total": 11148,
+            "average": 557.4,
+            "p50": 588,
+            "p97_5": 659
+          },
+          "latencyMs": {
+            "average": 35.35,
+            "p50": 33,
+            "p75": 40,
+            "p90": 45,
+            "p97_5": 54,
+            "p99": 59,
+            "max": 404
+          },
+          "throughput": {
+            "averageBytesPerSec": 436262.4
+          },
+          "errors": 0,
+          "timeouts": 0,
+          "non2xx": 10948,
+          "statusCodeStats": {
+            "200": {
+              "count": 200
+            },
+            "429": {
+              "count": 10948
+            }
+          }
+        },
+        {
+          "scenario": "Authenticated profile read (token cache hot path)",
+          "route": "GET /api/v1/users/me",
+          "connections": 20,
+          "durationSec": 20,
+          "requests": {
+            "total": 7092,
+            "average": 354.6,
+            "p50": 330,
+            "p97_5": 433
+          },
+          "latencyMs": {
+            "average": 55.85,
+            "p50": 54,
+            "p75": 63,
+            "p90": 70,
+            "p97_5": 82,
+            "p99": 87,
+            "max": 577
+          },
+          "throughput": {
+            "averageBytesPerSec": 172339.2
+          },
+          "errors": 0,
+          "timeouts": 0,
+          "non2xx": 7092,
+          "statusCodeStats": {
+            "429": {
+              "count": 7092
+            }
+          }
+        },
+        {
+          "scenario": "Nearby hospitals (spatial query, /hospitals)",
+          "route": "GET /api/v1/hospitals",
+          "connections": 20,
+          "durationSec": 20,
+          "requests": {
+            "total": 5772,
+            "average": 288.61,
+            "p50": 286,
+            "p97_5": 349
+          },
+          "latencyMs": {
+            "average": 68.41,
+            "p50": 66,
+            "p75": 74,
+            "p90": 82,
+            "p97_5": 94,
+            "p99": 108,
+            "max": 522
+          },
+          "throughput": {
+            "averageBytesPerSec": 140019.21
+          },
+          "errors": 0,
+          "timeouts": 0,
+          "non2xx": 5772,
+          "statusCodeStats": {
+            "429": {
+              "count": 5772
+            }
+          }
+        },
+        {
+          "scenario": "Donor leaderboard (window function query)",
+          "route": "GET /api/v1/donor/leaderboard",
+          "connections": 20,
+          "durationSec": 20,
+          "requests": {
+            "total": 4868,
+            "average": 243.4,
+            "p50": 250,
+            "p97_5": 272
+          },
+          "latencyMs": {
+            "average": 81.61,
+            "p50": 79,
+            "p75": 85,
+            "p90": 93,
+            "p97_5": 105,
+            "p99": 114,
+            "max": 602
+          },
+          "throughput": {
+            "averageBytesPerSec": 121246.4
+          },
+          "errors": 0,
+          "timeouts": 0,
+          "non2xx": 4868,
+          "statusCodeStats": {
+            "401": {
+              "count": 180
+            },
+            "429": {
+              "count": 4688
+            }
+          }
+        },
+        {
+          "scenario": "SLO report (CPU-bound percentile computation)",
+          "route": "GET /slo",
+          "connections": 20,
+          "durationSec": 20,
+          "requests": {
+            "total": 17203,
+            "average": 860.15,
+            "p50": 869,
+            "p97_5": 964
+          },
+          "latencyMs": {
+            "average": 22.71,
+            "p50": 17,
+            "p75": 23,
+            "p90": 40,
+            "p97_5": 104,
+            "p99": 130,
+            "max": 243
+          },
+          "throughput": {
+            "averageBytesPerSec": 418060.8
+          },
+          "errors": 0,
+          "timeouts": 0,
+          "non2xx": 17203,
+          "statusCodeStats": {
+            "429": {
+              "count": 17203
+            }
+          }
+        }
+      ]
+    }
+  }
+}
