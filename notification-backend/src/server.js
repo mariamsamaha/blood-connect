@@ -28,7 +28,12 @@ async function sendWithRetry(fn, { maxRetries = 3, baseDelayMs = 500, label = 's
   throw lastError;
 }
 
-admin.initializeApp();
+const firebaseCredsJson = process.env.FIREBASE_CREDENTIALS_JSON;
+if (firebaseCredsJson) {
+  admin.initializeApp({ credential: admin.credential.cert(JSON.parse(firebaseCredsJson)) });
+} else {
+  admin.initializeApp();
+}
 
 const app = express();
 let server;

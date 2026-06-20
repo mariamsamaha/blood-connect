@@ -26,40 +26,49 @@ function resolveCredentialPath() {
   return candidates.find((p) => p && fs.existsSync(p));
 }
 
+function resolveCredentials() {
+  const credPath = resolveCredentialPath();
+  if (credPath) {
+    return { serviceAccount: JSON.parse(fs.readFileSync(credPath, 'utf8')), source: credPath };
+  }
+  const jsonEnv = process.env.FIREBASE_CREDENTIALS_JSON;
+  if (jsonEnv) {
+    return { serviceAccount: JSON.parse(jsonEnv), source: 'FIREBASE_CREDENTIALS_JSON' };
+  }
+  return null;
+}
+
 function initializeFirebaseAdmin() {
   if (admin.apps.length) return;
 
-  const credPath = resolveCredentialPath();
   const projectId = process.env.FIREBASE_PROJECT_ID;
   if (!projectId) {
-    throw new Error('FIREBASE_PROJECT_ID environment variable is required (set in api-backend/.env)');
+    throw new Error('FIREBASE_PROJECT_ID environment variable is required');
   }
 
-  if (!credPath) {
+  const resolved = resolveCredentials();
+  if (!resolved) {
     console.error(`
 ╔══════════════════════════════════════════════════════════════════╗
 ║  Firebase Admin credentials required for api-backend             ║
 ╠══════════════════════════════════════════════════════════════════╣
-║  1. Firebase Console → Project settings → Service accounts       ║
-║  2. Generate new private key (JSON)                              ║
-║  3. Save as keys/firebase-adminsdk.json (gitignored)             ║
-║  4. In api-backend/.env set:                                     ║
-║     GOOGLE_APPLICATION_CREDENTIALS=../keys/bloodconnect-mvp-b605f-firebase-adminsdk-fbsvc-c292f56d04.json║
-║     FIREBASE_PROJECT_ID=bloodconnect-mvp-b605f                   ║
+║  Option 1 — Set GOOGLE_APPLICATION_CREDENTIALS pointing to       ║
+║            a Firebase Admin SDK JSON file                        ║
+║  Option 2 — Set FIREBASE_CREDENTIALS_JSON to the full JSON       ║
+║            string (for platforms like Render w/o a filesystem)   ║
 ╚══════════════════════════════════════════════════════════════════╝
 `);
     throw new Error('firebase_admin_credentials_missing');
   }
 
-  const serviceAccount = JSON.parse(fs.readFileSync(credPath, 'utf8'));
-  const resolvedProject = serviceAccount.project_id || projectId;
+  const resolvedProject = resolved.serviceAccount.project_id || projectId;
 
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
+    credential: admin.credential.cert(resolved.serviceAccount),
     projectId: resolvedProject,
   });
 
-  logger.info(`Firebase Admin ready (project: ${resolvedProject}, key: ${credPath})`);
+  logger.info(`Firebase Admin ready (project: ${resolvedProject}, source: ${resolved.source})`);
 }
 
 if (process.env.NODE_ENV !== 'test') {
